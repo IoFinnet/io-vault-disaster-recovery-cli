@@ -24,11 +24,11 @@ The resulting executable will be in the `bin/` folder.
 
 First you will want to get the vault IDs available in the files:
 ```
-$ go run ./ sandbox/file1.dat2 sandbox/file2.dat2
+$ ./bin/recovery-tool sandbox/file1.dat2 sandbox/file2.dat2
 ```
 
 Once you have the vault-ids, supply it to the tool to begin the recovery.
 ```
-$ go run ./ --vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.dat2 sandbox/file2.dat2
+$ ./bin/recovery-tool --vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.dat2 sandbox/file2.dat2
 ```
 
