@@ -1,4 +1,4 @@
-module github.com/aq-systems/tss-app-recovery-tool
+module github.com/IoFinnet/io-vault-disaster-recovery-cli
 
 go 1.14
 
