@@ -19,6 +19,7 @@ import (
 	"github.com/binance-chain/tss-lib/ecdsa/keygen"
 	. "github.com/decred/dcrd/dcrec/secp256k1"
 	secp256k13 "github.com/decred/dcrd/dcrec/secp256k1/v2"
+	errors2 "github.com/pkg/errors"
 	"github.com/tyler-smith/go-bip39"
 	"golang.org/x/crypto/sha3"
 )
@@ -60,6 +61,7 @@ func main() {
 
 	vaultShares := make([]*keygen.LocalPartySaveData, 0, len(files))
 	vaultShareData := make(map[string][]string)
+	vaultIdsToNamesMap := make(map[string]string)
 
 	fmt.Println("Preparing to decrypt the files. Please enter the secret words.")
 	for i, file := range files {
@@ -135,14 +137,25 @@ func main() {
 		// 	panic(err)
 		// }
 
-		var parsed map[string][]string
-		if err := json.Unmarshal(aesCT, &parsed); err != nil {
+		// encrypted data format: [map(shares), map(vault ids to names)]
+		dataPair := make([]string, 0, 2)
+		if err = json.Unmarshal(aesCT, &dataPair); err != nil {
+			panic(errors2.Wrapf(err, "invalid data format - is this an old backup file? (code: 0)"))
+		}
+		if len(dataPair) != 2 {
+			panic("invalid data format - is this an old backup file? (code: 1)")
+		}
+		var jsonSharesMap map[string][]string
+		if err = json.Unmarshal([]byte(dataPair[0]), &jsonSharesMap); err != nil {
+			panic(err)
+		}
+		if err = json.Unmarshal([]byte(dataPair[1]), &vaultIdsToNamesMap); err != nil {
 			panic(err)
 		}
 
 		// [itemServer, itemUserId, deviceId, vaultId] = keyChainService.split(SEPARATOR)
 		// example: dev.aq.systems–—–954f74ec-2d3c-4073-9af7-03b27fd31ff5–—–cl347srm8036882voar2o3yyy–—–cl347wz8w00006sx3f1g23p4s–—–privateShare
-		for key, shares := range parsed {
+		for key, shares := range jsonSharesMap {
 			if !strings.HasSuffix(key, "privateShare") {
 				continue
 			}
@@ -158,7 +171,11 @@ func main() {
 	if *vaultID == "" {
 		fmt.Println("\nDecryption success.\nListing available vault IDs:")
 		for vID := range vaultShareData {
-			fmt.Printf(" - %s\n", vID)
+			suffixStr := ""
+			if vName, ok := vaultIdsToNamesMap[*vaultID]; ok {
+				suffixStr = fmt.Sprintf(" (\"%s\")", vName)
+			}
+			fmt.Printf(" - %s%s\n", vID, suffixStr)
 		}
 		fmt.Println("\nRestart the tool and provide --vault-id to extract a vault's key.")
 		fmt.Println("Example: recovery-tool.exe --vault-id cl347wz8w00006sx3f1g23p4s file.dat")
@@ -170,11 +187,11 @@ func main() {
 
 	var t, tPlus1 int
 	for _, sz := range vaultShareData[*vaultID] {
-		data := new(keygen.LocalPartySaveData)
-		if err := json.Unmarshal([]byte(sz), data); err != nil {
-			panic(err)
+		shareData := new(keygen.LocalPartySaveData)
+		if err := json.Unmarshal([]byte(sz), &shareData); err != nil {
+			panic(errors2.Wrapf(err, "invalid data format - is this an old backup file? (code: 2)"))
 		}
-		vaultShares = append(vaultShares, data)
+		vaultShares = append(vaultShares, shareData)
 		tPlus1++
 	}
 	t = tPlus1 - 1

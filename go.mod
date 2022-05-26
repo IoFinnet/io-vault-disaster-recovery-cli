@@ -8,6 +8,7 @@ require (
 	github.com/btcsuite/btcd v0.22.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1 v1.0.3
 	github.com/decred/dcrd/dcrec/secp256k1/v2 v2.0.0
+	github.com/pkg/errors v0.9.1
 	github.com/tyler-smith/go-bip39 v1.0.2
 	golang.org/x/crypto v0.0.0-20220131195533-30dcbda58838
 )
