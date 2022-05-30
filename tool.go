@@ -148,7 +148,6 @@ func main() {
 		}
 		jsonSharesMap := data.S
 		vaultIdsToNamesMap = data.V
-		fmt.Printf("%+v\n", vaultIdsToNamesMap)
 		// if err = json.Unmarshal([]byte(firstPart), &jsonSharesMap); err != nil {
 		// 	panic(err)
 		// }
