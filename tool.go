@@ -28,15 +28,16 @@ const (
 	WORDS = 24
 )
 
-var (
-	// ErrInvalidBlockSize indicates hash blocksize <= 0.
-	ErrInvalidBlockSize = errors.New("invalid blocksize")
+type (
+	Vault struct {
+		Name   string        `json:"name"`
+		Curves []interface{} `json:"curves"`
+	}
 
-	// ErrInvalidPKCS7Data indicates bad input to PKCS7 pad or unpad.
-	ErrInvalidPKCS7Data = errors.New("invalid PKCS7 data (empty or not padded)")
-
-	// ErrInvalidPKCS7Padding indicates PKCS7 unpad fails to bad input.
-	ErrInvalidPKCS7Padding = errors.New("invalid padding on input")
+	SavedData struct {
+		S map[string][]string
+		V map[string]Vault
+	}
 )
 
 func main() {
@@ -59,9 +60,9 @@ func main() {
 		fmt.Println()
 	}
 
-	vaultShares := make([]*keygen.LocalPartySaveData, 0, len(files))
+	var vaultIdsToNamesMap map[string]Vault
 	vaultShareData := make(map[string][]string)
-	vaultIdsToNamesMap := make(map[string]string)
+	vaultShares := make([]*keygen.LocalPartySaveData, 0, len(files))
 
 	fmt.Println("Preparing to decrypt the files. Please enter the secret words.")
 	for i, file := range files {
@@ -138,20 +139,22 @@ func main() {
 		// }
 
 		// encrypted data format: [map(shares), map(vault ids to names)]
-		dataPair := make([]string, 0, 2)
-		if err = json.Unmarshal(aesCT, &dataPair); err != nil {
+		// split := strings.SplitN(aesCTStr, "},{", 2)
+		// firstPart := fmt.Sprintf("%s}", split[0][1:])
+		// secondPart := fmt.Sprintf("{%s", split[1][:len(split[1])-1])
+		data := new(SavedData)
+		if err = json.Unmarshal(aesCT, data); err != nil {
 			panic(errors2.Wrapf(err, "invalid data format - is this an old backup file? (code: 0)"))
 		}
-		if len(dataPair) != 2 {
-			panic("invalid data format - is this an old backup file? (code: 1)")
-		}
-		var jsonSharesMap map[string][]string
-		if err = json.Unmarshal([]byte(dataPair[0]), &jsonSharesMap); err != nil {
-			panic(err)
-		}
-		if err = json.Unmarshal([]byte(dataPair[1]), &vaultIdsToNamesMap); err != nil {
-			panic(err)
-		}
+		jsonSharesMap := data.S
+		vaultIdsToNamesMap = data.V
+		fmt.Printf("%+v\n", vaultIdsToNamesMap)
+		// if err = json.Unmarshal([]byte(firstPart), &jsonSharesMap); err != nil {
+		// 	panic(err)
+		// }
+		// if err = json.Unmarshal([]byte(secondPart), &vaultIdsToNamesMap); err != nil {
+		// 	panic(err)
+		// }
 
 		// [itemServer, itemUserId, deviceId, vaultId] = keyChainService.split(SEPARATOR)
 		// example: dev.aq.systems–—–954f74ec-2d3c-4073-9af7-03b27fd31ff5–—–cl347srm8036882voar2o3yyy–—–cl347wz8w00006sx3f1g23p4s–—–privateShare
@@ -172,8 +175,8 @@ func main() {
 		fmt.Println("\nDecryption success.\nListing available vault IDs:")
 		for vID := range vaultShareData {
 			suffixStr := ""
-			if vName, ok := vaultIdsToNamesMap[*vaultID]; ok {
-				suffixStr = fmt.Sprintf(" (\"%s\")", vName)
+			if vName, ok := vaultIdsToNamesMap[vID]; ok {
+				suffixStr = fmt.Sprintf(" (\"%s\")", vName.Name)
 			}
 			fmt.Printf(" - %s%s\n", vID, suffixStr)
 		}
@@ -206,6 +209,7 @@ func main() {
 		vssShares[i] = &share
 	}
 
+	// TODO: select the curve
 	tssPrivateKey, err := vssShares[:tPlus1].ReConstruct(S256())
 	if err != nil {
 		fmt.Printf("error in tss verify")
