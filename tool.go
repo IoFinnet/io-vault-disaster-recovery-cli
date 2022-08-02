@@ -180,7 +180,7 @@ func main() {
 			fmt.Printf(" - %s%s\n", vID, suffixStr)
 		}
 		fmt.Println("\nRestart the tool and provide --vault-id to extract a vault's key.")
-		fmt.Println("Example: recovery-tool.exe --vault-id cl347wz8w00006sx3f1g23p4s file.dat")
+		fmt.Println("Example: recovery-tool.exe --vault-id cl347wz8w00006sx3f1g23p4s file.bin")
 		return
 	}
 	if _, ok := vaultShareData[*vaultID]; !ok {
