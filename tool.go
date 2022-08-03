@@ -223,7 +223,7 @@ func main() {
 		panic(err)
 	}
 	fmt.Printf("recovered ETH address: %s\n", address)
-	fmt.Printf("recovered SK: %v\n", hex.EncodeToString(tssPrivateKey.Bytes()))
+	fmt.Printf("recovered private key: %v\n", hex.EncodeToString(tssPrivateKey.Bytes()))
 
 	if len(*export) > 0 && len(*password) > 0 {
 		keyfile, err := exportKeyStore(privKey.Serialize(), *password)
