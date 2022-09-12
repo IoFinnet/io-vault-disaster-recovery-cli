@@ -34,8 +34,18 @@ type (
 		Curves []interface{} `json:"curves"`
 	}
 
+	KeyChainItem struct {
+		VaultID  string   `json:"vaultId"`
+		Service  string   `json:"service"`
+		Item     string   `json:"item"`
+		Server   string   `json:"server"`
+		UserID   string   `json:"userId"`
+		DeviceID string   `json:"deviceId"`
+		Value    []string `json:"value"`
+	}
+
 	SavedData struct {
-		S map[string][]string
+		S []KeyChainItem
 		V map[string]Vault
 	}
 )
@@ -144,6 +154,7 @@ func main() {
 		// secondPart := fmt.Sprintf("{%s", split[1][:len(split[1])-1])
 		data := new(SavedData)
 		if err = json.Unmarshal(aesCT, data); err != nil {
+			fmt.Printf("%s", string(aesCT))
 			panic(errors2.Wrapf(err, "invalid data format - is this an old backup file? (code: 0)"))
 		}
 		jsonSharesMap := data.S
@@ -155,27 +166,26 @@ func main() {
 		// 	panic(err)
 		// }
 
-		// [itemServer, itemUserId, deviceId, vaultId] = keyChainService.split(SEPARATOR)
-		// example: dev.aq.systems–—–954f74ec-2d3c-4073-9af7-03b27fd31ff5–—–cl347srm8036882voar2o3yyy–—–cl347wz8w00006sx3f1g23p4s–—–privateShare
-		for key, shares := range jsonSharesMap {
-			if !strings.HasSuffix(key, "privateShare") {
+		for _, item := range jsonSharesMap {
+			if item.Item != "privateShare" {
 				continue
 			}
-			split := strings.SplitN(key, "–—–", 5)
-			vID := split[3]
+			// VaultId is not set, so we split it out from the service name here
+			split := strings.SplitN(item.Service, "–—–", 6)
+			vID := split[5]
 			if _, ok := vaultShareData[vID]; !ok {
-				vaultShareData[vID] = make([]string, 0, len(shares))
+				vaultShareData[vID] = make([]string, 0, len(item.Value))
 			}
-			vaultShareData[vID] = append(vaultShareData[vID], shares...)
+			vaultShareData[vID] = append(vaultShareData[vID], item.Value...)
 		}
 	}
 
 	if *vaultID == "" {
-		fmt.Println("\nDecryption success.\nListing available vault IDs:")
+		fmt.Println("\nDecryption success.\nListing available vault IDs and their names:")
 		for vID := range vaultShareData {
 			suffixStr := ""
 			if vName, ok := vaultIdsToNamesMap[vID]; ok {
-				suffixStr = fmt.Sprintf(" (\"%s\")", vName.Name)
+				suffixStr = fmt.Sprintf("  \"%s\"", vName.Name)
 			}
 			fmt.Printf(" - %s%s\n", vID, suffixStr)
 		}
