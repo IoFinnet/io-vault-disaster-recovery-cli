@@ -36,12 +36,14 @@ $ ./bin/recovery-tool --vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.bin san
 
 The private key that is exported by the tool must be converted to WIF format.
 
-This needs Node.js, then just run the `node` tool to start up the REPL, then use these commands.
+This needs Node.js.
+Make sure you are in an empty directory, run `npm init` and press enter through all the prompts. Then run `npm i wif` to install the wif package.
+Then just run the `node` tool to start up the REPL, then use these commands:
 
 ```
 // private key string looks like: 76f004b19d4ed2d2cfbf5560380276580a1a622cfef0d893b1ade4f23082d6af
 // paste it in the placeholder below
-> const skHex = '*** PASTE YOUR PRIVATE KEY HEX STRING HERE ***';
+> skHex = '*** PASTE YOUR PRIVATE KEY HEX STRING HERE ***';
 > sk = new Buffer(skHex, 'hex')
 > wif = require('wif')
 // use 239 for testnet, or 128 for mainnet
