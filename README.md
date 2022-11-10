@@ -36,8 +36,10 @@ $ ./bin/recovery-tool --vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.bin san
 
 The private key that is exported by the tool must be converted to WIF format.
 
-This needs Node.js.
+This needs Node.js to be installed.
+
 Make sure you are in an empty directory, run `npm init` and press enter through all the prompts. Then run `npm i wif` to install the wif package.
+
 Then just run the `node` tool to start up the REPL, then use these commands:
 
 ```
@@ -66,4 +68,4 @@ Create a password for the wallet.
 
 ![Screenshot 2022-11-10 at 23 07 22](https://user-images.githubusercontent.com/1255926/201131143-97039c52-3bff-4ada-9dfb-f8b176db580d.png)
 
-Electrum should now show your balances, and the private key is recovered.
+After syncing up the chain (may take a while), Electrum should show your balances, and the private key is recovered.
