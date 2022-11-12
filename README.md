@@ -43,8 +43,9 @@ Make sure you are in an empty directory, run `npm init` and press enter through 
 Then just run the `node` tool to start up the REPL, then use these commands:
 
 ```
-// private key string looks like: 76f004b19d4ed2d2cfbf5560380276580a1a622cfef0d893b1ade4f23082d6af
+// the "recovered private key" looks like: 76f004b19d4ed2d2cfbf5560380276580a1a622cfef0d893b1ade4f23082d6af
 // paste it in the placeholder below
+// do NOT use the longer "pk" string
 > skHex = '*** PASTE YOUR PRIVATE KEY HEX STRING HERE ***';
 > sk = Buffer.from(skHex, 'hex')
 > wif = require('wif')
