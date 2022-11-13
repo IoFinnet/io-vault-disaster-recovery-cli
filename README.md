@@ -34,28 +34,12 @@ $ ./bin/recovery-tool --vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.bin san
 
 ### Bitcoin Recovery
 
-The private key that is exported by the tool must be converted to WIF format.
+The tool exports two WIFs for import into the Electrum Bitcoin wallet: one for mainnet (`bc1` address), and another for testnet (`tb1` address).
+Choose the one depending on your vault's environment.
 
-This needs Node.js to be installed.
+A WIF looks like: L1CujRNEhNfZgTS9b6e3hytTDu7gpUv1kiLx4ETEEhEc8nJcx4QA
 
-Make sure you are in an empty directory, run `npm init` and press enter through all the prompts. Then run `npm i wif` to install the wif package.
-
-Then just run the `node` tool to start up the REPL, then use these commands:
-
-```
-// the "recovered private key" looks like: 76f004b19d4ed2d2cfbf5560380276580a1a622cfef0d893b1ade4f23082d6af
-// paste it in the placeholder below
-// do NOT use the longer "pk" string
-> skHex = '*** PASTE YOUR PRIVATE KEY HEX STRING HERE ***';
-> sk = Buffer.from(skHex, 'hex')
-> wif = require('wif')
-// use 239 for testnet, or 128 for mainnet
-> wif.encode(239, sk, true)
-```
-
-A WIF is produced like: L1CujRNEhNfZgTS9b6e3hytTDu7gpUv1kiLx4ETEEhEc8nJcx4QA
-
-Then download Electrum wallet, and follow the steps to import a WIF.
+You may download Electrum wallet, and follow these steps to import a WIF:
 
 > **IMPORTANT:** If you intend to recover a **testnet** key (address with `tb1` prefix), you must run Electrum with the `--testnet` flag from your Terminal:
 > On a Mac, this is done as follows:
