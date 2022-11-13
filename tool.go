@@ -74,17 +74,9 @@ func main() {
 	vaultShareData := make(map[string][]string)
 	vaultShares := make([]*keygen.LocalPartySaveData, 0, len(files))
 
+	fmt.Println("Key Recovery Tool")
 	fmt.Println("Preparing to decrypt the files. Please enter the secret words.")
 	for i, file := range files {
-		fmt.Printf("input %d secret words for file %d \"%s\": ", WORDS, i, file)
-		phrase, _ := reader.ReadString('\n')
-		phrase = strings.Replace(phrase, "\n", "", -1)
-		phrase = strings.Replace(phrase, "\r", "", -1)
-		words := strings.SplitN(phrase, " ", WORDS)
-		if len(words) < WORDS {
-			panic(fmt.Errorf("wanted %d phrase words but got %d", WORDS, len(words)))
-		}
-
 		// read file
 		if _, err := os.Stat(file); err != nil {
 			panic(err)
@@ -96,7 +88,20 @@ func main() {
 		// ${deviceIdsStr};${twentyFourWords[0].word};${nonceHex};${tagHex};${ciphertext}
 		// example: cl347srm8036882voar2o3yyy;minimum;04bb40eb0b322e19b65d68f7;749e68c3f00e5412126b3b7b193fe48d;...
 		items := strings.SplitN(string(content), ";", 5)
+		if len(items) < 5 {
+			panic(fmt.Errorf("invalid file format: contains %d parts", len(items)))
+		}
 		_, firstWord, aesNonceHex, aesTagHex, aesCTB64 := items[0], items[1], items[2], items[3], items[4]
+
+		// user inputs secret words
+		fmt.Printf("\ninput %d secret words for file %d \"%s\" (first word: %s):\n", WORDS, i, file, firstWord)
+		phrase, _ := reader.ReadString('\n')
+		phrase = strings.Replace(phrase, "\n", "", -1)
+		phrase = strings.Replace(phrase, "\r", "", -1)
+		words := strings.SplitN(phrase, " ", WORDS)
+		if len(words) < WORDS {
+			panic(fmt.Errorf("wanted %d phrase words but got %d", WORDS, len(words)))
+		}
 		if words[0] != firstWord {
 			panic(fmt.Errorf("wanted first word to be \"%s\" but got \"%s\"", firstWord, words[0]))
 		}
@@ -232,8 +237,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("\n*** Success! ***")
 	fmt.Printf("recovered ETH address: %s\n", address)
-	fmt.Printf("recovered private key: %v\n", hex.EncodeToString(tssPrivateKey.Bytes()))
+	fmt.Printf("recovered private key (ETH/MetaMask): %s\n", hex.EncodeToString(tssPrivateKey.Bytes()))
+	fmt.Printf("recovered testnet WIF (BTC/Electrum): %s\n", toBitcoinWIF(tssPrivateKey.Bytes(), true, true))
+	fmt.Printf("recovered mainnet WIF (BTC/Electrum): %s\n", toBitcoinWIF(tssPrivateKey.Bytes(), false, true))
 
 	if len(*export) > 0 && len(*password) > 0 {
 		keyfile, err := exportKeyStore(privKey.Serialize(), *password)
@@ -259,7 +267,6 @@ func getTSSPubKey(x, y *big.Int) (*secp256k13.PublicKey, string, error) {
 	pubKey := NewPublicKey(x, y)
 	var pubKeyBz [65]byte
 	copy(pubKeyBz[:], pubKey.SerializeUncompressed())
-	fmt.Printf("pk: %s\n", hex.EncodeToString(pubKeyBz[:]))
 
 	hash := sha3.NewLegacyKeccak256()
 	hash.Write(pubKeyBz[1:])
