@@ -5,7 +5,7 @@ go 1.14
 require (
 	github.com/binance-chain/go-sdk v1.2.4
 	github.com/binance-chain/tss-lib v1.3.3
-	github.com/btcsuite/btcd v0.22.1 // indirect
+	github.com/btcsuite/btcd v0.23.2 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1 v1.0.3
 	github.com/decred/dcrd/dcrec/secp256k1/v2 v2.0.0
 	github.com/pkg/errors v0.9.1
