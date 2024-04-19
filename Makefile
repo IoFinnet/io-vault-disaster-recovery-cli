@@ -7,10 +7,10 @@ build-win:
 	GOOS=windows GOARCH=amd64 go build -o ./bin/recovery-tool.exe ./
 
 build-mac:
-	GOOS=darwin GOARCH=arm64 go build -o ./bin/recovery-tool.exe ./
+	GOOS=darwin GOARCH=arm64 go build -o ./bin/recovery-tool-mac ./
 
 build-linux:
-	GOOS=linux GOARCH=amd64 go build -o ./bin/recovery-tool.exe ./
+	GOOS=linux GOARCH=amd64 go build -o ./bin/recovery-tool-linux ./
 
 sandbox:
 	sh ./try-sandbox.sh
