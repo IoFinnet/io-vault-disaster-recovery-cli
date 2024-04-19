@@ -13,9 +13,11 @@ Compile for current arch:
 $ make build
 ```
 
-Compile for Windows:
+Compile for Windows, Linux (x86) or Mac (Apple Silicon):
 ```
 $ make build-win
+$ make build-linux
+$ make build-mac
 ```
 
 The resulting executable will be in the `bin/` folder.
