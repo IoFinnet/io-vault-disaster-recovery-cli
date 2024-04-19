@@ -1,7 +1,7 @@
 TSS Recovery Tool
 =================
 
-This tool is intended to recover the private key of TSS vaults, by
+This tool recovers the private key of TSS vaults, by
 'combining' the secrets of each TSS app backup file.
 
 If you pass `export` and `password` it will generate a keystore file.
