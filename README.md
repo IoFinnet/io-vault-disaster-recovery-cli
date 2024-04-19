@@ -24,7 +24,7 @@ The resulting executable will be in the `bin/` folder.
 
 First you will want to get the vault IDs available in the files:
 ```
-$ ./bin/recovery-tool sandbox/file1.bin sandbox/file2.bin
+$ ./bin/recovery-tool sandbox/file1.json sandbox/file2.json
 ```
 
 Once you have the vault-ids, supply it to the tool to begin the recovery.
