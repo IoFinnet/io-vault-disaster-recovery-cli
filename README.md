@@ -32,6 +32,10 @@ Once you have the vault-ids, supply it to the tool to begin the recovery.
 $ ./bin/recovery-tool --vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.bin sandbox/file2.bin
 ```
 
+### Ethereum & Ethereum-Like Recovery
+
+The tool will output a private key hexstring that you can import directly into wallets like MetaMask.
+
 ### Bitcoin Recovery
 
 The tool exports two WIFs for import into the Electrum Bitcoin wallet: one for mainnet (`bc1` address), and another for testnet (`tb1` address).
