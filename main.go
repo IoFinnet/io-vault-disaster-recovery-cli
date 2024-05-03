@@ -11,15 +11,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"os"
 	"strings"
 
 	"github.com/binance-chain/tss-lib/crypto/vss"
 	"github.com/binance-chain/tss-lib/ecdsa/keygen"
-	. "github.com/decred/dcrd/dcrec/secp256k1"
-	secp256k13 "github.com/decred/dcrd/dcrec/secp256k1/v2"
+	secp256k1 "github.com/decred/dcrd/dcrec/secp256k1/v4"
 	errors2 "github.com/pkg/errors"
 	"github.com/tyler-smith/go-bip39"
 	"golang.org/x/crypto/sha3"
@@ -275,16 +273,18 @@ func main() {
 	}
 
 	// TODO: select the curve
-	tssPrivateKey, err := vssShares.ReConstruct(S256())
+	tssPrivateKey, err := vssShares.ReConstruct(secp256k1.S256())
 	if err != nil {
 		fmt.Printf("error in tss verify")
 	}
 
-	privKey := NewPrivateKey(tssPrivateKey)
+	scl := secp256k1.ModNScalar{}
+	scl.SetByteSlice(tssPrivateKey.Bytes())
+	privKey := secp256k1.NewPrivateKey(&scl)
 	pk := privKey.PubKey()
 
-	// TODO: encode Ethereum address
-	_, address, err := getTSSPubKey(pk.X, pk.Y)
+	// encode Ethereum address
+	_, address, err := getTSSPubKey(pk.X(), pk.Y())
 	if err != nil {
 		panic(err)
 	}
@@ -305,7 +305,7 @@ func main() {
 		}
 
 		jsonString, _ := json.Marshal(keyfile)
-		err = ioutil.WriteFile(*exportKSFile, jsonString, os.ModePerm)
+		err = os.WriteFile(*exportKSFile, jsonString, os.ModePerm)
 		if err != nil {
 			panic(err)
 		}
@@ -313,11 +313,14 @@ func main() {
 	}
 }
 
-func getTSSPubKey(x, y *big.Int) (*secp256k13.PublicKey, string, error) {
+func getTSSPubKey(x, y *big.Int) (*secp256k1.PublicKey, string, error) {
 	if x == nil || y == nil {
 		return nil, "", errors.New("invalid public key coordinates")
 	}
-	pubKey := NewPublicKey(x, y)
+	pubKey, err := secp256k1.ParsePubKey(append([]byte{0x04}, append(x.Bytes(), y.Bytes()...)...))
+	if err != nil {
+		return nil, "", err
+	}
 	var pubKeyBz [65]byte
 	copy(pubKeyBz[:], pubKey.SerializeUncompressed())
 
