@@ -34,6 +34,9 @@ Once you have the vault-ids, supply it to the tool to begin the recovery.
 $ ./bin/recovery-tool --vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.bin sandbox/file2.bin
 ```
 
+The tool will try to auto-detect the optimal "reshare nonce" and "threshold/quroum" of the vault you are trying to recover.
+However, if you would like to override this behavior, you may specify custom values with `--nonce` and `--threshold` flags respectively.
+
 ### Ethereum & Ethereum-Like Recovery
 
 The tool will output a private key hexstring that you can import directly into wallets like MetaMask.
@@ -49,7 +52,7 @@ You may download Electrum wallet, and follow these steps to import a WIF:
 
 > **IMPORTANT:** If you intend to recover a **testnet** key (address with `tb1` prefix), you must run Electrum with the `--testnet` flag from your Terminal:
 > On a Mac, this is done as follows:
-> `open -n /Applications/Electrum.app --args --testnet`  
+> `open -n /Applications/Electrum.app --args --testnet`
 
 ![Screenshot 2022-11-10 at 23 01 51](https://user-images.githubusercontent.com/1255926/201128017-98226fa6-4729-4581-b4a8-d612d7f37b81.png)
 
