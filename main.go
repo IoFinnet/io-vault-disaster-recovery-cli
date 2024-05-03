@@ -11,15 +11,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"os"
 	"strings"
 
 	"github.com/binance-chain/tss-lib/crypto/vss"
 	"github.com/binance-chain/tss-lib/ecdsa/keygen"
-	. "github.com/decred/dcrd/dcrec/secp256k1"
-	secp256k13 "github.com/decred/dcrd/dcrec/secp256k1/v2"
+	secp256k1 "github.com/decred/dcrd/dcrec/secp256k1/v4"
 	errors2 "github.com/pkg/errors"
 	"github.com/tyler-smith/go-bip39"
 	"golang.org/x/crypto/sha3"
@@ -61,9 +59,11 @@ type (
 func main() {
 	reader := bufio.NewReader(os.Stdin)
 
-	vaultID := flag.String("vault-id", "", "OPTIONAL: the vault id to export the keys for")
-	exportKSFile := flag.String("export", "", "OPTIONAL: path to export Ethereum wallet keystore file")
-	passwordForKS := flag.String("password", "", "OPTIONAL: encryption password for the Ethereum wallet keystore")
+	vaultID := flag.String("vault-id", "", "(Optional) The vault id to export the keys for.")
+	nonceOverride := flag.Int("nonce", -1, "(Optional) Reshare Nonce override. Try it if the tool advises you to do so.")
+	quorumOverride := flag.Int("threshold", 0, "(Optional) Vault Quorum (Threshold) override. Try it if the tool advises you to do so.")
+	exportKSFile := flag.String("export", "", "(Optional) Path to export Ethereum wallet keystore file.")
+	passwordForKS := flag.String("password", "", "(Optional) Encryption password for the Ethereum wallet keystore; use with --export")
 
 	flag.Parse()
 	files := flag.Args()
@@ -79,6 +79,16 @@ func main() {
 
 	println()
 	fmt.Println("*** io.finnet Key Recovery Tool ***")
+
+	if *nonceOverride > -1 {
+		fmt.Printf("\n⚠ Using reshare nonce override: %d. Be sure to set the threshold of the vault at this reshare point with --threshold, or recovery will produce incorrect data.\n", *nonceOverride)
+	}
+	if *quorumOverride > 0 {
+		fmt.Printf("\n⚠ Using vault quorum override: %d.\n", *quorumOverride)
+	}
+	if *nonceOverride > -1 || *quorumOverride > 0 {
+		println()
+	}
 
 	// Internal data structures
 	clearVaults := make(ClearVaultMap, len(files)*16)
@@ -138,9 +148,18 @@ func main() {
 
 		// decrypt the vaults into clear vaults
 		for vID, resharesMap := range saveData.Vaults {
-			// take the highest reshareNonce we have saved
+			// only look at the vault we're interested in, if one was supplied
+			if *vaultID != "" && vID != *vaultID {
+				continue
+			}
+
+			// take the highest reshareNonce we have saved (best effort)
 			lastReshareNonce := -1
 			for nonce := range resharesMap {
+				// support the --nonce flag to override the last reshare nonce we use
+				if *vaultID != "" && *nonceOverride > -1 && *nonceOverride != nonce {
+					continue
+				}
 				if nonce > lastReshareNonce {
 					lastReshareNonce = nonce
 				}
@@ -150,7 +169,12 @@ func main() {
 				continue // not a show stopper
 			}
 			if glbLastReShareNonce, ok := vaultLastNonces[vID]; ok && glbLastReShareNonce != lastReshareNonce {
-				panic(fmt.Errorf("⚠ mismatched reshare nonce for vault `%s`", vID))
+				fmt.Printf("\n⚠ Non matching reshare nonce for vault `%s`. You may have to specify prior reshare config with --nonce and --threshold when recovering that vault.\n", vID)
+				if lastReshareNonce-1 >= 0 {
+					fmt.Printf("⚠ If you have problems recovering that vault, you could try: --vault-id %s --nonce %d --threshold x. Replace x with previous vault threshold.\n", vID, lastReshareNonce-1)
+				} else {
+					println()
+				}
 			}
 			vaultLastNonces[vID] = lastReshareNonce
 			cipheredVault := resharesMap[lastReshareNonce]
@@ -229,10 +253,13 @@ func main() {
 
 	println()
 	if _, ok := vaultAllShares[*vaultID]; !ok {
-		panic(fmt.Errorf("⚠ provided files do not contain data for vault %s", *vaultID))
+		panic(fmt.Errorf("⚠ provided files do not contain data for vault `%s` with the expected reshare nonce", *vaultID))
 	}
 
 	tPlus1 := clearVaults[*vaultID].Quroum
+	if *quorumOverride > 0 {
+		tPlus1 = *quorumOverride
+	}
 	vssShares := make(vss.Shares, len(vaultAllShares[*vaultID]))
 	if len(vaultAllShares[*vaultID]) < tPlus1 {
 		panic(fmt.Errorf("⚠ not enough shares to recover the key for vault %s (need %d, have %d)", *vaultID, tPlus1, len(vaultAllShares[*vaultID])))
@@ -246,16 +273,18 @@ func main() {
 	}
 
 	// TODO: select the curve
-	tssPrivateKey, err := vssShares[:tPlus1].ReConstruct(S256())
+	tssPrivateKey, err := vssShares.ReConstruct(secp256k1.S256())
 	if err != nil {
 		fmt.Printf("error in tss verify")
 	}
 
-	privKey := NewPrivateKey(tssPrivateKey)
+	scl := secp256k1.ModNScalar{}
+	scl.SetByteSlice(tssPrivateKey.Bytes())
+	privKey := secp256k1.NewPrivateKey(&scl)
 	pk := privKey.PubKey()
 
-	// TODO: encode Ethereum address
-	_, address, err := getTSSPubKey(pk.X, pk.Y)
+	// encode Ethereum address
+	_, address, err := getTSSPubKey(pk.X(), pk.Y())
 	if err != nil {
 		panic(err)
 	}
@@ -276,7 +305,7 @@ func main() {
 		}
 
 		jsonString, _ := json.Marshal(keyfile)
-		err = ioutil.WriteFile(*exportKSFile, jsonString, os.ModePerm)
+		err = os.WriteFile(*exportKSFile, jsonString, os.ModePerm)
 		if err != nil {
 			panic(err)
 		}
@@ -284,11 +313,14 @@ func main() {
 	}
 }
 
-func getTSSPubKey(x, y *big.Int) (*secp256k13.PublicKey, string, error) {
+func getTSSPubKey(x, y *big.Int) (*secp256k1.PublicKey, string, error) {
 	if x == nil || y == nil {
 		return nil, "", errors.New("invalid public key coordinates")
 	}
-	pubKey := NewPublicKey(x, y)
+	pubKey, err := secp256k1.ParsePubKey(append([]byte{0x04}, append(x.Bytes(), y.Bytes()...)...))
+	if err != nil {
+		return nil, "", err
+	}
 	var pubKeyBz [65]byte
 	copy(pubKeyBz[:], pubKey.SerializeUncompressed())
 

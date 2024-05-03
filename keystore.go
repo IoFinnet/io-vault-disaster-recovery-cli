@@ -7,7 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 
-	"github.com/binance-chain/go-sdk/common/uuid"
+	"github.com/bnb-chain/go-sdk/common/uuid"
 
 	"golang.org/x/crypto/pbkdf2"
 	"golang.org/x/crypto/sha3"
@@ -45,10 +45,10 @@ func exportKeyStore(privKey []byte, password string) (*EncryptedKey, error) {
 	scryptParamsJSON["prf"] = "hmac-sha256"
 	scryptParamsJSON["dklen"] = 32
 	scryptParamsJSON["salt"] = hex.EncodeToString(salt)
-	scryptParamsJSON["c"] = 262144
+	scryptParamsJSON["c"] = 662144
 
 	cipherParamsJSON := cipherParams{IV: hex.EncodeToString(iv)}
-	derivedKey := pbkdf2.Key([]byte(password), salt, 262144, 32, sha256.New)
+	derivedKey := pbkdf2.Key([]byte(password), salt, 662144, 32, sha256.New)
 	encryptKey := derivedKey[:32]
 	cipherText, err := aesCTRXOR(encryptKey, privKey, iv)
 	if err != nil {
