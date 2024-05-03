@@ -138,6 +138,11 @@ func main() {
 
 		// decrypt the vaults into clear vaults
 		for vID, resharesMap := range saveData.Vaults {
+			// only look at the vault we're interested in, if one was supplied
+			if *vaultID != "" && vID != *vaultID {
+				continue
+			}
+
 			// take the highest reshareNonce we have saved
 			lastReshareNonce := -1
 			for nonce := range resharesMap {
@@ -150,7 +155,7 @@ func main() {
 				continue // not a show stopper
 			}
 			if glbLastReShareNonce, ok := vaultLastNonces[vID]; ok && glbLastReShareNonce != lastReshareNonce {
-				panic(fmt.Errorf("⚠ mismatched reshare nonce for vault `%s`", vID))
+				fmt.Printf("\n⚠ WARNING: non matching reshare nonce for vault `%s`; you may have to specify a prior reshare nonce with --nonce when recovering this vault\n", vID)
 			}
 			vaultLastNonces[vID] = lastReshareNonce
 			cipheredVault := resharesMap[lastReshareNonce]
