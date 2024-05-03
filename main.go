@@ -61,9 +61,11 @@ type (
 func main() {
 	reader := bufio.NewReader(os.Stdin)
 
-	vaultID := flag.String("vault-id", "", "OPTIONAL: the vault id to export the keys for")
-	exportKSFile := flag.String("export", "", "OPTIONAL: path to export Ethereum wallet keystore file")
-	passwordForKS := flag.String("password", "", "OPTIONAL: encryption password for the Ethereum wallet keystore")
+	vaultID := flag.String("vault-id", "", "(Optional) The vault id to export the keys for.")
+	nonceOverride := flag.Int("nonce", -1, "(Optional) Reshare Nonce override. Try it if the tool advises you to do so.")
+	quorumOverride := flag.Int("threshold", 0, "(Optional) Vault Quorum (Threshold) override. Try it if the tool advises you to do so.")
+	exportKSFile := flag.String("export", "", "(Optional) Path to export Ethereum wallet keystore file.")
+	passwordForKS := flag.String("password", "", "(Optional) Encryption password for the Ethereum wallet keystore; use with --export")
 
 	flag.Parse()
 	files := flag.Args()
@@ -79,6 +81,16 @@ func main() {
 
 	println()
 	fmt.Println("*** io.finnet Key Recovery Tool ***")
+
+	if *nonceOverride > -1 {
+		fmt.Printf("\n⚠ Using reshare nonce override: %d. Be sure to set the threshold of the vault at this reshare point with --threshold, or recovery will produce incorrect data.\n", *nonceOverride)
+	}
+	if *quorumOverride > 0 {
+		fmt.Printf("\n⚠ Using vault quorum override: %d.\n", *quorumOverride)
+	}
+	if *nonceOverride > -1 || *quorumOverride > 0 {
+		println()
+	}
 
 	// Internal data structures
 	clearVaults := make(ClearVaultMap, len(files)*16)
@@ -143,9 +155,13 @@ func main() {
 				continue
 			}
 
-			// take the highest reshareNonce we have saved
+			// take the highest reshareNonce we have saved (best effort)
 			lastReshareNonce := -1
 			for nonce := range resharesMap {
+				// support the --nonce flag to override the last reshare nonce we use
+				if *vaultID != "" && *nonceOverride > -1 && *nonceOverride != nonce {
+					continue
+				}
 				if nonce > lastReshareNonce {
 					lastReshareNonce = nonce
 				}
@@ -155,7 +171,12 @@ func main() {
 				continue // not a show stopper
 			}
 			if glbLastReShareNonce, ok := vaultLastNonces[vID]; ok && glbLastReShareNonce != lastReshareNonce {
-				fmt.Printf("\n⚠ WARNING: non matching reshare nonce for vault `%s`; you may have to specify a prior reshare nonce with --nonce when recovering this vault\n", vID)
+				fmt.Printf("\n⚠ Non matching reshare nonce for vault `%s`. You may have to specify prior reshare config with --nonce and --threshold when recovering that vault.\n", vID)
+				if lastReshareNonce-1 >= 0 {
+					fmt.Printf("⚠ If you have problems recovering that vault, you could try: --vault-id %s --nonce %d --threshold x. Replace x with previous vault threshold.\n", vID, lastReshareNonce-1)
+				} else {
+					println()
+				}
 			}
 			vaultLastNonces[vID] = lastReshareNonce
 			cipheredVault := resharesMap[lastReshareNonce]
@@ -234,10 +255,13 @@ func main() {
 
 	println()
 	if _, ok := vaultAllShares[*vaultID]; !ok {
-		panic(fmt.Errorf("⚠ provided files do not contain data for vault %s", *vaultID))
+		panic(fmt.Errorf("⚠ provided files do not contain data for vault `%s` with the expected reshare nonce", *vaultID))
 	}
 
 	tPlus1 := clearVaults[*vaultID].Quroum
+	if *quorumOverride > 0 {
+		tPlus1 = *quorumOverride
+	}
 	vssShares := make(vss.Shares, len(vaultAllShares[*vaultID]))
 	if len(vaultAllShares[*vaultID]) < tPlus1 {
 		panic(fmt.Errorf("⚠ not enough shares to recover the key for vault %s (need %d, have %d)", *vaultID, tPlus1, len(vaultAllShares[*vaultID])))
@@ -251,7 +275,7 @@ func main() {
 	}
 
 	// TODO: select the curve
-	tssPrivateKey, err := vssShares[:tPlus1].ReConstruct(S256())
+	tssPrivateKey, err := vssShares.ReConstruct(S256())
 	if err != nil {
 		fmt.Printf("error in tss verify")
 	}
