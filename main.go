@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/ecdsa"
 	"crypto/sha512"
 	"encoding/base64"
 	"encoding/hex"
@@ -264,11 +265,15 @@ func main() {
 	if len(vaultAllShares[*vaultID]) < tPlus1 {
 		panic(fmt.Errorf("⚠ not enough shares to recover the key for vault %s (need %d, have %d)", *vaultID, tPlus1, len(vaultAllShares[*vaultID])))
 	}
+	var share0ECDSAPubKey *ecdsa.PublicKey
 	for i, el := range vaultAllShares[*vaultID] {
 		vssShares[i] = &vss.Share{
 			Threshold: tPlus1 - 1,
 			ID:        el.ShareID,
 			Share:     el.Xi,
+		}
+		if i == 0 {
+			share0ECDSAPubKey = el.ECDSAPub.ToBtcecPubKey().ToECDSA()
 		}
 	}
 
@@ -282,6 +287,11 @@ func main() {
 	scl.SetByteSlice(tssPrivateKey.Bytes())
 	privKey := secp256k1.NewPrivateKey(&scl)
 	pk := privKey.PubKey()
+
+	// ensure the pk matches our expected share 0 pk
+	if !pk.ToECDSA().Equal(share0ECDSAPubKey) {
+		panic(fmt.Errorf("⚠ recovered public key did not match the expected share 0 public key! did you input the right threshold?"))
+	}
 
 	// encode Ethereum address
 	_, address, err := getTSSPubKey(pk.X(), pk.Y())
