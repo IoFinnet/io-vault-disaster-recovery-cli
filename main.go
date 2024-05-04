@@ -69,13 +69,13 @@ func main() {
 	flag.Parse()
 	files := flag.Args()
 	if len(files) < 1 {
-		fmt.Println("Please supply some input files on the command line.")
-		flag.Usage()
+		fmt.Println("Please supply some input files on the command line. \nExample: recovery-tool.exe [-flags] file1.json file2.json ... \n\nOptional flags:")
+		flag.PrintDefaults()
 		return
 	}
 	if *vaultID == "" {
 		// flag.Usage()
-		fmt.Println("No --vault-id was specified, so the tool will just list out the vault IDs available.")
+		fmt.Println("No --vault-id was specified, so the tool will just list out the available vault IDs.")
 	}
 
 	println()
