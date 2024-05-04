@@ -1,7 +1,6 @@
 all: build
 
-build:
-	go build -o ./bin/recovery-tool ./ && chmod +x ./bin/*
+build: build-win build-mac build-linux
 
 build-win:
 	GOOS=windows GOARCH=amd64 go build -trimpath -o ./bin/recovery-tool.exe ./
