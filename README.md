@@ -31,15 +31,19 @@ $ ./bin/recovery-tool sandbox/file1.json sandbox/file2.json
 
 Once you have the vault-ids, supply it to the tool to begin the recovery.
 ```
-$ ./bin/recovery-tool --vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.bin sandbox/file2.bin
+$ ./bin/recovery-tool -vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.bin sandbox/file2.bin
 ```
 
 The tool will try to auto-detect the optimal "reshare nonce" and "threshold/quroum" of the vault you are trying to recover.
-However, if you would like to override this behavior, you may specify custom values with `--nonce` and `--threshold` flags respectively.
+However, if you would like to override this behavior, you may specify custom values with `-nonce` and `-threshold` flags respectively.
 
 ### Ethereum & Ethereum-Like Recovery
 
-The tool will output a private key hexstring that you can import directly into wallets like MetaMask.
+The tool is able to export a wallet v3 JSON file for import into MetaMask. Set the `-password` flag on the command line to export the `wallet.json`, and make sure it's saved somewhere safe.
+
+To import it, open your MetaMask and add an account, then choose the import from file option.
+
+![MetaMask Screenshot](https://github.com/IoFinnet/io-vault-disaster-recovery-cli/assets/1255926/c7be2913-5f63-4bec-b5ff-09c0559d05b3)
 
 ### Bitcoin Recovery
 
