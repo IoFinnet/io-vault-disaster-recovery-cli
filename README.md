@@ -1,16 +1,26 @@
 TSS Recovery Tool
 =================
 
-This tool recovers the private key of TSS vaults, by
+This tool recovers the private keys of vaults by
 'combining' the secrets of each TSS app backup file.
 
-If you pass `export` and `password` it will generate a keystore file.
+It exports a WIF for Bitcoin key import to Electrum Wallet.
 
-## Compiling
+It will also create a wallet V3 file for importing to MetaMask and other Ethereum wallets.
 
-Compile for current arch:
+> ### **Important Notice**
+>
+> This tool does not do ANY communication with any external host or service. It does not need an Internet connection at all.
+> 
+> It is recommended that you run it on a non internet connected ("air gapped") device such as a laptop not connected to any network.
+
+## Build from Source
+
+You can build the code from source. Clone the repo, and make sure the latest [Go](http://go.dev) is installed.
+
+Compile from source:
 ```
-$ make build
+$ make
 ```
 
 Compile for Windows, Linux (x86) or Mac (Apple Silicon):
@@ -20,7 +30,7 @@ $ make build-linux
 $ make build-mac
 ```
 
-The resulting executable will be in the `bin/` folder.
+The resulting executable(s) will be in the `bin/` folder.
 
 ## Usage
 
