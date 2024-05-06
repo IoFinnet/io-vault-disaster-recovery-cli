@@ -18,7 +18,10 @@ import (
 
 	"github.com/binance-chain/tss-lib/crypto/vss"
 	"github.com/binance-chain/tss-lib/ecdsa/keygen"
-	secp256k1 "github.com/decred/dcrd/dcrec/secp256k1/v4"
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
+	"github.com/ethereum/go-ethereum/accounts/keystore"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/google/uuid"
 	errors2 "github.com/pkg/errors"
 	"github.com/tyler-smith/go-bip39"
 	"golang.org/x/crypto/sha3"
@@ -63,8 +66,8 @@ func main() {
 	vaultID := flag.String("vault-id", "", "(Optional) The vault id to export the keys for.")
 	nonceOverride := flag.Int("nonce", -1, "(Optional) Reshare Nonce override. Try it if the tool advises you to do so.")
 	quorumOverride := flag.Int("threshold", 0, "(Optional) Vault Quorum (Threshold) override. Try it if the tool advises you to do so.")
-	exportKSFile := flag.String("export", "", "(Optional) Path to export Ethereum wallet keystore file.")
-	passwordForKS := flag.String("password", "", "(Optional) Encryption password for the Ethereum wallet keystore; use with --export")
+	exportKSFile := flag.String("export", "wallet.json", "(Optional) Filename to export a Ethereum/MetaMask wallet v3 JSON file to.")
+	passwordForKS := flag.String("password", "", "(Optional) Encryption password for the Ethereum wallet v3 file; use with -export")
 
 	flag.Parse()
 	files := flag.Args()
@@ -73,22 +76,24 @@ func main() {
 		flag.PrintDefaults()
 		return
 	}
-	if *vaultID == "" {
-		// flag.Usage()
-		fmt.Println("No --vault-id was specified, so the tool will just list out the available vault IDs.")
-	}
 
 	println()
 	fmt.Println("*** io.finnet Key Recovery Tool ***")
 
 	if *nonceOverride > -1 {
-		fmt.Printf("\n⚠ Using reshare nonce override: %d. Be sure to set the threshold of the vault at this reshare point with --threshold, or recovery will produce incorrect data.\n", *nonceOverride)
+		fmt.Printf("\n⚠ Using reshare nonce override: %d. Be sure to set the threshold of the vault at this reshare point with -threshold, or recovery will produce incorrect data.\n", *nonceOverride)
 	}
 	if *quorumOverride > 0 {
 		fmt.Printf("\n⚠ Using vault quorum override: %d.\n", *quorumOverride)
 	}
 	if *nonceOverride > -1 || *quorumOverride > 0 {
 		println()
+	}
+	if *vaultID != "" && len(*exportKSFile) > 0 && len(*passwordForKS) == 0 {
+		fmt.Printf("\nNOTE: -password flag is required to export wallet v3 file `%s`. A wallet v3 file will not be created this time.\n\n", *exportKSFile)
+	}
+	if *vaultID == "" {
+		fmt.Println("\nNOTE: No -vault-id was specified. The tool will just list out the available vault IDs.\n")
 	}
 
 	// Internal data structures
@@ -132,7 +137,7 @@ func main() {
 		}
 
 		// user inputs the secret words
-		fmt.Printf("\n➤ Now input %d secret words for file %d \"%s\":\n", WORDS, i+1, file)
+		fmt.Printf("\nNow input %d secret words for file %d \"%s\":\n➤ ", WORDS, i+1, file)
 		phrase, _ := reader.ReadString('\n')
 		phrase = strings.Replace(phrase, "\n", "", -1)
 		phrase = strings.Replace(phrase, "\r", "", -1)
@@ -157,7 +162,7 @@ func main() {
 			// take the highest reshareNonce we have saved (best effort)
 			lastReshareNonce := -1
 			for nonce := range resharesMap {
-				// support the --nonce flag to override the last reshare nonce we use
+				// support the -nonce flag to override the last reshare nonce we use
 				if *vaultID != "" && *nonceOverride > -1 && *nonceOverride != nonce {
 					continue
 				}
@@ -170,9 +175,9 @@ func main() {
 				continue // not a show stopper
 			}
 			if glbLastReShareNonce, ok := vaultLastNonces[vID]; ok && glbLastReShareNonce != lastReshareNonce {
-				fmt.Printf("\n⚠ Non matching reshare nonce for vault `%s`. You may have to specify prior reshare config with --nonce and --threshold when recovering that vault.\n", vID)
+				fmt.Printf("\n⚠ Non matching reshare nonce for vault `%s`. You may have to specify prior reshare config with -nonce and -threshold when recovering that vault.\n", vID)
 				if lastReshareNonce-1 >= 0 {
-					fmt.Printf("⚠ If you have problems recovering that vault, you could try: --vault-id %s --nonce %d --threshold x. Replace x with previous vault threshold.\n", vID, lastReshareNonce-1)
+					fmt.Printf("⚠ If you have problems recovering that vault, you could try: -vault-id %s -nonce %d -threshold x. Replace x with previous vault threshold.\n", vID, lastReshareNonce-1)
 				} else {
 					println()
 				}
@@ -246,9 +251,9 @@ func main() {
 				vault.Name, len(vaultAllShares[vID]), vault.Quroum, vault.LastReShareNonce)
 			fmt.Printf(" - %s%s\n", vID, suffixStr)
 		}
-		fmt.Println("\nNow you must restart the tool and provide the --vault-id flag to extract a vault's key.")
-		fmt.Println("This is only possible if `shares` >= `need` for that vault in the list above. If it's not, you must collect more shares.")
-		fmt.Println("\nExample: recovery-tool.exe --vault-id cl347wz8w00006sx3f1g23p4s file.json")
+		fmt.Println("\nNow you must restart the tool and provide the -vault-id flag to extract a vault's key.")
+		fmt.Println("This is only possible if `shares >= need` for that vault in the list above. If it's not, you must collect more shares.")
+		fmt.Println("\nExample: recovery-tool.exe -vault-id cl347wz8w00006sx3f1g23p4s file.json")
 		return
 	}
 
@@ -306,20 +311,27 @@ func main() {
 
 	if len(*exportKSFile) > 0 {
 		if len(*passwordForKS) == 0 {
-			fmt.Println("⚠ --password flag is required to export keystore file")
 			return
 		}
-		keyfile, err := exportKeyStore(privKey.Serialize(), *passwordForKS)
+		ksUuid, err := uuid.NewRandom()
 		if err != nil {
-			panic(err)
+			panic(fmt.Sprintf("⚠ could not create random uuid: %v", err))
+		}
+		key := &keystore.Key{
+			Id:         ksUuid,
+			Address:    common.HexToAddress(address),
+			PrivateKey: privKey.ToECDSA(),
+		}
+		keyfile, err := keystore.EncryptKey(key, *passwordForKS, keystore.StandardScryptN, keystore.StandardScryptP)
+		if err != nil {
+			panic(fmt.Sprintf("⚠ could not create the wallet v3 file json: %v", err))
 		}
 
-		jsonString, _ := json.Marshal(keyfile)
-		err = os.WriteFile(*exportKSFile, jsonString, os.ModePerm)
+		err = os.WriteFile(*exportKSFile, keyfile, os.ModePerm)
 		if err != nil {
 			panic(err)
 		}
-		fmt.Printf("\nWrote keystore to: %s.\n", *exportKSFile)
+		fmt.Printf("\nWrote a MetaMask wallet v3 file to: %s.\n", *exportKSFile)
 	}
 }
 
