@@ -32,6 +32,10 @@ $ make build-mac
 
 The resulting executable(s) will be in the `bin/` folder.
 
+## Download a Binary
+
+If you prefer the convenience of downloading a pre-built binary for your platform, head to the [Releases area](https://github.com/IoFinnet/io-vault-disaster-recovery-cli/releases). We have pre-built binaries for Linux, Windows and Mac.
+
 ## Usage
 
 First you will want to get the vault IDs available in the files:
@@ -39,7 +43,7 @@ First you will want to get the vault IDs available in the files:
 $ ./bin/recovery-tool sandbox/file1.json sandbox/file2.json
 ```
 
-Once you have the vault-ids, supply it to the tool to begin the recovery.
+Once you have the vault ID you want to recover, supply it to the tool to begin the recovery.
 ```
 $ ./bin/recovery-tool -vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.bin sandbox/file2.bin
 ```
