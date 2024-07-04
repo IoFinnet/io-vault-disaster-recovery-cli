@@ -244,7 +244,6 @@ func main() {
 					deflated, err2 := base64.StdEncoding.DecodeString(b64Part)
 					if err2 != nil {
 						panic(errors2.Wrapf(err, "failed to decode base64 part of V2 save data"))
-						return
 					}
 					inflated, err2 := inflateSaveDataJSON(deflated)
 					// shareID integrity check
@@ -260,13 +259,18 @@ func main() {
 					strShare = string(inflated)
 
 					// log deflated vs inflated sizes in KB
-					fmt.Printf("Processing share %s. %.1f KB => %.1f KB.\n",
+					fmt.Printf("Processing share %s.\t %.1f KB → %.1f KB\n",
 						abridgedData.ShareID, float64(len(deflated))/1024, float64(len(inflated))/1024)
 				}
 				// proceed with regular json unmarshal
 				shareData := new(keygen.LocalPartySaveData)
 				if err = json.Unmarshal([]byte(strShare), shareData); err != nil {
 					panic(errors2.Wrapf(err, "invalid data format - is this an old backup file? (code: 4)"))
+				}
+				// log out a variation of this line if the share is legacy
+				if !strings.HasPrefix(strShare, v2MagicPrefix) {
+					fmt.Printf("Processing share %s.\t %.1f KB\n",
+						shareData.ShareID, float64(len(strShare))/1024)
 				}
 				shareDatas[j] = shareData
 			}
