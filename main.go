@@ -27,10 +27,6 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-const (
-	WORDS = 24
-)
-
 type (
 	SavedData struct {
 		Vaults map[string]CipheredVaultMap `json:"vaults"`
@@ -58,6 +54,11 @@ type (
 	}
 
 	VaultAllShares map[string][]*keygen.LocalPartySaveData
+)
+
+const (
+	WORDS         = 24
+	v2MagicPrefix = "_V2_"
 )
 
 func main() {
@@ -219,6 +220,7 @@ func main() {
 			if hex.EncodeToString(expHash[:]) != cipheredVault.Hash {
 				panic(errors2.Errorf("⚠ failed to decrypt vault %s: %s (hash mismatch)", vID, err))
 			}
+			//fmt.Println(string(plainload))
 
 			// decode from json
 			clearVaults[vID] = new(ClearVault)
@@ -234,6 +236,20 @@ func main() {
 			shareDatas := make([]*keygen.LocalPartySaveData, len(clearVaults[vID].Shares))
 			for i, strShare := range clearVaults[vID].Shares {
 				shareData := new(keygen.LocalPartySaveData)
+				if strings.HasPrefix(strShare, v2MagicPrefix) {
+					strShare = strings.TrimPrefix(strShare, v2MagicPrefix)
+					_, b64Part, found := strings.Cut(strShare, "_")
+					if !found {
+						panic("failed to split on share ID delim in V2 save data")
+					}
+					deflated, err2 := base64.StdEncoding.DecodeString(b64Part)
+					if err2 != nil {
+						panic(errors2.Wrapf(err, "failed to decode base64 part of V2 save data"))
+						return
+					}
+					inflated, err2 := inflateSaveDataJSON(deflated)
+					strShare = string(inflated)
+				}
 				if err = json.Unmarshal([]byte(strShare), shareData); err != nil {
 					panic(errors2.Wrapf(err, "invalid data format - is this an old backup file? (code: 4)"))
 				}
