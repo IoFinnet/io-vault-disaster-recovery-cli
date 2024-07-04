@@ -233,7 +233,7 @@ func main() {
 				vaultAllShares[vID] = make([]*keygen.LocalPartySaveData, 0, len(clearVaults[vID].Shares))
 			}
 			shareDatas := make([]*keygen.LocalPartySaveData, len(clearVaults[vID].Shares))
-			for i, strShare := range clearVaults[vID].Shares {
+			for j, strShare := range clearVaults[vID].Shares {
 				// handle compressed "V2" format (ECDSA)
 				if strings.HasPrefix(strShare, v2MagicPrefix) {
 					strShare = strings.TrimPrefix(strShare, v2MagicPrefix)
@@ -264,7 +264,7 @@ func main() {
 				if err = json.Unmarshal([]byte(strShare), shareData); err != nil {
 					panic(errors2.Wrapf(err, "invalid data format - is this an old backup file? (code: 4)"))
 				}
-				shareDatas[i] = shareData
+				shareDatas[j] = shareData
 			}
 			vaultAllShares[vID] = append(vaultAllShares[vID], shareDatas...)
 		}
