@@ -27,10 +27,6 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-const (
-	WORDS = 24
-)
-
 type (
 	SavedData struct {
 		Vaults map[string]CipheredVaultMap `json:"vaults"`
@@ -58,6 +54,11 @@ type (
 	}
 
 	VaultAllShares map[string][]*keygen.LocalPartySaveData
+)
+
+const (
+	WORDS         = 24
+	v2MagicPrefix = "_V2_"
 )
 
 func main() {
@@ -232,12 +233,46 @@ func main() {
 				vaultAllShares[vID] = make([]*keygen.LocalPartySaveData, 0, len(clearVaults[vID].Shares))
 			}
 			shareDatas := make([]*keygen.LocalPartySaveData, len(clearVaults[vID].Shares))
-			for i, strShare := range clearVaults[vID].Shares {
+			for j, strShare := range clearVaults[vID].Shares {
+				// handle compressed "V2" format (ECDSA)
+				if strings.HasPrefix(strShare, v2MagicPrefix) {
+					strShare = strings.TrimPrefix(strShare, v2MagicPrefix)
+					expShareID, b64Part, found := strings.Cut(strShare, "_")
+					if !found {
+						panic("failed to split on share ID delim in V2 save data")
+					}
+					deflated, err2 := base64.StdEncoding.DecodeString(b64Part)
+					if err2 != nil {
+						panic(errors2.Wrapf(err, "failed to decode base64 part of V2 save data"))
+					}
+					inflated, err2 := inflateSaveDataJSON(deflated)
+					// shareID integrity check
+					abridgedData := new(struct {
+						ShareID *big.Int `json:"shareID"`
+					})
+					if err2 = json.Unmarshal(inflated, abridgedData); err2 != nil {
+						panic(errors2.Wrapf(err, "invalid data format - is this an old backup file? (code: 4)"))
+					}
+					if abridgedData.ShareID.String() != expShareID {
+						panic(fmt.Sprintf("share ID mismatch in V2 save data with ShareID %s", abridgedData.ShareID))
+					}
+					strShare = string(inflated)
+
+					// log deflated vs inflated sizes in KB
+					fmt.Printf("Processing share %s.\t %.1f KB → %.1f KB\n",
+						abridgedData.ShareID, float64(len(deflated))/1024, float64(len(inflated))/1024)
+				}
+				// proceed with regular json unmarshal
 				shareData := new(keygen.LocalPartySaveData)
 				if err = json.Unmarshal([]byte(strShare), shareData); err != nil {
 					panic(errors2.Wrapf(err, "invalid data format - is this an old backup file? (code: 4)"))
 				}
-				shareDatas[i] = shareData
+				// log out a variation of this line if the share is legacy
+				if !strings.HasPrefix(strShare, v2MagicPrefix) {
+					fmt.Printf("Processing share %s.\t %.1f KB\n",
+						shareData.ShareID, float64(len(strShare))/1024)
+				}
+				shareDatas[j] = shareData
 			}
 			vaultAllShares[vID] = append(vaultAllShares[vID], shareDatas...)
 		}
