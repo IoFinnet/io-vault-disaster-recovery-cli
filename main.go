@@ -235,7 +235,7 @@ func main() {
 			}
 			shareDatas := make([]*keygen.LocalPartySaveData, len(clearVaults[vID].Shares))
 			for i, strShare := range clearVaults[vID].Shares {
-				shareData := new(keygen.LocalPartySaveData)
+				// handle compressed "V2" format
 				if strings.HasPrefix(strShare, v2MagicPrefix) {
 					strShare = strings.TrimPrefix(strShare, v2MagicPrefix)
 					_, b64Part, found := strings.Cut(strShare, "_")
@@ -250,6 +250,8 @@ func main() {
 					inflated, err2 := inflateSaveDataJSON(deflated)
 					strShare = string(inflated)
 				}
+				// proceed with regular JSON unmarshal
+				shareData := new(keygen.LocalPartySaveData)
 				if err = json.Unmarshal([]byte(strShare), shareData); err != nil {
 					panic(errors2.Wrapf(err, "invalid data format - is this an old backup file? (code: 4)"))
 				}
