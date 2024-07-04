@@ -234,10 +234,10 @@ func main() {
 			}
 			shareDatas := make([]*keygen.LocalPartySaveData, len(clearVaults[vID].Shares))
 			for i, strShare := range clearVaults[vID].Shares {
-				// handle compressed "V2" format
+				// handle compressed "V2" format (ECDSA)
 				if strings.HasPrefix(strShare, v2MagicPrefix) {
 					strShare = strings.TrimPrefix(strShare, v2MagicPrefix)
-					_, b64Part, found := strings.Cut(strShare, "_")
+					expShareID, b64Part, found := strings.Cut(strShare, "_")
 					if !found {
 						panic("failed to split on share ID delim in V2 save data")
 					}
@@ -247,6 +247,16 @@ func main() {
 						return
 					}
 					inflated, err2 := inflateSaveDataJSON(deflated)
+					// shareID integrity check
+					abridgedData := new(struct {
+						ShareID *big.Int `json:"shareID"`
+					})
+					if err2 = json.Unmarshal(inflated, abridgedData); err2 != nil {
+						panic(errors2.Wrapf(err, "invalid data format - is this an old backup file? (code: 4)"))
+					}
+					if abridgedData.ShareID.String() != expShareID {
+						panic(fmt.Sprintf("share ID mismatch in V2 save data with ShareID %s", abridgedData.ShareID))
+					}
 					strShare = string(inflated)
 				}
 				// proceed with regular json unmarshal
