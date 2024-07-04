@@ -258,6 +258,10 @@ func main() {
 						panic(fmt.Sprintf("share ID mismatch in V2 save data with ShareID %s", abridgedData.ShareID))
 					}
 					strShare = string(inflated)
+
+					// log deflated vs inflated sizes in KB
+					fmt.Printf("Processing share %s. %.1f KB => %.1f KB.\n",
+						abridgedData.ShareID, float64(len(deflated))/1024, float64(len(inflated))/1024)
 				}
 				// proceed with regular json unmarshal
 				shareData := new(keygen.LocalPartySaveData)
