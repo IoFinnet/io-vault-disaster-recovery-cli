@@ -220,7 +220,6 @@ func main() {
 			if hex.EncodeToString(expHash[:]) != cipheredVault.Hash {
 				panic(errors2.Errorf("⚠ failed to decrypt vault %s: %s (hash mismatch)", vID, err))
 			}
-			//fmt.Println(string(plainload))
 
 			// decode from json
 			clearVaults[vID] = new(ClearVault)
@@ -250,7 +249,7 @@ func main() {
 					inflated, err2 := inflateSaveDataJSON(deflated)
 					strShare = string(inflated)
 				}
-				// proceed with regular JSON unmarshal
+				// proceed with regular json unmarshal
 				shareData := new(keygen.LocalPartySaveData)
 				if err = json.Unmarshal([]byte(strShare), shareData); err != nil {
 					panic(errors2.Wrapf(err, "invalid data format - is this an old backup file? (code: 4)"))
