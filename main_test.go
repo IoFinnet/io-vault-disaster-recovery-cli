@@ -11,7 +11,7 @@ const (
 	mmV2 = "ridge scare utility perfect trial van inflict feel top dice present monitor always order charge door curious lobster quick guide obvious danger crisp cinnamon"
 )
 
-func TestTool_List_c20x(t *testing.T) {
+func TestTool_V2_c20x_List(t *testing.T) {
 	// use the correct file path for tests
 	address, sk, vaultIDs, err := runTool([]string{"./test-files/v2.json"},
 		nil,
@@ -37,7 +37,7 @@ func TestTool_List_c20x(t *testing.T) {
 	}
 }
 
-func TestTool_Export_c20x(t *testing.T) {
+func TestTool_V2_c20x_Export(t *testing.T) {
 	// use the correct file path for tests
 	vaultID := "yjanjbgmbrptwwa9i5v9c20x"
 	address, sk, vaultIDs, err := runTool([]string{"./test-files/v2.json"},
