@@ -14,11 +14,7 @@ const (
 func TestTool_V2_c20x_List(t *testing.T) {
 	// use the correct file path for tests
 	address, sk, vaultIDs, err := runTool([]string{"./test-files/v2.json"},
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
+		nil, nil, nil, nil, nil,
 		mmV2)
 	if !assert.NoError(t, err) {
 		return
@@ -42,10 +38,7 @@ func TestTool_V2_c20x_Export(t *testing.T) {
 	vaultID := "yjanjbgmbrptwwa9i5v9c20x"
 	address, sk, vaultIDs, err := runTool([]string{"./test-files/v2.json"},
 		&vaultID,
-		nil,
-		nil,
-		nil,
-		nil,
+		nil, nil, nil, nil,
 		mmV2)
 	if !assert.NoError(t, err) {
 		return
