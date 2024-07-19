@@ -14,5 +14,8 @@ build-linux:
 sandbox:
 	sh ./try-sandbox.sh
 
-.PHONY: build build-win build-linux build-mac sandbox
+test:
+	go test -race ./...
+
+.PHONY: build build-win build-linux build-mac sandbox test
 
