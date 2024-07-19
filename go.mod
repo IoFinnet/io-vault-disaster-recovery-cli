@@ -2,8 +2,6 @@ module github.com/IoFinnet/io-vault-disaster-recovery-cli
 
 go 1.21
 
-toolchain go1.22.2
-
 require (
 	github.com/binance-chain/tss-lib v1.3.3
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0
