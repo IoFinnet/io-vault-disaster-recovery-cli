@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/binance-chain/tss-lib/crypto/vss"
@@ -139,7 +140,6 @@ func runTool(files []string, vaultID *string, nonceOverride *int, quorumOverride
 	}
 
 	// Internal & returned data structures
-	vaultIDs = make([]string, 0, len(files)*16)
 	clearVaults := make(ClearVaultMap, len(files)*16)
 	vaultAllShares := make(VaultAllShares, len(files)*16) // headroom
 	vaultLastNonces := make(map[string]int, len(files)*16)
@@ -285,7 +285,6 @@ func runTool(files []string, vaultID *string, nonceOverride *int, quorumOverride
 			}
 
 			// decode vault from json
-			vaultIDs = append(vaultIDs, vID)
 			clearVaults[vID] = new(ClearVault)
 			if err = json.Unmarshal(plainload, clearVaults[vID]); err != nil {
 				welp = errors2.Wrapf(err, "invalid saveData format - is this an old backup file? (code: 3)")
@@ -354,6 +353,13 @@ func runTool(files []string, vaultID *string, nonceOverride *int, quorumOverride
 		}
 	}
 	clear(mnemonics)
+
+	// populate vault IDs
+	vaultIDs = make([]string, 0, len(files)*16)
+	for vID := range clearVaults {
+		vaultIDs = append(vaultIDs, vID)
+	}
+	sort.Strings(vaultIDs)
 
 	// Just list the ID's and names?
 	if justListingVaults {
