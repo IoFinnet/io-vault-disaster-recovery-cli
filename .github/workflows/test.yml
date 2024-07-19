@@ -1,0 +1,23 @@
+name: Go Test
+on:
+  push:
+    branches:
+      - master
+      - release/*
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    env:
+      GOPRIVATE: github.com/iofinnet
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Tests
+        run: make test
