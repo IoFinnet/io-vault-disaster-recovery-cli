@@ -328,7 +328,7 @@ func runTool(files []string, vaultID *string, nonceOverride *int, quorumOverride
 					strShare = string(inflated)
 
 					// log deflated vs inflated sizes in KB
-					fmt.Printf("Processing share %s.\t %.1f KB → %.1f KB\n",
+					fmt.Printf("Processing V2 share %s.\t %.1f KB → %.1f KB\n",
 						abridgedData.ShareID, float64(len(deflated))/1024, float64(len(inflated))/1024)
 				}
 				// proceed with regular json unmarshal
@@ -339,7 +339,7 @@ func runTool(files []string, vaultID *string, nonceOverride *int, quorumOverride
 				}
 				// log out a variation of this line if the share is legacy
 				if !hadPrefix {
-					fmt.Printf("Processing share %s.\t %.1f KB\n",
+					fmt.Printf("Processing V1 share %s.\t %.1f KB\n",
 						shareData.ShareID, float64(len(strShare))/1024)
 				}
 				shareDatas[j] = shareData
@@ -364,7 +364,8 @@ func runTool(files []string, vaultID *string, nonceOverride *int, quorumOverride
 	// Just list the ID's and names?
 	if justListingVaults {
 		fmt.Println("\nDecryption success.\nListing available vault IDs and other known data:")
-		for vID, vault := range clearVaults {
+		for _, vID := range vaultIDs {
+			vault := clearVaults[vID]
 			suffixStr := fmt.Sprintf("  \"%s\"  (shares: %d, need: %d, nonce: %d)",
 				vault.Name, len(vaultAllShares[vID]), vault.Quroum, vault.LastReShareNonce)
 			fmt.Printf("  - %s%s\n", vID, suffixStr)
