@@ -31,7 +31,23 @@ func TestTool_New_V2_List(t *testing.T) {
 	if !assert.Len(t, vaultIDs, 14) {
 		return
 	}
-	if !assert.Equal(t, "a70uaean4isi6aci8zzky970", vaultIDs[0]) {
+	if !assert.Equal(t,
+		[]string{
+			"a70uaean4isi6aci8zzky970",
+			"afpuzaa5j3k7wyjfgkuvbcxz",
+			"bfc8uksrk5zuxihufj4m8dkt",
+			"d1rqfhghbr1qy819iym5dgyv",
+			"dfqyrx0f7vevbjx9o5yrg7gw",
+			"e0wspn90rz8vnngv0kdklaog",
+			"ejrye15wiew2201f3fahho8k",
+			"iesd46upmcrwnu0qojph9hst",
+			"liw3bn8yqykgh96uort11knz",
+			"nbpxb6hmupk1ygcl53jf9zg5",
+			"ngo46g83iug985q3fxyhsp4w",
+			"prd15bna3h9oxoo04dc4cn1p",
+			"yz5x2a7zhwwt7r0lv4gklqns",
+			"zbgtamgot1f6u51kt6bsn5qr",
+		}, vaultIDs) {
 		return
 	}
 	if !assert.Empty(t, address) {
