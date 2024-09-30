@@ -13,9 +13,77 @@ const (
 	mmL  = "casual gallery jump mad claw curve portion enrich oyster calm spoon flash hat soft dizzy example exile large provide smart magnet raven nurse prison"
 	mmM  = "decade explain repeat popular pigeon sail atom enhance toy awake breeze draw focus desert movie skull news inherit cruel case start film used unit"
 	mmV2 = "ridge scare utility perfect trial van inflict feel top dice present monitor always order charge door curious lobster quick guide obvious danger crisp cinnamon"
+
+	// James test case mnemonics
+	mmNewBvn = "domain damp hill depth label eye erode dutch impulse betray floor donate bonus hover bitter ring unfold poet identify capital combine question profit april"
+	mmNewX2q = "found midnight praise exhibit weather neutral inmate strong grass famous blind pet frozen shock avocado ring fringe planet opera license stand coil beauty capable"
+	mmNewU44 = "aerobic foam smooth immune card tragic window myth planet notice piece agree add target tortoise weather kite track spot dish dignity twice gadget spell"
 )
 
-func TestTool_V2_List(t *testing.T) {
+func TestTool_New_V2_List(t *testing.T) {
+	// use the correct file path for tests
+	address, sk, vaultIDs, err := runTool([]string{"./test-files/new_bvn.json", "./test-files/new_x2q.json", "./test-files/new_u44.json"},
+		nil, nil, nil, nil, nil,
+		mmNewBvn, mmNewX2q, mmNewU44)
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Len(t, vaultIDs, 14) {
+		return
+	}
+	if !assert.Equal(t,
+		[]string{
+			"a70uaean4isi6aci8zzky970",
+			"afpuzaa5j3k7wyjfgkuvbcxz",
+			"bfc8uksrk5zuxihufj4m8dkt",
+			"d1rqfhghbr1qy819iym5dgyv",
+			"dfqyrx0f7vevbjx9o5yrg7gw",
+			"e0wspn90rz8vnngv0kdklaog",
+			"ejrye15wiew2201f3fahho8k",
+			"iesd46upmcrwnu0qojph9hst",
+			"liw3bn8yqykgh96uort11knz",
+			"nbpxb6hmupk1ygcl53jf9zg5",
+			"ngo46g83iug985q3fxyhsp4w",
+			"prd15bna3h9oxoo04dc4cn1p",
+			"yz5x2a7zhwwt7r0lv4gklqns",
+			"zbgtamgot1f6u51kt6bsn5qr",
+		}, vaultIDs) {
+		return
+	}
+	if !assert.Empty(t, address) {
+		return
+	}
+	if !assert.Nil(t, sk) {
+		return
+	}
+}
+
+func TestTool_New_V2_Export_lqns(t *testing.T) {
+	// use the correct file path for tests
+	vaultID := "yz5x2a7zhwwt7r0lv4gklqns"
+	address, sk, vaultIDs, err := runTool([]string{"./test-files/new_bvn.json", "./test-files/new_x2q.json", "./test-files/new_u44.json"},
+		&vaultID,
+		nil, nil, nil, nil,
+		mmNewBvn, mmNewX2q, mmNewU44)
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Len(t, vaultIDs, 1) {
+		return
+	}
+	if !assert.Equal(t, vaultID, vaultIDs[0]) {
+		return
+	}
+	if !assert.Equal(t, "0x620ac72121234f1b313bd4e8b78c81323502679a", address) {
+		return
+	}
+	if !assert.Equal(t, "4cc05b1d3216da8ef91729744159019b25ea1ed5932e387199f1de6ff6667ac2",
+		hex.EncodeToString(sk.Bytes())) {
+		return
+	}
+}
+
+func TestTool_Legacy_V2_List(t *testing.T) {
 	// use the correct file path for tests
 	address, sk, vaultIDs, err := runTool([]string{"./test-files/v2.json"},
 		nil, nil, nil, nil, nil,
@@ -37,7 +105,7 @@ func TestTool_V2_List(t *testing.T) {
 	}
 }
 
-func TestTool_V2_Export_c20x(t *testing.T) {
+func TestTool_Legacy_V2_Export_c20x(t *testing.T) {
 	// use the correct file path for tests
 	vaultID := "yjanjbgmbrptwwa9i5v9c20x"
 	address, sk, vaultIDs, err := runTool([]string{"./test-files/v2.json"},
@@ -62,7 +130,7 @@ func TestTool_V2_Export_c20x(t *testing.T) {
 	}
 }
 
-func TestTool_V1_IL_List(t *testing.T) {
+func TestTool_Legacy_V1_IL_List(t *testing.T) {
 	// use the correct file path for tests
 	address, sk, vaultIDs, err := runTool([]string{"./test-files/i.json", "./test-files/l.json"},
 		nil, nil, nil, nil, nil,
@@ -86,7 +154,7 @@ func TestTool_V1_IL_List(t *testing.T) {
 	}
 }
 
-func TestTool_V1_IL_Export_m0k(t *testing.T) {
+func TestTool_Legacy_V1_IL_Export_m0k(t *testing.T) {
 	// use the correct file path for tests
 	vaultID := "clujhtm9d0013wc3xso1b2m0k"
 	address, sk, vaultIDs, err := runTool([]string{"./test-files/i.json", "./test-files/l.json"},
@@ -111,7 +179,7 @@ func TestTool_V1_IL_Export_m0k(t *testing.T) {
 	}
 }
 
-func TestTool_V1_ILM_List(t *testing.T) {
+func TestTool_Legacy_V1_ILM_List(t *testing.T) {
 	// use the correct file path for tests
 	address, sk, vaultIDs, err := runTool([]string{"./test-files/i.json", "./test-files/m.json", "./test-files/l.json"},
 		nil, nil, nil, nil, nil,
@@ -135,7 +203,7 @@ func TestTool_V1_ILM_List(t *testing.T) {
 	}
 }
 
-func TestTool_V1_ILM_Export_m0k(t *testing.T) {
+func TestTool_Legacy_V1_ILM_Export_m0k(t *testing.T) {
 	// use the correct file path for tests
 	vaultID := "clujhtm9d0013wc3xso1b2m0k"
 	address, sk, vaultIDs, err := runTool([]string{"./test-files/i.json", "./test-files/m.json", "./test-files/l.json"},

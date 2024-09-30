@@ -46,12 +46,17 @@ type (
 		Tag string `json:"tag"`
 	}
 
-	ClearVaultMap map[string]*ClearVault
-	ClearVault    struct {
-		Name             string   `json:"name"`
-		Quroum           int      `json:"threshold"`
-		Shares           []string `json:"shares"`
-		LastReShareNonce int      `json:"-"`
+	ClearVaultMap   map[string]*ClearVault
+	ClearVaultCurve struct {
+		Algorithm string   `json:"algorithm"`
+		Shares    []string `json:"shares"`
+	}
+	ClearVault struct {
+		Name             string            `json:"name"`
+		Quroum           int               `json:"threshold"`
+		SharesLegacy     []string          `json:"shares"`
+		LastReShareNonce int               `json:"-"`
+		Curves           []ClearVaultCurve `json:"curves"`
 	}
 
 	VaultAllShares map[string][]*keygen.LocalPartySaveData
@@ -293,11 +298,26 @@ func runTool(files []string, vaultID *string, nonceOverride *int, quorumOverride
 			clearVaults[vID].LastReShareNonce = lastReshareNonce
 
 			// rack up the shares
-			if _, ok := vaultAllShares[vID]; !ok {
-				vaultAllShares[vID] = make([]*keygen.LocalPartySaveData, 0, len(clearVaults[vID].Shares))
+			sharesList := clearVaults[vID].SharesLegacy
+			if sharesList == nil {
+				for _, curve := range clearVaults[vID].Curves {
+					if curve.Algorithm == "ECDSA" {
+						sharesList = curve.Shares
+						fmt.Printf("Processing new vault \"%s\" (%s).\n", clearVaults[vID].Name, vID)
+						break
+					}
+				}
+			} else {
+				fmt.Printf("Processing legacy vault \"%s\" (%s).\n", clearVaults[vID].Name, vID)
 			}
-			shareDatas := make([]*keygen.LocalPartySaveData, len(clearVaults[vID].Shares))
-			for j, strShare := range clearVaults[vID].Shares {
+			if sharesList == nil {
+				panic(fmt.Errorf("no legacy or new shares found for vault %s %s", vID, clearVaults[vID].Name))
+			}
+			if _, ok := vaultAllShares[vID]; !ok {
+				vaultAllShares[vID] = make([]*keygen.LocalPartySaveData, 0, len(sharesList))
+			}
+			shareDatas := make([]*keygen.LocalPartySaveData, len(sharesList))
+			for j, strShare := range sharesList {
 				// handle compressed "V2" format (ECDSA)
 				hadPrefix := strings.HasPrefix(strShare, v2MagicPrefix)
 				if hadPrefix {
