@@ -96,6 +96,7 @@ func main() {
 	println()
 	fmt.Printf("%s%s                                     %s\n", ansiCodes["invertOn"], ansiCodes["bold"], ansiCodes["reset"])
 	fmt.Printf("%s%s     io.finnet Key Recovery Tool     %s\n", ansiCodes["invertOn"], ansiCodes["bold"], ansiCodes["reset"])
+	fmt.Printf("%s%s               v3.1.1                %s\n", ansiCodes["invertOn"], ansiCodes["bold"], ansiCodes["reset"])
 	fmt.Printf("%s%s                                     %s\n", ansiCodes["invertOn"], ansiCodes["bold"], ansiCodes["reset"])
 	println()
 
@@ -119,11 +120,16 @@ func main() {
 	fmt.Printf("%s%s                %s\n", ansiCodes["darkGreenBG"], ansiCodes["bold"], ansiCodes["reset"])
 	fmt.Printf("%s%s    Success!    %s\n", ansiCodes["darkGreenBG"], ansiCodes["bold"], ansiCodes["reset"])
 	fmt.Printf("%s%s                %s\n", ansiCodes["darkGreenBG"], ansiCodes["bold"], ansiCodes["reset"])
-	println()
-	fmt.Printf("Recovered ETH address: %s\n", address)
-	fmt.Printf("Recovered private key (for ETH/MetaMask): %s\n", hex.EncodeToString(sk.Bytes()))
-	fmt.Printf("Recovered testnet WIF (for BTC/Electrum): %s\n", toBitcoinWIF(sk.Bytes(), true, true))
-	fmt.Printf("Recovered mainnet WIF (for BTC/Electrum): %s\n", toBitcoinWIF(sk.Bytes(), false, true))
+
+	fmt.Printf("\nYour vault has been recovered. Make sure the following address matches your vault's Ethereum address:\n")
+	fmt.Printf("%s%s%s\n", ansiCodes["bold"], address, ansiCodes["reset"])
+
+	fmt.Printf("\nHere is your private key for Ethereum and Tron assets. Keep safe and do not share with anyone.\n")
+	fmt.Printf("Recovered private key (for ETH/MetaMask, TronLink): %s%s%s\n", ansiCodes["bold"], hex.EncodeToString(sk.Bytes()), ansiCodes["reset"])
+
+	fmt.Printf("\nHere are your private keys for Bitcoin assets. Keep safe and do not share with anyone.\n")
+	fmt.Printf("Recovered testnet WIF (for Electrum Wallet): %s%s%s\n", ansiCodes["bold"], toBitcoinWIF(sk.Bytes(), true, true), ansiCodes["reset"])
+	fmt.Printf("Recovered mainnet WIF (for Electrum Wallet): %s%s%s\n", ansiCodes["bold"], toBitcoinWIF(sk.Bytes(), false, true), ansiCodes["reset"])
 }
 
 func runTool(files []string, vaultID *string, nonceOverride *int, quorumOverride *int, exportKSFile *string, passwordForKS *string, mnemonics ...string) (address string, sk *big.Int, vaultIDs []string, welp error) {
@@ -348,8 +354,10 @@ func runTool(files []string, vaultID *string, nonceOverride *int, quorumOverride
 					strShare = string(inflated)
 
 					// log deflated vs inflated sizes in KB
-					fmt.Printf("Processing V2 share %s.\t %.1f KB → %.1f KB\n",
-						abridgedData.ShareID, float64(len(deflated))/1024, float64(len(inflated))/1024)
+					if !justListingVaults {
+						fmt.Printf("Processing V2 share %s.\t %.1f KB → %.1f KB\n",
+							abridgedData.ShareID, float64(len(deflated))/1024, float64(len(inflated))/1024)
+					}
 				}
 				// proceed with regular json unmarshal
 				shareData := new(keygen.LocalPartySaveData)
@@ -358,7 +366,7 @@ func runTool(files []string, vaultID *string, nonceOverride *int, quorumOverride
 					return
 				}
 				// log out a variation of this line if the share is legacy
-				if !hadPrefix {
+				if !hadPrefix && !justListingVaults {
 					fmt.Printf("Processing V1 share %s.\t %.1f KB\n",
 						shareData.ShareID, float64(len(strShare))/1024)
 				}
@@ -383,14 +391,14 @@ func runTool(files []string, vaultID *string, nonceOverride *int, quorumOverride
 
 	// Just list the ID's and names?
 	if justListingVaults {
-		fmt.Println("\nDecryption success.\nListing available vault IDs and other known data:")
+		fmt.Println("\n━━━━━━\nDecryption success.\nListing available vault IDs and other known data:")
 		for _, vID := range vaultIDs {
 			vault := clearVaults[vID]
 			suffixStr := fmt.Sprintf("  \"%s\"  (shares: %d, need: %d, nonce: %d)",
 				vault.Name, len(vaultAllShares[vID]), vault.Quroum, vault.LastReShareNonce)
 			fmt.Printf("  - %s%s\n", vID, suffixStr)
 		}
-		fmt.Println("\nNow you must restart the tool and provide the -vault-id flag to extract a vault's key.")
+		fmt.Println("\n\n━━━━━━\nNow you must restart the tool and provide the -vault-id flag to extract a vault's key.")
 		fmt.Println("This is only possible if `shares >= need` for that vault in the list above. If it's not, you must collect more shares.")
 		fmt.Println("\nExample: recovery-tool.exe -vault-id cl347wz8w00006sx3f1g23p4s file.json")
 		return "", nil, vaultIDs, nil
