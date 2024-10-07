@@ -85,3 +85,7 @@ Create a password for the wallet.
 ![Screenshot 2022-11-10 at 23 07 22](https://user-images.githubusercontent.com/1255926/201131143-97039c52-3bff-4ada-9dfb-f8b176db580d.png)
 
 After syncing up the chain (may take a while), Electrum should show your balances, and the private key is recovered.
+
+### Tron Recovery
+
+Please use [TronLink](https://www.tronlink.org) to recover Tron and Tron assets. [Follow this guide](https://support.tronlink.org/hc/en-us/articles/5982285631769-How-to-Import-Your-Account-in-TronLink-Wallet-Extension) and import your vault's private key output by the tool.
