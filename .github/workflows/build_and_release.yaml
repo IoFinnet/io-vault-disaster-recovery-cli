@@ -1,0 +1,52 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build_and_release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build all binaries
+        run: make build
+
+      - name: Calculate SHA256
+        run: |
+          sha256sum ./bin/recovery-tool-linux | cut -d' ' -f1 > ./bin/recovery-tool-linux.sha256
+          sha256sum ./bin/recovery-tool-mac | cut -d' ' -f1 > ./bin/recovery-tool-mac.sha256
+          sha256sum ./bin/recovery-tool.exe | cut -d' ' -f1 > ./bin/recovery-tool.exe.sha256
+
+      - name: Release
+        id: release
+        uses: dev-build-deploy/release-me@v0.17.0
+        with:
+          token: ${{ github.token }}
+          prefix: v
+          versioning: semver
+          files: |
+            ./bin/recovery-tool-linux
+            ./bin/recovery-tool-mac
+            ./bin/recovery-tool.exe
+
+      - name: Update GitHub Release with sha256sum
+        if: ${{ steps.release.outputs.created }}
+        run: |
+          gh release edit ${{ fromJSON(steps.release.outputs.release).tag_name }} \
+            --notes "$(gh release view ${{ fromJSON(steps.release.outputs.release).tag_name }} --json body -q '.body')
+
+          ## Attached Binaries
+          recovery-tool-mac - macOS build (Apple Silicon)
+          sha256sum: $(cat ./bin/recovery-tool-mac.sha256)
+
+          recovery-tool-linux - Linux build (x86-64)
+          sha256sum: $(cat ./bin/recovery-tool-linux.sha256)
+
+          recovery-tool.exe - Windows build (x86-64)
+          sha256sum: $(cat ./bin/recovery-tool.exe.sha256)"
+        env:
+          GH_TOKEN: ${{ github.token }}
