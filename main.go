@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/binance-chain/tss-lib/crypto/vss"
 	"github.com/binance-chain/tss-lib/ecdsa/keygen"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
@@ -60,6 +60,14 @@ type (
 	}
 
 	VaultAllShares map[string][]*keygen.LocalPartySaveData
+
+	AppConfig struct {
+		filenames      []string
+		nonceOverride  int
+		quorumOverride int
+		exportKSFile   string
+		passwordForKS  string
+	}
 )
 
 const (
@@ -93,20 +101,81 @@ func main() {
 		return
 	}
 
-	println()
-	fmt.Printf("%s%s                                     %s\n", ansiCodes["invertOn"], ansiCodes["bold"], ansiCodes["reset"])
-	fmt.Printf("%s%s     io.finnet Key Recovery Tool     %s\n", ansiCodes["invertOn"], ansiCodes["bold"], ansiCodes["reset"])
-	fmt.Printf("%s%s               v3.1.1                %s\n", ansiCodes["invertOn"], ansiCodes["bold"], ansiCodes["reset"])
-	fmt.Printf("%s%s                                     %s\n", ansiCodes["invertOn"], ansiCodes["bold"], ansiCodes["reset"])
-	println()
+	fmt.Print(banner())
 
-	address, sk, _, err := runTool(files, vaultID, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
+	appConfig := AppConfig{
+		filenames:      files,
+		nonceOverride:  *nonceOverride,
+		quorumOverride: *quorumOverride,
+		exportKSFile:   *exportKSFile,
+		passwordForKS:  *passwordForKS,
+	}
+
+	// First validate that files exist and are readable
+	if err := ValidateFiles(appConfig); err != nil {
+		fmt.Print(errorBox(err))
+		os.Exit(1)
+	}
+
+	/**
+	 * Run the steps to get the passphrases from the user
+	 */
+	var vaultsDataFiles []VaultsDataFile = make([]VaultsDataFile, 0, len(appConfig.filenames))
+	f := NewPassphrasesForm(appConfig)
+	if err := f.Run(&vaultsDataFiles); err != nil {
+		fmt.Println(errorBox(err))
+		os.Exit(1)
+	}
+	if vaultsDataFiles == nil {
+		fmt.Println("No vaults data files were selected.")
+		os.Exit(0)
+	}
+
+	/**
+	 * Retrieve vaults information and select a vault
+	 */
+	_, _, vaultsFormInfo, err := runTool(vaultsDataFiles, nil, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
 	if err != nil {
-		println()
-		fmt.Printf("%s%s         %s\n", ansiCodes["darkRedBG"], ansiCodes["bold"], ansiCodes["reset"])
-		fmt.Printf("%s%s  Error  %s  %s.\n", ansiCodes["darkRedBG"], ansiCodes["bold"], ansiCodes["reset"], err)
-		fmt.Printf("%s%s         %s\n", ansiCodes["darkRedBG"], ansiCodes["bold"], ansiCodes["reset"])
-		println()
+		fmt.Printf("Failed to run tool to retrieve vault information: %s", err)
+		os.Exit(1)
+	}
+
+	var selectedVaultId string
+	// If the vault ID is not provided, run the vault picker form
+	if *vaultID == "" {
+		selectedVaultId, err = RunVaultPickerForm(vaultsFormInfo)
+		if err != nil {
+			fmt.Printf("Failed to run form: %s", err)
+			os.Exit(1)
+		}
+	} else {
+		// Use the vault ID provided by CLI argument
+		selectedVaultId = *vaultID
+	}
+
+	var selectedVault VaultPickerItem
+	// Get the selected vault from the vaults form data
+	for _, vault := range vaultsFormInfo {
+		if vault.VaultID == selectedVaultId {
+			selectedVault = vault
+			break
+		}
+	}
+	if selectedVault.VaultID == "" {
+		fmt.Print(errorBox(fmt.Errorf("vault with ID %s not found", selectedVaultId)))
+		os.Exit(1)
+	}
+
+	/**
+	 * Run the recovery for the chosen vault
+	 */
+	fmt.Println(
+		lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("RECOVERING VAULT %s WITH ID %s\n", selectedVault.Name, selectedVault.VaultID)),
+	)
+
+	address, sk, _, err := runTool(vaultsDataFiles, &selectedVault.VaultID, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
+	if err != nil {
+		fmt.Print(errorBox(err))
 		os.Exit(1)
 		return
 	}
@@ -132,8 +201,7 @@ func main() {
 	fmt.Printf("Recovered mainnet WIF (for Electrum Wallet): %s%s%s\n", ansiCodes["bold"], toBitcoinWIF(sk.Bytes(), false, true), ansiCodes["reset"])
 }
 
-func runTool(files []string, vaultID *string, nonceOverride *int, quorumOverride *int, exportKSFile *string, passwordForKS *string, mnemonics ...string) (address string, sk *big.Int, vaultIDs []string, welp error) {
-	reader := bufio.NewReader(os.Stdin)
+func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride *int, quorumOverride *int, exportKSFile *string, passwordForKS *string) (address string, sk *big.Int, orderedVaults []VaultPickerItem, welp error) {
 
 	if nonceOverride != nil && *nonceOverride > -1 {
 		fmt.Printf("\n⚠ Using reshare nonce override: %d. Be sure to set the threshold of the vault at this reshare point with -threshold, or recovery will produce incorrect data.\n", *nonceOverride)
@@ -146,75 +214,28 @@ func runTool(files []string, vaultID *string, nonceOverride *int, quorumOverride
 	}
 
 	justListingVaults := vaultID == nil || *vaultID == ""
-	if justListingVaults {
-		fmt.Printf("NOTE: No -vault-id was specified. The tool will just list out the available vault IDs.\n")
-	}
 
 	// Internal & returned data structures
-	clearVaults := make(ClearVaultMap, len(files)*16)
-	vaultAllShares := make(VaultAllShares, len(files)*16) // headroom
-	vaultLastNonces := make(map[string]int, len(files)*16)
+	clearVaults := make(ClearVaultMap, len(vaultsDataFile)*16)
+	vaultAllShares := make(VaultAllShares, len(vaultsDataFile)*16) // headroom
+	vaultLastNonces := make(map[string]int, len(vaultsDataFile)*16)
 
-	// Make sure all files exist, and ensure they're unique
-	{
-		uniqueFiles := make(map[string]struct{})
-		for _, file := range files {
-			// read file and basic validate
-			if _, err := os.Stat(file); err != nil {
-				welp = errors2.Errorf("⚠ unable to see file `%s` - does it exist?: %s", file, err)
-				return
-			}
-			if _, ok := uniqueFiles[file]; ok {
-				welp = errors2.Errorf("⚠ duplicate file `%s`", file)
-				return
-			}
-			uniqueFiles[file] = struct{}{}
-		}
-	}
+	// // Do the main routine
+	for _, file := range vaultsDataFile {
+		saveData := new(SavedData)
 
-	// Do the main routine
-	fmt.Println("Preparing to decrypt the files. Please enter the secret words.")
-	for i, file := range files {
-		// read file and basic validate
-		if _, err := os.Stat(file); err != nil {
-			welp = errors2.Errorf("⚠ unable to see file `%s` - does it exist?: %s", file, err)
-			return
-		}
-		content, err := os.ReadFile(file)
+		content, err := os.ReadFile(file.File)
 		if err != nil {
 			welp = fmt.Errorf("⚠ file to read from file(%s): %s", file, err)
 			return
 		}
-		if len(content) == 0 || content[0] != '{' {
-			welp = fmt.Errorf("⚠ invalid file format, expecting json. first char is %s", content[:1])
-			return
-		}
-
-		saveData := new(SavedData)
-		if err = json.Unmarshal(content, saveData); err != nil {
+		if err := json.Unmarshal(content, saveData); err != nil {
 			welp = errors2.Wrapf(err, "⚠ invalid saveData format - is this an old backup file? (code: 1)")
 			return
 		}
 
-		phrase := ""
-		if len(mnemonics) < len(files) {
-			// user inputs the secret phrase
-			fmt.Printf("\nNow input %d secret words for file %d \"%s\":\n➤ ", WORDS, i+1, file)
-			phrase, _ = reader.ReadString('\n')
-			phrase = strings.Replace(phrase, "\n", "", -1)
-			phrase = strings.Replace(phrase, "\r", "", -1)
-			words := strings.SplitN(phrase, " ", WORDS)
-			if len(words) < WORDS {
-				welp = fmt.Errorf("⚠ wanted %d phrase words but got %d", WORDS, len(words))
-				return
-			}
-		} else {
-			// we have the secret phrase passed in through an arg
-			phrase = mnemonics[i]
-		}
-
 		// phrase -> key
-		aesKey32, err := bip39.EntropyFromMnemonic(phrase)
+		aesKey32, err := bip39.EntropyFromMnemonic(file.Mnemonics)
 		if err != nil {
 			welp = fmt.Errorf("⚠ failed to generate key from mnemonic, are your words correct? %s", err)
 			return
@@ -314,7 +335,7 @@ func runTool(files []string, vaultID *string, nonceOverride *int, quorumOverride
 					}
 				}
 			} else {
-				fmt.Printf("Processing legacy vault \"%s\" (%s).\n", clearVaults[vID].Name, vID)
+				// fmt.Printf("Processing legacy vault \"%s\" (%s).\n", clearVaults[vID].Name, vID)
 			}
 			if sharesList == nil {
 				panic(fmt.Errorf("no legacy or new shares found for vault %s %s", vID, clearVaults[vID].Name))
@@ -374,34 +395,28 @@ func runTool(files []string, vaultID *string, nonceOverride *int, quorumOverride
 			}
 			vaultAllShares[vID] = append(vaultAllShares[vID], shareDatas...)
 		}
-		phrase = ""
+
 		clear(aesKey32)
-		if len(mnemonics) >= i+1 {
-			mnemonics[i] = ""
-		}
 	}
-	clear(mnemonics)
 
 	// populate vault IDs
-	vaultIDs = make([]string, 0, len(files)*16)
+	vaultIDs := make([]string, 0, len(vaultsDataFile)*16)
 	for vID := range clearVaults {
 		vaultIDs = append(vaultIDs, vID)
 	}
 	sort.Strings(vaultIDs)
 
+	// Create the list of ordered vaults from the ordered vault IDs
+	orderedVaults = make([]VaultPickerItem, 0, len(vaultIDs))
+	for _, vID := range vaultIDs {
+		vault := clearVaults[vID]
+		vaultFormData := VaultPickerItem{VaultID: vID, Name: vault.Name, Quorum: vault.Quroum, NumberOfShares: len(vaultAllShares[vID])}
+		orderedVaults = append(orderedVaults, vaultFormData)
+	}
+
 	// Just list the ID's and names?
 	if justListingVaults {
-		fmt.Println("\n━━━━━━\nDecryption success.\nListing available vault IDs and other known data:")
-		for _, vID := range vaultIDs {
-			vault := clearVaults[vID]
-			suffixStr := fmt.Sprintf("  \"%s\"  (shares: %d, need: %d, nonce: %d)",
-				vault.Name, len(vaultAllShares[vID]), vault.Quroum, vault.LastReShareNonce)
-			fmt.Printf("  - %s%s\n", vID, suffixStr)
-		}
-		fmt.Println("\n\n━━━━━━\nNow you must restart the tool and provide the -vault-id flag to extract a vault's key.")
-		fmt.Println("This is only possible if `shares >= need` for that vault in the list above. If it's not, you must collect more shares.")
-		fmt.Println("\nExample: recovery-tool.exe -vault-id cl347wz8w00006sx3f1g23p4s file.json")
-		return "", nil, vaultIDs, nil
+		return "", nil, orderedVaults, nil
 	}
 
 	println()
@@ -478,7 +493,7 @@ func runTool(files []string, vaultID *string, nonceOverride *int, quorumOverride
 		}
 		fmt.Printf("\nWrote a MetaMask wallet v3 file to: %s.\n", *exportKSFile)
 	}
-	return address, sk, vaultIDs, nil
+	return address, sk, orderedVaults, nil
 }
 
 func getTSSPubKey(x, y *big.Int) (*secp256k1.PublicKey, string, error) {
@@ -498,4 +513,23 @@ func getTSSPubKey(x, y *big.Int) (*secp256k1.PublicKey, string, error) {
 	addr := fmt.Sprintf("0x%s", hex.EncodeToString(sum[len(sum)-20:]))
 
 	return pubKey, addr, nil
+}
+
+func banner() string {
+	b := "\n"
+	b += fmt.Sprintf("%s%s                                     %s\n", ansiCodes["invertOn"], ansiCodes["bold"], ansiCodes["reset"])
+	b += fmt.Sprintf("%s%s     io.finnet Key Recovery Tool     %s\n", ansiCodes["invertOn"], ansiCodes["bold"], ansiCodes["reset"])
+	b += fmt.Sprintf("%s%s               v3.1.1                %s\n", ansiCodes["invertOn"], ansiCodes["bold"], ansiCodes["reset"])
+	b += fmt.Sprintf("%s%s                                     %s\n", ansiCodes["invertOn"], ansiCodes["bold"], ansiCodes["reset"])
+	b += "\n"
+	return b
+}
+
+func errorBox(err error) string {
+	b := "\n"
+	b += fmt.Sprintf("%s%s         %s\n", ansiCodes["darkRedBG"], ansiCodes["bold"], ansiCodes["reset"])
+	b += fmt.Sprintf("%s%s  Error  %s  %s.\n", ansiCodes["darkRedBG"], ansiCodes["bold"], ansiCodes["reset"], err)
+	b += fmt.Sprintf("%s%s         %s\n", ansiCodes["darkRedBG"], ansiCodes["bold"], ansiCodes["reset"])
+	b += "\n"
+	return b
 }
