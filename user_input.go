@@ -10,24 +10,24 @@ import (
 )
 
 /**
- * PassphrasesFormModel is a struct that represents the model for the passphrases form.
+ * mnemmonicsFormModel is a struct that represents the model for the mnemonics entry.
  */
-type passphrasesFormModel struct {
+type mnemonicsFormModel struct {
 	filenames []string
 }
 
-func NewPassphrasesForm(config AppConfig) passphrasesFormModel {
-	return passphrasesFormModel{
+func NewMnemonicsForm(config AppConfig) mnemonicsFormModel {
+	return mnemonicsFormModel{
 		filenames: config.filenames,
 	}
 }
 
-func (m passphrasesFormModel) Run(filesWithPassphrases *[]VaultsDataFile) error {
+func (m mnemonicsFormModel) Run(filesWithMnemonics *[]VaultsDataFile) error {
 	for _, filename := range m.filenames {
 		input := huh.NewText().
-			Key("passphrase").
-			Title(fmt.Sprintf("Passphrase for %s", filename)).
-			Description(fmt.Sprintf("Enter the %d word passphrase", WORDS)).
+			Key("phrase").
+			Title(fmt.Sprintf("Mnemonics for %s", filename)).
+			Description(fmt.Sprintf("Enter the %d word phrase", WORDS)).
 			Validate(func(input string) error {
 				fileWithMnemonic := VaultsDataFile{File: filename, Mnemonics: input}
 				return fileWithMnemonic.ValidateMnemonics()
@@ -36,10 +36,10 @@ func (m passphrasesFormModel) Run(filesWithPassphrases *[]VaultsDataFile) error 
 		var form *huh.Form
 
 		// Show the list of files added if there are more than one
-		if len(*filesWithPassphrases) > 0 {
+		if len(*filesWithMnemonics) > 0 {
 			form = huh.NewForm(
 				huh.NewGroup(
-					huh.NewNote().Description(m.fileList(*filesWithPassphrases)),
+					huh.NewNote().Description(m.fileList(*filesWithMnemonics)),
 					input,
 				),
 			).WithTheme(huh.ThemeBase16())
@@ -52,23 +52,23 @@ func (m passphrasesFormModel) Run(filesWithPassphrases *[]VaultsDataFile) error 
 			return err
 		}
 
-		mnemonics := form.GetString("passphrase")
+		mnemonics := form.GetString("phrase")
 		if mnemonics == "" {
-			return fmt.Errorf("passphrase for %s is empty", filename)
+			return fmt.Errorf("phrase for %s is empty", filename)
 		}
 
 		f := VaultsDataFile{File: filename, Mnemonics: mnemonics}
-		*filesWithPassphrases = append(*filesWithPassphrases, f)
+		*filesWithMnemonics = append(*filesWithMnemonics, f)
 	}
 
-	fmt.Println(m.fileList(*filesWithPassphrases))
-	fmt.Print("All passphrases entered\n\n")
+	fmt.Println(m.fileList(*filesWithMnemonics))
+	fmt.Print("All mnemonics entered\n\n")
 
 	return nil
 }
 
-func (m passphrasesFormModel) fileList(filesWithPassphrases []VaultsDataFile) string {
-	if len(filesWithPassphrases) == 0 {
+func (m mnemonicsFormModel) fileList(filesWithMnemonics []VaultsDataFile) string {
+	if len(filesWithMnemonics) == 0 {
 		return ""
 	}
 
@@ -86,7 +86,7 @@ func (m passphrasesFormModel) fileList(filesWithPassphrases []VaultsDataFile) st
 		Enumerator(checklistEnum).
 		EnumeratorStyleFunc(checklistEnumStyle)
 
-	for i, f := range filesWithPassphrases {
+	for i, f := range filesWithMnemonics {
 		l = l.Item(fmt.Sprintf("%s (file %d of %d)", f.File, i+1, len(m.filenames)))
 	}
 

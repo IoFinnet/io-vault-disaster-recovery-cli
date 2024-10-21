@@ -118,10 +118,10 @@ func main() {
 	}
 
 	/**
-	 * Run the steps to get the passphrases from the user
+	 * Run the steps to get the menmonics
 	 */
 	var vaultsDataFiles []VaultsDataFile = make([]VaultsDataFile, 0, len(appConfig.filenames))
-	f := NewPassphrasesForm(appConfig)
+	f := NewMnemonicsForm(appConfig)
 	if err := f.Run(&vaultsDataFiles); err != nil {
 		fmt.Println(errorBox(err))
 		os.Exit(1)
