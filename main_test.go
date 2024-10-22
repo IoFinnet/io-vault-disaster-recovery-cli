@@ -21,16 +21,22 @@ const (
 )
 
 func TestTool_New_V2_List(t *testing.T) {
+	files := []VaultsDataFile{
+		{File: "./test-files/new_bvn.json", Mnemonics: mmNewBvn},
+		{File: "./test-files/new_x2q.json", Mnemonics: mmNewX2q},
+		{File: "./test-files/new_u44.json", Mnemonics: mmNewU44},
+	}
+
 	// use the correct file path for tests
-	address, sk, vaultIDs, err := runTool([]string{"./test-files/new_bvn.json", "./test-files/new_x2q.json", "./test-files/new_u44.json"},
-		nil, nil, nil, nil, nil,
-		mmNewBvn, mmNewX2q, mmNewU44)
+	address, sk, vaultFormData, err := runTool(files, nil, nil, nil, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
-	if !assert.Len(t, vaultIDs, 14) {
+	if !assert.Len(t, vaultFormData, 14) {
 		return
 	}
+
+	vaultIDs := vaultIdsFromFormData(vaultFormData)
 	if !assert.Equal(t,
 		[]string{
 			"a70uaean4isi6aci8zzky970",
@@ -61,17 +67,21 @@ func TestTool_New_V2_List(t *testing.T) {
 func TestTool_New_V2_Export_lqns(t *testing.T) {
 	// use the correct file path for tests
 	vaultID := "yz5x2a7zhwwt7r0lv4gklqns"
-	address, sk, vaultIDs, err := runTool([]string{"./test-files/new_bvn.json", "./test-files/new_x2q.json", "./test-files/new_u44.json"},
-		&vaultID,
-		nil, nil, nil, nil,
-		mmNewBvn, mmNewX2q, mmNewU44)
+
+	files := []VaultsDataFile{
+		{File: "./test-files/new_bvn.json", Mnemonics: mmNewBvn},
+		{File: "./test-files/new_x2q.json", Mnemonics: mmNewX2q},
+		{File: "./test-files/new_u44.json", Mnemonics: mmNewU44},
+	}
+
+	address, sk, vaultsFormData, err := runTool(files, &vaultID, nil, nil, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
-	if !assert.Len(t, vaultIDs, 1) {
+	if !assert.Len(t, vaultsFormData, 1) {
 		return
 	}
-	if !assert.Equal(t, vaultID, vaultIDs[0]) {
+	if !assert.Equal(t, vaultID, vaultsFormData[0].VaultID) {
 		return
 	}
 	if !assert.Equal(t, "0x620ac72121234f1b313bd4e8b78c81323502679a", address) {
@@ -84,17 +94,19 @@ func TestTool_New_V2_Export_lqns(t *testing.T) {
 }
 
 func TestTool_Legacy_V2_List(t *testing.T) {
+	files := []VaultsDataFile{
+		{File: "./test-files/v2.json", Mnemonics: mmV2},
+	}
+
 	// use the correct file path for tests
-	address, sk, vaultIDs, err := runTool([]string{"./test-files/v2.json"},
-		nil, nil, nil, nil, nil,
-		mmV2)
+	address, sk, vaultsFormData, err := runTool(files, nil, nil, nil, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
-	if !assert.Len(t, vaultIDs, 1) {
+	if !assert.Len(t, vaultsFormData, 1) {
 		return
 	}
-	if !assert.Equal(t, "yjanjbgmbrptwwa9i5v9c20x", vaultIDs[0]) {
+	if !assert.Equal(t, "yjanjbgmbrptwwa9i5v9c20x", vaultsFormData[0].VaultID) {
 		return
 	}
 	if !assert.Empty(t, address) {
@@ -108,17 +120,19 @@ func TestTool_Legacy_V2_List(t *testing.T) {
 func TestTool_Legacy_V2_Export_c20x(t *testing.T) {
 	// use the correct file path for tests
 	vaultID := "yjanjbgmbrptwwa9i5v9c20x"
-	address, sk, vaultIDs, err := runTool([]string{"./test-files/v2.json"},
-		&vaultID,
-		nil, nil, nil, nil,
-		mmV2)
+
+	files := []VaultsDataFile{
+		{File: "./test-files/v2.json", Mnemonics: mmV2},
+	}
+
+	address, sk, vaultsFormData, err := runTool(files, &vaultID, nil, nil, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
-	if !assert.Len(t, vaultIDs, 1) {
+	if !assert.Len(t, vaultsFormData, 1) {
 		return
 	}
-	if !assert.Equal(t, vaultID, vaultIDs[0]) {
+	if !assert.Equal(t, vaultID, vaultsFormData[0].VaultID) {
 		return
 	}
 	if !assert.Equal(t, "0x66e36b136fb8b2c98c72eec8ae02d531e526f454", address) {
@@ -132,15 +146,19 @@ func TestTool_Legacy_V2_Export_c20x(t *testing.T) {
 
 func TestTool_Legacy_V1_IL_List(t *testing.T) {
 	// use the correct file path for tests
-	address, sk, vaultIDs, err := runTool([]string{"./test-files/i.json", "./test-files/l.json"},
-		nil, nil, nil, nil, nil,
-		mmI, mmL)
+	files := []VaultsDataFile{
+		{File: "./test-files/i.json", Mnemonics: mmI},
+		{File: "./test-files/l.json", Mnemonics: mmL},
+	}
+
+	address, sk, vaultsFormData, err := runTool(files, nil, nil, nil, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
-	if !assert.Len(t, vaultIDs, 6) {
+	if !assert.Len(t, vaultsFormData, 6) {
 		return
 	}
+	vaultIDs := vaultIdsFromFormData(vaultsFormData)
 	if !assert.Equal(t, []string{
 		"clujhtm9d0013wc3xso1b2m0k", "clujmawnb001j173x9a2c0x47", "clujn9hhr001u173xiv9gfme6", "clujnasrf001x173xjxtcwzeq", "clul2s3f70008yf3x7mada0gb", "clur52dfl0001vc3xlbdy1d7p",
 	}, vaultIDs) {
@@ -157,13 +175,18 @@ func TestTool_Legacy_V1_IL_List(t *testing.T) {
 func TestTool_Legacy_V1_IL_Export_m0k(t *testing.T) {
 	// use the correct file path for tests
 	vaultID := "clujhtm9d0013wc3xso1b2m0k"
-	address, sk, vaultIDs, err := runTool([]string{"./test-files/i.json", "./test-files/l.json"},
-		&vaultID,
-		nil, nil, nil, nil,
-		mmI, mmL)
+
+	files := []VaultsDataFile{
+		{File: "./test-files/i.json", Mnemonics: mmI},
+		{File: "./test-files/l.json", Mnemonics: mmL},
+	}
+
+	address, sk, vaultFormData, err := runTool(files, &vaultID, nil, nil, nil, nil)
+
 	if !assert.NoError(t, err) {
 		return
 	}
+	vaultIDs := vaultIdsFromFormData(vaultFormData)
 	if !assert.Len(t, vaultIDs, 1) {
 		return
 	}
@@ -181,15 +204,20 @@ func TestTool_Legacy_V1_IL_Export_m0k(t *testing.T) {
 
 func TestTool_Legacy_V1_ILM_List(t *testing.T) {
 	// use the correct file path for tests
-	address, sk, vaultIDs, err := runTool([]string{"./test-files/i.json", "./test-files/m.json", "./test-files/l.json"},
-		nil, nil, nil, nil, nil,
-		mmI, mmM, mmL)
+	files := []VaultsDataFile{
+		{File: "./test-files/i.json", Mnemonics: mmI},
+		{File: "./test-files/m.json", Mnemonics: mmM},
+		{File: "./test-files/l.json", Mnemonics: mmL},
+	}
+
+	address, sk, vaultsFormData, err := runTool(files, nil, nil, nil, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
-	if !assert.Len(t, vaultIDs, 6) {
+	if !assert.Len(t, vaultsFormData, 6) {
 		return
 	}
+	vaultIDs := vaultIdsFromFormData(vaultsFormData)
 	if !assert.Equal(t, []string{
 		"clujhtm9d0013wc3xso1b2m0k", "clujmawnb001j173x9a2c0x47", "clujn9hhr001u173xiv9gfme6", "clujnasrf001x173xjxtcwzeq", "clul2s3f70008yf3x7mada0gb", "clur52dfl0001vc3xlbdy1d7p",
 	}, vaultIDs) {
@@ -206,17 +234,22 @@ func TestTool_Legacy_V1_ILM_List(t *testing.T) {
 func TestTool_Legacy_V1_ILM_Export_m0k(t *testing.T) {
 	// use the correct file path for tests
 	vaultID := "clujhtm9d0013wc3xso1b2m0k"
-	address, sk, vaultIDs, err := runTool([]string{"./test-files/i.json", "./test-files/m.json", "./test-files/l.json"},
-		&vaultID,
-		nil, nil, nil, nil,
-		mmI, mmM, mmL)
+
+	files := []VaultsDataFile{
+		{File: "./test-files/i.json", Mnemonics: mmI},
+		{File: "./test-files/m.json", Mnemonics: mmM},
+		{File: "./test-files/l.json", Mnemonics: mmL},
+	}
+
+	address, sk, vaultsFormData, err := runTool(files, &vaultID, nil, nil, nil, nil)
+
 	if !assert.NoError(t, err) {
 		return
 	}
-	if !assert.Len(t, vaultIDs, 1) {
+	if !assert.Len(t, vaultsFormData, 1) {
 		return
 	}
-	if !assert.Equal(t, vaultID, vaultIDs[0]) {
+	if !assert.Equal(t, vaultID, vaultsFormData[0].VaultID) {
 		return
 	}
 	if !assert.Equal(t, "0x66ee83f83002b01459b750233f7b21744e679182", address) {
@@ -226,4 +259,12 @@ func TestTool_Legacy_V1_ILM_Export_m0k(t *testing.T) {
 		hex.EncodeToString(sk.Bytes())) {
 		return
 	}
+}
+
+func vaultIdsFromFormData(vaultFormData []VaultPickerItem) []string {
+	vaultIDs := make([]string, len(vaultFormData))
+	for i, v := range vaultFormData {
+		vaultIDs[i] = v.VaultID
+	}
+	return vaultIDs
 }
