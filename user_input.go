@@ -22,7 +22,9 @@ func NewMnemonicsForm(config AppConfig) mnemonicsFormModel {
 	}
 }
 
-func (m mnemonicsFormModel) Run(filesWithMnemonics *[]VaultsDataFile) error {
+func (m mnemonicsFormModel) Run() (*[]VaultsDataFile, error) {
+	filesWithMnemonics := []VaultsDataFile{}
+
 	for _, filename := range m.filenames {
 		input := huh.NewText().
 			Key("phrase").
@@ -36,10 +38,10 @@ func (m mnemonicsFormModel) Run(filesWithMnemonics *[]VaultsDataFile) error {
 		var form *huh.Form
 
 		// Show the list of files added if there are more than one
-		if len(*filesWithMnemonics) > 0 {
+		if len(filesWithMnemonics) > 0 {
 			form = huh.NewForm(
 				huh.NewGroup(
-					huh.NewNote().Description(m.fileList(*filesWithMnemonics)),
+					huh.NewNote().Description(m.fileList(filesWithMnemonics)),
 					input,
 				),
 			).WithTheme(huh.ThemeBase16())
@@ -49,22 +51,22 @@ func (m mnemonicsFormModel) Run(filesWithMnemonics *[]VaultsDataFile) error {
 
 		err := form.Run()
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		mnemonics := form.GetString("phrase")
 		if mnemonics == "" {
-			return fmt.Errorf("phrase for %s is empty", filename)
+			return nil, fmt.Errorf("phrase for %s is empty", filename)
 		}
 
 		f := VaultsDataFile{File: filename, Mnemonics: mnemonics}
-		*filesWithMnemonics = append(*filesWithMnemonics, f)
+		filesWithMnemonics = append(filesWithMnemonics, f)
 	}
 
-	fmt.Println(m.fileList(*filesWithMnemonics))
+	fmt.Println(m.fileList(filesWithMnemonics))
 	fmt.Print("All mnemonics entered\n\n")
 
-	return nil
+	return &filesWithMnemonics, nil
 }
 
 func (m mnemonicsFormModel) fileList(filesWithMnemonics []VaultsDataFile) string {

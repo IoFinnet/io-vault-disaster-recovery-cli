@@ -120,9 +120,11 @@ func main() {
 	/**
 	 * Run the steps to get the menmonics
 	 */
-	var vaultsDataFiles []VaultsDataFile = make([]VaultsDataFile, 0, len(appConfig.filenames))
+	// var vaultsDataFiles []VaultsDataFile = make([]VaultsDataFile, 0, len(appConfig.filenames))
 	f := NewMnemonicsForm(appConfig)
-	if err := f.Run(&vaultsDataFiles); err != nil {
+	vaultsDataFiles, err := f.Run()
+	if err != nil {
+		// if err := f.Run(&vaultsDataFiles); err != nil {
 		fmt.Println(errorBox(err))
 		os.Exit(1)
 	}
@@ -134,7 +136,7 @@ func main() {
 	/**
 	 * Retrieve vaults information and select a vault
 	 */
-	_, _, vaultsFormInfo, err := runTool(vaultsDataFiles, nil, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
+	_, _, vaultsFormInfo, err := runTool(*vaultsDataFiles, nil, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
 	if err != nil {
 		fmt.Printf("Failed to run tool to retrieve vault information: %s", err)
 		os.Exit(1)
@@ -173,7 +175,7 @@ func main() {
 		lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("RECOVERING VAULT %s WITH ID %s\n", selectedVault.Name, selectedVault.VaultID)),
 	)
 
-	address, sk, _, err := runTool(vaultsDataFiles, &selectedVault.VaultID, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
+	address, sk, _, err := runTool(*vaultsDataFiles, &selectedVault.VaultID, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
 	if err != nil {
 		fmt.Print(errorBox(err))
 		os.Exit(1)
