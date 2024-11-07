@@ -1,5 +1,4 @@
-TSS Recovery Tool
-=================
+# TSS Recovery Tool
 
 This tool recovers the private keys of vaults by
 'combining' the secrets of each TSS app backup file.
@@ -11,7 +10,7 @@ It will also create a wallet V3 file for importing to MetaMask and other Ethereu
 > ### **Important Notice**
 >
 > This tool does not do ANY communication with any external host or service. It does not need an Internet connection at all.
-> 
+>
 > It is recommended that you run it on a non internet connected ("air gapped") device such as a laptop not connected to any network.
 
 ## Build from Source
@@ -19,11 +18,13 @@ It will also create a wallet V3 file for importing to MetaMask and other Ethereu
 You can build the code from source. Clone the repo, and make sure the latest [Go](http://go.dev) is installed.
 
 Compile from source:
+
 ```
 $ make
 ```
 
 Compile for Windows, Linux (x86) or Mac (Apple Silicon):
+
 ```
 $ make build-win
 $ make build-linux
@@ -38,12 +39,14 @@ If you prefer the convenience of downloading a pre-built binary for your platfor
 
 ## Usage
 
-First you will want to get the vault IDs available in the files:
+Run the recovery tool.
+
 ```
 $ ./bin/recovery-tool sandbox/file1.json sandbox/file2.json
 ```
 
-Once you have the vault ID you want to recover, supply it to the tool to begin the recovery.
+You can also provide the vault ID you want to recover, this will skip the step of choosing a vault.
+
 ```
 $ ./bin/recovery-tool -vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.bin sandbox/file2.bin
 ```
