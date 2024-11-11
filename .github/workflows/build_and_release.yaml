@@ -26,7 +26,7 @@ jobs:
 
       - name: Release
         id: release
-        uses: dev-build-deploy/release-me@v0.17.0
+        uses: dev-build-deploy/release-me@v0.15.2
         with:
           token: ${{ github.token }}
           prefix: v
