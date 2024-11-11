@@ -26,15 +26,20 @@ jobs:
 
       - name: Release
         id: release
-        uses: dev-build-deploy/release-me@v0.15.2
+        uses: dev-build-deploy/release-me@v0.17.0
         with:
           token: ${{ github.token }}
           prefix: v
           versioning: semver
-          files: |
-            ./bin/recovery-tool-linux
-            ./bin/recovery-tool-mac
-            ./bin/recovery-tool.exe
+
+      - name: Upload binary files to release
+        if: ${{ steps.release.outputs.created }}
+        run: |
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-linux
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-mac
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool.exe
+        env:
+          GITHUB_TOKEN: ${{ github.TOKEN }}
 
       - name: Update GitHub Release with sha256sum
         if: ${{ steps.release.outputs.created }}
