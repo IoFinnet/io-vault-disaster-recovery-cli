@@ -480,7 +480,6 @@ func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride, qu
 
 	// if applicable, ensure the EDDSA PK matches our expected share 0 PK
 	if vaultHasEDDSA[*vaultID] {
-		fmt.Printf("EdDSA SK: %s\n", hex.EncodeToString(eddsaSK.Bytes()))
 		_, edPK, err := edwards.PrivKeyFromScalar(eddsaSK.Bytes())
 		if err != nil {
 			welp = err
