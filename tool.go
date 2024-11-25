@@ -293,7 +293,6 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 
 	// ensure the ECDSA PK matches our expected share 0 PK
 	scl := secp256k1.ModNScalar{}
-	fmt.Printf("ECDSA SK: %x\n", ecdsaSK)
 	scl.SetByteSlice(ecdsaSK)
 	privKey := secp256k1.NewPrivateKey(&scl)
 	pk := privKey.PubKey()
