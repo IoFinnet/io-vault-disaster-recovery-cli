@@ -101,13 +101,13 @@ func main() {
 	vaultID := flag.String("vault-id", "", "(Optional) The vault id to export the keys for.")
 	nonceOverride := flag.Int("nonce", -1, "(Optional) Reshare Nonce override. Try it if the tool advises you to do so.")
 	quorumOverride := flag.Int("threshold", 0, "(Optional) Vault Quorum (Threshold) override. Try it if the tool advises you to do so.")
-	exportKSFile := flag.String("export", "wallet.json", "(Optional) Filename to export a Ethereum/MetaMask wallet v3 JSON to - for ECDSA key only.")
 	passwordForKS := flag.String("password", "", "(Optional) Encryption password for the Ethereum wallet v3 file; use with -export")
+	exportKSFile := flag.String("export", "wallet.json", "(Optional) Filename to export a Ethereum wallet v3 JSON to; use with -password.")
 
 	flag.Parse()
 	files := flag.Args()
 	if len(files) < 1 {
-		fmt.Println("Please supply some input files on the command line. \nExample: recovery-tool.exe [-flags] file1.json file2.json ... \n\nOptional flags:")
+		fmt.Println("Please supply some input files on the command line. \nExample: recovery-tool.exe [-flags] file1.json file2.json … \n\nOptional flags:")
 		flag.PrintDefaults()
 		return
 	}
@@ -217,7 +217,7 @@ func main() {
 	fmt.Printf("Recovered mainnet WIF (for BTC/Electrum Wallet): %s%s%s\n", ansiCodes["bold"], toBitcoinWIF(ecSK, false, true), ansiCodes["reset"])
 
 	fmt.Printf("\nHere is your private key for EDDSA based assets. Keep safe and do not share.\n")
-	fmt.Printf("Recovered EdDSA/Ed25519 private key (for XRPL, SOL, TAO, etc.): %s%s%s\n", ansiCodes["bold"], hex.EncodeToString(edSK), ansiCodes["reset"])
+	fmt.Printf("Recovered EdDSA/Ed25519 private key (for XRPL, SOL, TAO, etc): %s%s%s\n", ansiCodes["bold"], hex.EncodeToString(edSK), ansiCodes["reset"])
 
 	fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.\n")
 }
@@ -536,7 +536,7 @@ func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride, qu
 		if welp = os.WriteFile(*exportKSFile, keyfile, os.ModePerm); welp != nil {
 			return
 		}
-		fmt.Printf("\nWrote a MetaMask wallet v3 (for ECDSA key only) to: %s.\n", *exportKSFile)
+		fmt.Printf("\nWrote a MetaMask wallet v3 (for ECDSA key only) to: %s.\n\n", *exportKSFile)
 	}
 	return address, ecdsaSK, eddsaSK, orderedVaults, nil
 }
