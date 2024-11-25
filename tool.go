@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/data"
 	"github.com/binance-chain/tss-lib/crypto"
 	"github.com/binance-chain/tss-lib/crypto/vss"
 	ecdsa_keygen "github.com/binance-chain/tss-lib/ecdsa/keygen"
@@ -370,7 +371,7 @@ func inflateSharesForCurve[T SaveData](shares []string, justListingVaults bool) 
 				err2 := errors2.Wrapf(err, "failed to decode base64 part of V2 save data")
 				return nil, err2
 			}
-			inflated, err := inflateSaveDataJSON(deflated)
+			inflated, err := data.InflateSaveDataJSON(deflated)
 			if err != nil {
 				return nil, err
 			}

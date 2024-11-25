@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Full license text available in LICENSE file in repository root.
 
-package main
+package wif
 
-func toBitcoinWIF(privKey []byte, testNet, compressed bool) string {
+// ToBitcoinWIF converts a private key to Bitcoin Wallet Import Format (WIF)
+func ToBitcoinWIF(privKey []byte, testNet, compressed bool) string {
 	if compressed {
 		// Append 0x01 to tell Bitcoin wallet to use compressed public keys
 		privKey = append(privKey, []byte{0x01}...)

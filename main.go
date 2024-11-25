@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/wif"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -142,14 +143,18 @@ func main() {
 	fmt.Printf("%s%s%s\n", ansiCodes["bold"], address, ansiCodes["reset"])
 
 	fmt.Printf("\nHere is your private key for Ethereum and Tron assets. Keep safe and do not share.\n")
-	fmt.Printf("Recovered ECDSA private key (for ETH/MetaMask, Tron/TronLink): %s%s%s\n", ansiCodes["bold"], hex.EncodeToString(ecSK), ansiCodes["reset"])
+	fmt.Printf("Recovered ECDSA private key (for ETH/MetaMask, Tron/TronLink): %s%s%s\n",
+		ansiCodes["bold"], hex.EncodeToString(ecSK), ansiCodes["reset"])
 
 	fmt.Printf("\nHere are your private keys for Bitcoin assets. Keep safe and do not share.\n")
-	fmt.Printf("Recovered testnet WIF (for BTC/Electrum Wallet): %s%s%s\n", ansiCodes["bold"], toBitcoinWIF(ecSK, true, true), ansiCodes["reset"])
-	fmt.Printf("Recovered mainnet WIF (for BTC/Electrum Wallet): %s%s%s\n", ansiCodes["bold"], toBitcoinWIF(ecSK, false, true), ansiCodes["reset"])
+	fmt.Printf("Recovered testnet WIF (for BTC/Electrum Wallet): %s%s%s\n", ansiCodes["bold"],
+		wif.ToBitcoinWIF(ecSK, true, true), ansiCodes["reset"])
+	fmt.Printf("Recovered mainnet WIF (for BTC/Electrum Wallet): %s%s%s\n", ansiCodes["bold"],
+		wif.ToBitcoinWIF(ecSK, false, true), ansiCodes["reset"])
 
 	fmt.Printf("\nHere is your private key for EDDSA based assets. Keep safe and do not share.\n")
-	fmt.Printf("Recovered EdDSA/Ed25519 private key (for XRPL, SOL, TAO, etc): %s%s%s\n", ansiCodes["bold"], hex.EncodeToString(edSK), ansiCodes["reset"])
+	fmt.Printf("Recovered EdDSA/Ed25519 private key (for XRPL, SOL, TAO, etc): %s%s%s\n",
+		ansiCodes["bold"], hex.EncodeToString(edSK), ansiCodes["reset"])
 
 	fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.\n")
 }
