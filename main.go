@@ -616,11 +616,14 @@ func getTSSPubKeyForEthereum(x, y *big.Int) (*secp256k1.PublicKey, string, error
 
 // leftPadTo32Bytes pads the byte representation of a big.Int to 32 bytes with leading zeros.
 func leftPadTo32Bytes(i *big.Int) []byte {
+	padded := make([]byte, 32)
+	if i == nil {
+		return padded
+	}
 	bytes := i.Bytes()
 	if len(bytes) >= 32 {
 		return bytes
 	}
-	padded := make([]byte, 32)
 	copy(padded[32-len(bytes):], bytes)
 	return padded
 }

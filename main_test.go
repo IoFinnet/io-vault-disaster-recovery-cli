@@ -6,6 +6,7 @@ package main
 
 import (
 	"encoding/hex"
+	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -365,4 +366,30 @@ func vaultIdsFromFormData(vaultFormData []VaultPickerItem) []string {
 		vaultIDs[i] = v.VaultID
 	}
 	return vaultIDs
+}
+
+func TestLeftPadTo32Bytes(t *testing.T) {
+	bytes32Input, _ := hex.DecodeString("04523b4b19d426517fb20b51935bc969900e016d26da0a3357f4cb1af57d8e44")
+	bytes34Input, _ := hex.DecodeString("04523b4b19d426517fb20b51935bc969900e016d26da0a3357f4cb1af57d8e440f0f")
+
+	tests := []struct {
+		name     string
+		input    []byte
+		expected string
+	}{
+		{"Nil Input", nil, "0000000000000000000000000000000000000000000000000000000000000000"},
+		{"Empty Input", []byte{}, "0000000000000000000000000000000000000000000000000000000000000000"},
+		{"Short Input", []byte{0xab, 0xcd}, "000000000000000000000000000000000000000000000000000000000000abcd"},
+		{"32 Bytes Input", bytes32Input, "04523b4b19d426517fb20b51935bc969900e016d26da0a3357f4cb1af57d8e44"},
+		{"Long Input", bytes34Input, "04523b4b19d426517fb20b51935bc969900e016d26da0a3357f4cb1af57d8e440f0f"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := leftPadTo32Bytes(new(big.Int).SetBytes(tt.input))
+			if !assert.Equal(t, tt.expected, hex.EncodeToString(result)) {
+				return
+			}
+		})
+	}
 }
