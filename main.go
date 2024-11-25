@@ -213,7 +213,7 @@ func main() {
 	fmt.Printf("Recovered mainnet WIF (for BTC/Electrum Wallet): %s%s%s\n", ansiCodes["bold"], toBitcoinWIF(ecSK.Bytes(), false, true), ansiCodes["reset"])
 
 	fmt.Printf("\nHere is your private key for EDDSA based assets. Keep safe and do not share.\n")
-	fmt.Printf("Recovered EdDSA private key (for XRPL, SOL, TAO, etc.): %s%s%s\n", ansiCodes["bold"], hex.EncodeToString(edSK.Bytes()), ansiCodes["reset"])
+	fmt.Printf("Recovered EdDSA/Ed25519 private key (for XRPL, SOL, TAO, etc.): %s%s%s\n", ansiCodes["bold"], hex.EncodeToString(edSK.Bytes()), ansiCodes["reset"])
 
 	fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.\n")
 }

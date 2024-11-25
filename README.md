@@ -92,3 +92,7 @@ After syncing up the chain (may take a while), Electrum should show your balance
 ### Tron Recovery
 
 Please use [TronLink](https://www.tronlink.org) to recover Tron and Tron assets. [Follow this guide](https://support.tronlink.org/hc/en-us/articles/5982285631769-How-to-Import-Your-Account-in-TronLink-Wallet-Extension) and import your vault's private key output by the tool.
+
+### Others (XRPL, SOL, TON, TAO, etc.)
+
+Use the EdDSA key output for these chains that use EdDSA (Edwards / Ed25519) keys.
