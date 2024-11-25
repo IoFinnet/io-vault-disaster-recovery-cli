@@ -91,11 +91,11 @@ func TestTool_New_V2_Export_lqns(t *testing.T) {
 		return
 	}
 	if !assert.Equal(t, "4cc05b1d3216da8ef91729744159019b25ea1ed5932e387199f1de6ff6667ac2",
-		hex.EncodeToString(ecSK.Bytes())) {
+		hex.EncodeToString(ecSK)) {
 		return
 	}
 	if !assert.Equal(t, "0e6f0e12d72483d32255000d01242fa4e179b9bbfa060de26cfb9c84e1d02d9e",
-		hex.EncodeToString(edSK.Bytes())) {
+		hex.EncodeToString(edSK)) {
 		return
 	}
 }
@@ -142,7 +142,7 @@ func TestTool_NewSingle_V2_Export_qvl5(t *testing.T) {
 	files := []VaultsDataFile{
 		{File: "./test-files/new_single.json", Mnemonics: mmNewSingle},
 	}
-	_, _, edSK, vaultsFormData, err := runTool(files, &vaultID, nil, nil, nil, nil)
+	_, ecSK, edSK, vaultsFormData, err := runTool(files, &vaultID, nil, nil, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -152,8 +152,12 @@ func TestTool_NewSingle_V2_Export_qvl5(t *testing.T) {
 	if !assert.Equal(t, vaultID, vaultsFormData[0].VaultID) {
 		return
 	}
+	if !assert.Equal(t, "0a8376f6cb75d7e4197d35d2f7254f60f08827d5604589ea57843c3f754983b7",
+		hex.EncodeToString(ecSK)) {
+		return
+	}
 	if !assert.Equal(t, "04523b4b19d426517fb20b51935bc969900e016d26da0a3357f4cb1af57d8e44",
-		hex.EncodeToString(edSK.Bytes())) {
+		hex.EncodeToString(edSK)) {
 		return
 	}
 }
@@ -217,7 +221,7 @@ func TestTool_Legacy_V2_Export_c20x(t *testing.T) {
 		return
 	}
 	if !assert.Equal(t, "9ca4dc783e108938e81b06d76d7b74ec4488e1acc9c569eedfaf4c949c3531d7",
-		hex.EncodeToString(ecSK.Bytes())) {
+		hex.EncodeToString(ecSK)) {
 		return
 	}
 	// no EdDSA key for this vault
@@ -279,7 +283,7 @@ func TestTool_Legacy_V1_IL_Export_m0k(t *testing.T) {
 		return
 	}
 	if !assert.Equal(t, "7d3c016f339f8cc797ee35502a5c93416d47bdd04360d22ea4fcaf85cec229b3",
-		hex.EncodeToString(ecSK.Bytes())) {
+		hex.EncodeToString(ecSK)) {
 		return
 	}
 	// no EdDSA key for this vault
@@ -342,7 +346,7 @@ func TestTool_Legacy_V1_ILM_Export_m0k(t *testing.T) {
 		return
 	}
 	if !assert.Equal(t, "7d3c016f339f8cc797ee35502a5c93416d47bdd04360d22ea4fcaf85cec229b3",
-		hex.EncodeToString(ecSK.Bytes())) {
+		hex.EncodeToString(ecSK)) {
 		return
 	}
 	// no EdDSA key for this vault

@@ -189,8 +189,8 @@ func main() {
 		return
 	}
 	defer func() {
-		ecSK.SetInt64(0)
-		edSK.SetInt64(0)
+		clear(ecSK)
+		clear(edSK)
 	}()
 	if ecSK == nil {
 		// only listing vaults
@@ -206,19 +206,19 @@ func main() {
 	fmt.Printf("%s%s%s\n", ansiCodes["bold"], address, ansiCodes["reset"])
 
 	fmt.Printf("\nHere is your private key for Ethereum and Tron assets. Keep safe and do not share.\n")
-	fmt.Printf("Recovered ECDSA private key (for ETH/MetaMask, Tron/TronLink): %s%s%s\n", ansiCodes["bold"], hex.EncodeToString(ecSK.Bytes()), ansiCodes["reset"])
+	fmt.Printf("Recovered ECDSA private key (for ETH/MetaMask, Tron/TronLink): %s%s%s\n", ansiCodes["bold"], hex.EncodeToString(ecSK), ansiCodes["reset"])
 
 	fmt.Printf("\nHere are your private keys for Bitcoin assets. Keep safe and do not share.\n")
-	fmt.Printf("Recovered testnet WIF (for BTC/Electrum Wallet): %s%s%s\n", ansiCodes["bold"], toBitcoinWIF(ecSK.Bytes(), true, true), ansiCodes["reset"])
-	fmt.Printf("Recovered mainnet WIF (for BTC/Electrum Wallet): %s%s%s\n", ansiCodes["bold"], toBitcoinWIF(ecSK.Bytes(), false, true), ansiCodes["reset"])
+	fmt.Printf("Recovered testnet WIF (for BTC/Electrum Wallet): %s%s%s\n", ansiCodes["bold"], toBitcoinWIF(ecSK, true, true), ansiCodes["reset"])
+	fmt.Printf("Recovered mainnet WIF (for BTC/Electrum Wallet): %s%s%s\n", ansiCodes["bold"], toBitcoinWIF(ecSK, false, true), ansiCodes["reset"])
 
 	fmt.Printf("\nHere is your private key for EDDSA based assets. Keep safe and do not share.\n")
-	fmt.Printf("Recovered EdDSA/Ed25519 private key (for XRPL, SOL, TAO, etc.): %s%s%s\n", ansiCodes["bold"], hex.EncodeToString(edSK.Bytes()), ansiCodes["reset"])
+	fmt.Printf("Recovered EdDSA/Ed25519 private key (for XRPL, SOL, TAO, etc.): %s%s%s\n", ansiCodes["bold"], hex.EncodeToString(edSK), ansiCodes["reset"])
 
 	fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.\n")
 }
 
-func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride, quorumOverride *int, exportKSFile, passwordForKS *string) (address string, ecdsaSK, eddsaSK *big.Int, orderedVaults []VaultPickerItem, welp error) {
+func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride, quorumOverride *int, exportKSFile, passwordForKS *string) (address string, ecdsaSK, eddsaSK []byte, orderedVaults []VaultPickerItem, welp error) {
 
 	if nonceOverride != nil && *nonceOverride > -1 {
 		fmt.Printf("\n⚠ Using reshare nonce override: %d. Be sure to set the threshold of the vault at this reshare point with -threshold, or recovery will produce incorrect data.\n", *nonceOverride)
@@ -459,18 +459,24 @@ func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride, qu
 	}
 
 	// Re-construct the secret keys
-	if ecdsaSK, welp = vssSharesECDSA.ReConstruct(tss.S256()); welp != nil {
+	var ecdsaSKI, eddsaSKI *big.Int
+	if ecdsaSKI, welp = vssSharesECDSA.ReConstruct(tss.S256()); welp != nil {
 		return
 	}
 	if vaultHasEDDSA[*vaultID] {
-		if eddsaSK, welp = vssSharesEDDSA.ReConstruct(tss.Edwards()); welp != nil {
+		if eddsaSKI, welp = vssSharesEDDSA.ReConstruct(tss.Edwards()); welp != nil {
 			return
 		}
+		eddsaSK = leftPadTo32Bytes(eddsaSKI)
+		eddsaSKI.SetInt64(0)
 	}
+	ecdsaSK = leftPadTo32Bytes(ecdsaSKI)
+	ecdsaSKI.SetInt64(0)
 
 	// ensure the ECDSA PK matches our expected share 0 PK
 	scl := secp256k1.ModNScalar{}
-	scl.SetByteSlice(ecdsaSK.Bytes())
+	fmt.Printf("ECDSA SK: %x\n", ecdsaSK)
+	scl.SetByteSlice(ecdsaSK)
 	privKey := secp256k1.NewPrivateKey(&scl)
 	pk := privKey.PubKey()
 	if !pk.ToECDSA().Equal(share0ECDSAPubKey.ToBtcecPubKey().ToECDSA()) {
@@ -480,7 +486,7 @@ func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride, qu
 
 	// if applicable, ensure the EDDSA PK matches our expected share 0 PK
 	if vaultHasEDDSA[*vaultID] {
-		_, edPK, err := edwards.PrivKeyFromScalar(eddsaSK.Bytes())
+		_, edPK, err := edwards.PrivKeyFromScalar(eddsaSK)
 		if err != nil {
 			welp = err
 			return
@@ -602,6 +608,17 @@ func getTSSPubKeyForEthereum(x, y *big.Int) (*secp256k1.PublicKey, string, error
 	// render the address in "checksum" format (mix of uppercase and lowercase chars)
 	addr = common.HexToAddress(addr).Hex()
 	return pubKey, addr, nil
+}
+
+// leftPadTo32Bytes pads the byte representation of a big.Int to 32 bytes with leading zeros.
+func leftPadTo32Bytes(i *big.Int) []byte {
+	bytes := i.Bytes()
+	if len(bytes) >= 32 {
+		return bytes
+	}
+	padded := make([]byte, 32)
+	copy(padded[32-len(bytes):], bytes)
+	return padded
 }
 
 func banner() string {
