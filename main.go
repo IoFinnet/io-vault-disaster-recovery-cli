@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/ecdsa"
 	"crypto/sha512"
 	"encoding/base64"
 	"encoding/hex"
@@ -16,9 +15,13 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/binance-chain/tss-lib/crypto"
 	"github.com/binance-chain/tss-lib/crypto/vss"
-	"github.com/binance-chain/tss-lib/ecdsa/keygen"
+	ecdsa_keygen "github.com/binance-chain/tss-lib/ecdsa/keygen"
+	eddsa_keygen "github.com/binance-chain/tss-lib/eddsa/keygen"
+	"github.com/binance-chain/tss-lib/tss"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/decred/dcrd/dcrec/edwards/v2"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
@@ -59,7 +62,8 @@ type (
 		Curves           []ClearVaultCurve `json:"curves"`
 	}
 
-	VaultAllShares map[string][]*keygen.LocalPartySaveData
+	VaultAllSharesECDSA map[string][]*ecdsa_keygen.LocalPartySaveData
+	VaultAllSharesEdDSA map[string][]*eddsa_keygen.LocalPartySaveData
 
 	AppConfig struct {
 		filenames      []string
@@ -67,6 +71,9 @@ type (
 		quorumOverride int
 		exportKSFile   string
 		passwordForKS  string
+	}
+
+	SaveData interface {
 	}
 )
 
@@ -90,7 +97,7 @@ func main() {
 	vaultID := flag.String("vault-id", "", "(Optional) The vault id to export the keys for.")
 	nonceOverride := flag.Int("nonce", -1, "(Optional) Reshare Nonce override. Try it if the tool advises you to do so.")
 	quorumOverride := flag.Int("threshold", 0, "(Optional) Vault Quorum (Threshold) override. Try it if the tool advises you to do so.")
-	exportKSFile := flag.String("export", "wallet.json", "(Optional) Filename to export a Ethereum/MetaMask wallet v3 JSON file to.")
+	exportKSFile := flag.String("export", "wallet.json", "(Optional) Filename to export a Ethereum/MetaMask wallet v3 JSON (for ECDSA key only) to.")
 	passwordForKS := flag.String("password", "", "(Optional) Encryption password for the Ethereum wallet v3 file; use with -export")
 
 	flag.Parse()
@@ -136,7 +143,7 @@ func main() {
 	/**
 	 * Retrieve vaults information and select a vault
 	 */
-	_, _, vaultsFormInfo, err := runTool(*vaultsDataFiles, nil, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
+	_, _, _, err, vaultsFormInfo := runTool(*vaultsDataFiles, nil, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
 	if err != nil {
 		fmt.Printf("Failed to run tool to retrieve vault information: %s", err)
 		os.Exit(1)
@@ -175,14 +182,17 @@ func main() {
 		lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("RECOVERING VAULT %s WITH ID %s\n", selectedVault.Name, selectedVault.VaultID)),
 	)
 
-	address, sk, _, err := runTool(*vaultsDataFiles, &selectedVault.VaultID, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
+	address, ecSK, edSK, err, _ := runTool(*vaultsDataFiles, &selectedVault.VaultID, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
 	if err != nil {
 		fmt.Print(errorBox(err))
 		os.Exit(1)
 		return
 	}
-	defer sk.SetInt64(0)
-	if sk == nil {
+	defer func() {
+		ecSK.SetInt64(0)
+		edSK.SetInt64(0)
+	}()
+	if ecSK == nil {
 		// only listing vaults
 		os.Exit(0)
 		return
@@ -195,15 +205,20 @@ func main() {
 	fmt.Printf("\nYour vault has been recovered. Make sure the following address matches your vault's Ethereum address:\n")
 	fmt.Printf("%s%s%s\n", ansiCodes["bold"], address, ansiCodes["reset"])
 
-	fmt.Printf("\nHere is your private key for Ethereum and Tron assets. Keep safe and do not share with anyone.\n")
-	fmt.Printf("Recovered private key (for ETH/MetaMask, TronLink): %s%s%s\n", ansiCodes["bold"], hex.EncodeToString(sk.Bytes()), ansiCodes["reset"])
+	fmt.Printf("\nHere is your private key for Ethereum and Tron assets. Keep safe and do not share.\n")
+	fmt.Printf("Recovered ECDSA private key (for ETH/MetaMask, Tron/TronLink): %s%s%s\n", ansiCodes["bold"], hex.EncodeToString(ecSK.Bytes()), ansiCodes["reset"])
 
-	fmt.Printf("\nHere are your private keys for Bitcoin assets. Keep safe and do not share with anyone.\n")
-	fmt.Printf("Recovered testnet WIF (for Electrum Wallet): %s%s%s\n", ansiCodes["bold"], toBitcoinWIF(sk.Bytes(), true, true), ansiCodes["reset"])
-	fmt.Printf("Recovered mainnet WIF (for Electrum Wallet): %s%s%s\n", ansiCodes["bold"], toBitcoinWIF(sk.Bytes(), false, true), ansiCodes["reset"])
+	fmt.Printf("\nHere are your private keys for Bitcoin assets. Keep safe and do not share.\n")
+	fmt.Printf("Recovered testnet WIF (for BTC/Electrum Wallet): %s%s%s\n", ansiCodes["bold"], toBitcoinWIF(ecSK.Bytes(), true, true), ansiCodes["reset"])
+	fmt.Printf("Recovered mainnet WIF (for BTC/Electrum Wallet): %s%s%s\n", ansiCodes["bold"], toBitcoinWIF(ecSK.Bytes(), false, true), ansiCodes["reset"])
+
+	fmt.Printf("\nHere is your private key for EDDSA based assets. Keep safe and do not share.\n")
+	fmt.Printf("Recovered EdDSA private key (for XRPL, SOL, TAO, etc.): %s%s%s\n", ansiCodes["bold"], hex.EncodeToString(edSK.Bytes()), ansiCodes["reset"])
+
+	fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.")
 }
 
-func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride *int, quorumOverride *int, exportKSFile *string, passwordForKS *string) (address string, sk *big.Int, orderedVaults []VaultPickerItem, welp error) {
+func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride *int, quorumOverride *int, exportKSFile *string, passwordForKS *string) (address string, ecdsaSK, eddsaSK *big.Int, welp error, orderedVaults []VaultPickerItem) {
 
 	if nonceOverride != nil && *nonceOverride > -1 {
 		fmt.Printf("\n⚠ Using reshare nonce override: %d. Be sure to set the threshold of the vault at this reshare point with -threshold, or recovery will produce incorrect data.\n", *nonceOverride)
@@ -219,7 +234,9 @@ func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride *in
 
 	// Internal & returned data structures
 	clearVaults := make(ClearVaultMap, len(vaultsDataFile)*16)
-	vaultAllShares := make(VaultAllShares, len(vaultsDataFile)*16) // headroom
+	vaultAllSharesECDSA := make(VaultAllSharesECDSA, len(vaultsDataFile)*16) // headroom
+	vaultAllSharesEDDSA := make(VaultAllSharesEdDSA, len(vaultsDataFile)*16)
+	vaultHasEDDSA := make(map[string]bool, len(vaultsDataFile)*16)
 	vaultLastNonces := make(map[string]int, len(vaultsDataFile)*16)
 
 	// // Do the main routine
@@ -327,75 +344,50 @@ func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride *in
 			clearVaults[vID].LastReShareNonce = lastReshareNonce
 
 			// rack up the shares
-			sharesList := clearVaults[vID].SharesLegacy
-			if sharesList == nil {
+			sharesECDSA, sharesEDDSA := clearVaults[vID].SharesLegacy, ([]string)(nil)
+			if sharesECDSA == nil {
 				for _, curve := range clearVaults[vID].Curves {
-					if curve.Algorithm == "ECDSA" {
-						sharesList = curve.Shares
-						fmt.Printf("Processing new vault \"%s\" (%s).\n", clearVaults[vID].Name, vID)
-						break
+					if strings.ToUpper(curve.Algorithm) == "ECDSA" {
+						sharesECDSA = curve.Shares
+						//fmt.Printf("Processing new vault \"%s\" (ECDSA) (%s).\n", clearVaults[vID].Name, vID)
+					} else if strings.ToUpper(curve.Algorithm) == "EDDSA" {
+						sharesEDDSA = curve.Shares
+						//fmt.Printf("Processing new vault \"%s\" (EdDSA) (%s).\n", clearVaults[vID].Name, vID)
 					}
 				}
 			} else {
 				// fmt.Printf("Processing legacy vault \"%s\" (%s).\n", clearVaults[vID].Name, vID)
 			}
-			if sharesList == nil {
-				panic(fmt.Errorf("no legacy or new shares found for vault %s %s", vID, clearVaults[vID].Name))
-			}
-			if _, ok := vaultAllShares[vID]; !ok {
-				vaultAllShares[vID] = make([]*keygen.LocalPartySaveData, 0, len(sharesList))
-			}
-			shareDatas := make([]*keygen.LocalPartySaveData, len(sharesList))
-			for j, strShare := range sharesList {
-				// handle compressed "V2" format (ECDSA)
-				hadPrefix := strings.HasPrefix(strShare, v2MagicPrefix)
-				if hadPrefix {
-					strShare = strings.TrimPrefix(strShare, v2MagicPrefix)
-					expShareID, b64Part, found := strings.Cut(strShare, "_")
-					if !found {
-						welp = errors.New("failed to split on share ID delim in V2 save data")
-						return
-					}
-					deflated, err2 := base64.StdEncoding.DecodeString(b64Part)
-					if err2 != nil {
-						welp = errors2.Wrapf(err, "failed to decode base64 part of V2 save data")
-						return
-					}
-					inflated, err2 := inflateSaveDataJSON(deflated)
-					// shareID integrity check
-					abridgedData := new(struct {
-						ShareID *big.Int `json:"shareID"`
-					})
-					if err2 = json.Unmarshal(inflated, abridgedData); err2 != nil {
-						welp = errors2.Wrapf(err, "invalid data format - is this an old backup file? (code: 4)")
-						return
-					}
-					if abridgedData.ShareID.String() != expShareID {
-						welp = fmt.Errorf("share ID mismatch in V2 save data with ShareID %s", abridgedData.ShareID)
-						return
-					}
-					strShare = string(inflated)
 
-					// log deflated vs inflated sizes in KB
-					if !justListingVaults {
-						fmt.Printf("Processing V2 share %s.\t %.1f KB → %.1f KB\n",
-							abridgedData.ShareID, float64(len(deflated))/1024, float64(len(inflated))/1024)
-					}
-				}
-				// proceed with regular json unmarshal
-				shareData := new(keygen.LocalPartySaveData)
-				if err = json.Unmarshal([]byte(strShare), shareData); err != nil {
-					welp = errors2.Wrapf(err, "invalid data format - is this an old backup file? (code: 4)")
+			// Build up shares lists
+			// - Ensure that ECDSA shares were found.
+			// - EdDSA shares may not be set for a legacy vault, so we won't catch that as a blocking issue
+			vaultSharesECDSA, vaultSharesEDDSA := make([]*ecdsa_keygen.LocalPartySaveData, 0), make([]*eddsa_keygen.LocalPartySaveData, 0)
+			// ECDSA
+			if sharesECDSA == nil {
+				welp = fmt.Errorf("no legacy or new shares found for vault %s %s", vID, clearVaults[vID].Name)
+				return
+			}
+			if vaultSharesECDSA, welp = inflateSharesForCurve[ecdsa_keygen.LocalPartySaveData](sharesECDSA, justListingVaults); welp != nil {
+				return
+			}
+			if _, ok := vaultAllSharesECDSA[vID]; !ok {
+				vaultAllSharesECDSA[vID] = make([]*ecdsa_keygen.LocalPartySaveData, 0, len(sharesECDSA))
+			}
+			vaultAllSharesECDSA[vID] = append(vaultAllSharesECDSA[vID], vaultSharesECDSA...)
+			// / ECDSA
+			// EDDSA
+			if sharesEDDSA != nil {
+				if vaultSharesEDDSA, welp = inflateSharesForCurve[eddsa_keygen.LocalPartySaveData](sharesEDDSA, justListingVaults); welp != nil {
 					return
 				}
-				// log out a variation of this line if the share is legacy
-				if !hadPrefix && !justListingVaults {
-					fmt.Printf("Processing V1 share %s.\t %.1f KB\n",
-						shareData.ShareID, float64(len(strShare))/1024)
+				if _, ok := vaultAllSharesEDDSA[vID]; !ok {
+					vaultAllSharesEDDSA[vID] = make([]*eddsa_keygen.LocalPartySaveData, 0, len(sharesEDDSA))
+					vaultHasEDDSA[vID] = true
 				}
-				shareDatas[j] = shareData
+				vaultAllSharesEDDSA[vID] = append(vaultAllSharesEDDSA[vID], vaultSharesEDDSA...)
 			}
-			vaultAllShares[vID] = append(vaultAllShares[vID], shareDatas...)
+			// / EDDSA
 		}
 
 		clear(aesKey32)
@@ -412,18 +404,23 @@ func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride *in
 	orderedVaults = make([]VaultPickerItem, 0, len(vaultIDs))
 	for _, vID := range vaultIDs {
 		vault := clearVaults[vID]
-		vaultFormData := VaultPickerItem{VaultID: vID, Name: vault.Name, Quorum: vault.Quroum, NumberOfShares: len(vaultAllShares[vID])}
+		vaultFormData := VaultPickerItem{VaultID: vID, Name: vault.Name, Quorum: vault.Quroum, NumberOfShares: len(vaultAllSharesECDSA[vID])}
 		orderedVaults = append(orderedVaults, vaultFormData)
 	}
 
 	// Just list the ID's and names?
 	if justListingVaults {
-		return "", nil, orderedVaults, nil
+		return "", nil, nil, nil, orderedVaults
 	}
 
 	println()
-	if _, ok := vaultAllShares[*vaultID]; !ok {
+	if _, ok := vaultAllSharesECDSA[*vaultID]; !ok {
 		welp = fmt.Errorf("⚠ provided files do not contain data for vault `%s` with the expected reshare nonce", *vaultID)
+		return
+	}
+	if vaultHasEDDSA[*vaultID] && len(vaultAllSharesEDDSA[*vaultID]) != len(vaultAllSharesECDSA[*vaultID]) {
+		welp = fmt.Errorf("⚠ count of EDDSA shares %d != count of ECDSA shares %d for vault `%s`",
+			len(vaultAllSharesEDDSA[*vaultID]), len(vaultAllSharesECDSA[*vaultID]), *vaultID)
 		return
 	}
 
@@ -431,46 +428,82 @@ func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride *in
 	if quorumOverride != nil && *quorumOverride > 0 {
 		tPlus1 = *quorumOverride
 	}
-	vssShares := make(vss.Shares, len(vaultAllShares[*vaultID]))
-	if len(vaultAllShares[*vaultID]) < tPlus1 {
-		welp = fmt.Errorf("⚠ not enough shares to recover the key for vault %s (need %d, have %d)", *vaultID, tPlus1, len(vaultAllShares[*vaultID]))
+	vssSharesECDSA := make(vss.Shares, len(vaultAllSharesECDSA[*vaultID]))
+	vssSharesEDDSA := make(vss.Shares, len(vaultAllSharesEDDSA[*vaultID]))
+	if len(vaultAllSharesECDSA[*vaultID]) < tPlus1 {
+		welp = fmt.Errorf("⚠ not enough shares to recover the key for vault %s (need %d, have %d)", *vaultID, tPlus1, len(vaultAllSharesECDSA[*vaultID]))
 		return
 	}
-	var share0ECDSAPubKey *ecdsa.PublicKey
-	for i, el := range vaultAllShares[*vaultID] {
-		vssShares[i] = &vss.Share{
+	var share0ECDSAPubKey, share0EDDSAPubKey *crypto.ECPoint
+	for i, el := range vaultAllSharesECDSA[*vaultID] {
+		vssSharesECDSA[i] = &vss.Share{
 			Threshold: tPlus1 - 1,
 			ID:        el.ShareID,
 			Share:     el.Xi,
 		}
 		if i == 0 {
-			share0ECDSAPubKey = el.ECDSAPub.ToBtcecPubKey().ToECDSA()
+			share0ECDSAPubKey = el.ECDSAPub
+		}
+	}
+	if vaultHasEDDSA[*vaultID] {
+		for i, el := range vaultAllSharesEDDSA[*vaultID] {
+			vssSharesEDDSA[i] = &vss.Share{
+				Threshold: tPlus1 - 1,
+				ID:        el.ShareID,
+				Share:     el.Xi,
+			}
+			if i == 0 {
+				share0EDDSAPubKey = el.EDDSAPub
+			}
 		}
 	}
 
-	if sk, welp = vssShares.ReConstruct(secp256k1.S256()); welp != nil {
+	// Re-construct the secret keys
+	if ecdsaSK, welp = vssSharesECDSA.ReConstruct(tss.S256()); welp != nil {
 		return
 	}
+	if vaultHasEDDSA[*vaultID] {
+		if eddsaSK, welp = vssSharesEDDSA.ReConstruct(tss.Edwards()); welp != nil {
+			return
+		}
+	}
 
+	// ensure the ECDSA PK matches our expected share 0 PK
 	scl := secp256k1.ModNScalar{}
-	scl.SetByteSlice(sk.Bytes())
+	scl.SetByteSlice(ecdsaSK.Bytes())
 	privKey := secp256k1.NewPrivateKey(&scl)
 	pk := privKey.PubKey()
-
-	// ensure the pk matches our expected share 0 pk
-	if !pk.ToECDSA().Equal(share0ECDSAPubKey) {
-		welp = fmt.Errorf("⚠ recovered public key did not match the expected share 0 public key! did you input the right threshold?")
+	if !pk.ToECDSA().Equal(share0ECDSAPubKey.ToBtcecPubKey().ToECDSA()) {
+		welp = fmt.Errorf("⚠ recovered ECDSA public key did not match the expected share 0 public key! did you input the right threshold?")
 		return
 	}
 
-	// encode Ethereum address
-	if _, address, welp = getTSSPubKey(pk.X(), pk.Y()); welp != nil {
+	// if applicable, ensure the EDDSA PK matches our expected share 0 PK
+	if vaultHasEDDSA[*vaultID] {
+		_, edPK, err := edwards.PrivKeyFromScalar(eddsaSK.Bytes())
+		if err != nil {
+			welp = err
+			return
+		}
+		edPKPt, err := crypto.NewECPoint(tss.Edwards(), edPK.X, edPK.Y)
+		if err != nil {
+			welp = err
+			return
+		}
+		if !edPKPt.Equals(share0EDDSAPubKey) {
+			welp = fmt.Errorf("⚠ recovered EdDSA public key did not match the expected share 0 public key! did you input the right threshold?")
+			return
+		}
+	}
+
+	// encode Ethereum address for human sanity check
+	if _, address, welp = getTSSPubKeyForEthereum(pk.X(), pk.Y()); welp != nil {
 		return
 	}
 
 	// write out keystore file
 	if exportKSFile != nil && len(*exportKSFile) > 0 {
-		if passwordForKS != nil && len(*passwordForKS) == 0 {
+		if passwordForKS == nil || len(*passwordForKS) == 0 {
 			fmt.Printf("NOTE: -password flag is required to export wallet v3 file `%s`. A wallet v3 file will not be created this time.\n\n", *exportKSFile)
 			return
 		}
@@ -493,12 +526,64 @@ func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride *in
 		if welp = os.WriteFile(*exportKSFile, keyfile, os.ModePerm); welp != nil {
 			return
 		}
-		fmt.Printf("\nWrote a MetaMask wallet v3 file to: %s.\n", *exportKSFile)
+		fmt.Printf("\nWrote a MetaMask wallet v3 (for ECDSA key only) to: %s.\n", *exportKSFile)
 	}
-	return address, sk, orderedVaults, nil
+	return address, ecdsaSK, eddsaSK, nil, orderedVaults
 }
 
-func getTSSPubKey(x, y *big.Int) (*secp256k1.PublicKey, string, error) {
+func inflateSharesForCurve[T SaveData](shares []string, justListingVaults bool) ([]*T, error) {
+	shareDatas := make([]*T, len(shares))
+	for j, strShare := range shares {
+		// handle compressed "V2" format (ECDSA)
+		hadPrefix := strings.HasPrefix(strShare, v2MagicPrefix)
+		if hadPrefix {
+			strShare = strings.TrimPrefix(strShare, v2MagicPrefix)
+			expShareID, b64Part, found := strings.Cut(strShare, "_")
+			if !found {
+				err := errors.New("failed to split on share ID delim in V2 save data")
+				return nil, err
+			}
+			deflated, err := base64.StdEncoding.DecodeString(b64Part)
+			if err != nil {
+				err2 := errors2.Wrapf(err, "failed to decode base64 part of V2 save data")
+				return nil, err2
+			}
+			inflated, err := inflateSaveDataJSON(deflated)
+			if err != nil {
+				return nil, err
+			}
+			// shareID integrity check
+			abridgedData := new(struct {
+				ShareID *big.Int `json:"shareID"`
+			})
+			if err = json.Unmarshal(inflated, abridgedData); err != nil {
+				err2 := errors2.Wrapf(err, "invalid data format - is this an old backup file? (code: 4)")
+				return nil, err2
+			}
+			if abridgedData.ShareID.String() != expShareID {
+				err = fmt.Errorf("share ID mismatch in V2 save data with ShareID %s", abridgedData.ShareID)
+				return nil, err
+			}
+			strShare = string(inflated)
+
+			// log deflated vs inflated sizes in KB
+			if !justListingVaults {
+				fmt.Printf("Processing V2 share %s.\t %.1f KB → %.1f KB\n",
+					abridgedData.ShareID, float64(len(deflated))/1024, float64(len(inflated))/1024)
+			}
+		}
+		// proceed with regular json unmarshal
+		shareData := new(T)
+		if err := json.Unmarshal([]byte(strShare), shareData); err != nil {
+			err2 := errors2.Wrapf(err, "invalid data format - is this an old backup file? (code: 4)")
+			return nil, err2
+		}
+		shareDatas[j] = shareData
+	}
+	return shareDatas, nil
+}
+
+func getTSSPubKeyForEthereum(x, y *big.Int) (*secp256k1.PublicKey, string, error) {
 	if x == nil || y == nil {
 		return nil, "", errors.New("invalid public key coordinates")
 	}

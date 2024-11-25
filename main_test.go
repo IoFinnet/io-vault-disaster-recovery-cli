@@ -28,7 +28,7 @@ func TestTool_New_V2_List(t *testing.T) {
 	}
 
 	// use the correct file path for tests
-	address, sk, vaultFormData, err := runTool(files, nil, nil, nil, nil, nil)
+	address, sk, _, err, vaultFormData := runTool(files, nil, nil, nil, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -74,7 +74,7 @@ func TestTool_New_V2_Export_lqns(t *testing.T) {
 		{File: "./test-files/new_u44.json", Mnemonics: mmNewU44},
 	}
 
-	address, sk, vaultsFormData, err := runTool(files, &vaultID, nil, nil, nil, nil)
+	address, sk, _, err, vaultsFormData := runTool(files, &vaultID, nil, nil, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -99,7 +99,7 @@ func TestTool_Legacy_V2_List(t *testing.T) {
 	}
 
 	// use the correct file path for tests
-	address, sk, vaultsFormData, err := runTool(files, nil, nil, nil, nil, nil)
+	address, sk, _, err, vaultsFormData := runTool(files, nil, nil, nil, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -125,7 +125,7 @@ func TestTool_Legacy_V2_Export_c20x(t *testing.T) {
 		{File: "./test-files/v2.json", Mnemonics: mmV2},
 	}
 
-	address, sk, vaultsFormData, err := runTool(files, &vaultID, nil, nil, nil, nil)
+	address, sk, _, err, vaultsFormData := runTool(files, &vaultID, nil, nil, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -151,7 +151,7 @@ func TestTool_Legacy_V1_IL_List(t *testing.T) {
 		{File: "./test-files/l.json", Mnemonics: mmL},
 	}
 
-	address, sk, vaultsFormData, err := runTool(files, nil, nil, nil, nil, nil)
+	address, sk, _, err, vaultsFormData := runTool(files, nil, nil, nil, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -181,7 +181,7 @@ func TestTool_Legacy_V1_IL_Export_m0k(t *testing.T) {
 		{File: "./test-files/l.json", Mnemonics: mmL},
 	}
 
-	address, sk, vaultFormData, err := runTool(files, &vaultID, nil, nil, nil, nil)
+	address, sk, _, err, vaultFormData := runTool(files, &vaultID, nil, nil, nil, nil)
 
 	if !assert.NoError(t, err) {
 		return
@@ -210,7 +210,7 @@ func TestTool_Legacy_V1_ILM_List(t *testing.T) {
 		{File: "./test-files/l.json", Mnemonics: mmL},
 	}
 
-	address, sk, vaultsFormData, err := runTool(files, nil, nil, nil, nil, nil)
+	address, sk, _, err, vaultsFormData := runTool(files, nil, nil, nil, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -241,7 +241,7 @@ func TestTool_Legacy_V1_ILM_Export_m0k(t *testing.T) {
 		{File: "./test-files/l.json", Mnemonics: mmL},
 	}
 
-	address, sk, vaultsFormData, err := runTool(files, &vaultID, nil, nil, nil, nil)
+	address, sk, _, err, vaultsFormData := runTool(files, &vaultID, nil, nil, nil, nil)
 
 	if !assert.NoError(t, err) {
 		return
