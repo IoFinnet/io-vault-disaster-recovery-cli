@@ -202,7 +202,7 @@ func main() {
 	fmt.Printf("%s%s    Success!    %s\n", ansiCodes["darkGreenBG"], ansiCodes["bold"], ansiCodes["reset"])
 	fmt.Printf("%s%s                %s\n", ansiCodes["darkGreenBG"], ansiCodes["bold"], ansiCodes["reset"])
 
-	fmt.Printf("\nYour vault has been recovered. Make sure the following address matches your vault's Ethereum address:\n")
+	fmt.Printf("\nYour vault has been recovered. Make sure this address matches your vault's Ethereum address:\n")
 	fmt.Printf("%s%s%s\n", ansiCodes["bold"], address, ansiCodes["reset"])
 
 	fmt.Printf("\nHere is your private key for Ethereum and Tron assets. Keep safe and do not share.\n")
@@ -599,6 +599,8 @@ func getTSSPubKeyForEthereum(x, y *big.Int) (*secp256k1.PublicKey, string, error
 	sum := hash.Sum(nil)
 	addr := fmt.Sprintf("0x%s", hex.EncodeToString(sum[len(sum)-20:]))
 
+	// render the address in "checksum" format (mix of uppercase and lowercase chars)
+	addr = common.HexToAddress(addr).Hex()
 	return pubKey, addr, nil
 }
 

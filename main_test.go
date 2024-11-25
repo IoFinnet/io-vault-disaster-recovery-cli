@@ -87,7 +87,7 @@ func TestTool_New_V2_Export_lqns(t *testing.T) {
 	if !assert.Equal(t, vaultID, vaultsFormData[0].VaultID) {
 		return
 	}
-	if !assert.Equal(t, "0x620ac72121234f1b313bd4e8b78c81323502679a", address) {
+	if !assert.Equal(t, "0x620Ac72121234f1b313BD4e8b78C81323502679A", address) {
 		return
 	}
 	if !assert.Equal(t, "4cc05b1d3216da8ef91729744159019b25ea1ed5932e387199f1de6ff6667ac2",
@@ -213,7 +213,7 @@ func TestTool_Legacy_V2_Export_c20x(t *testing.T) {
 	if !assert.Equal(t, vaultID, vaultsFormData[0].VaultID) {
 		return
 	}
-	if !assert.Equal(t, "0x66e36b136fb8b2c98c72eec8ae02d531e526f454", address) {
+	if !assert.Equal(t, "0x66e36b136fb8b2C98c72eEC8Ae02D531e526f454", address) {
 		return
 	}
 	if !assert.Equal(t, "9ca4dc783e108938e81b06d76d7b74ec4488e1acc9c569eedfaf4c949c3531d7",
@@ -275,7 +275,7 @@ func TestTool_Legacy_V1_IL_Export_m0k(t *testing.T) {
 	if !assert.Equal(t, vaultID, vaultIDs[0]) {
 		return
 	}
-	if !assert.Equal(t, "0x66ee83f83002b01459b750233f7b21744e679182", address) {
+	if !assert.Equal(t, "0x66EE83F83002b01459B750233F7B21744E679182", address) {
 		return
 	}
 	if !assert.Equal(t, "7d3c016f339f8cc797ee35502a5c93416d47bdd04360d22ea4fcaf85cec229b3",
@@ -338,7 +338,7 @@ func TestTool_Legacy_V1_ILM_Export_m0k(t *testing.T) {
 	if !assert.Equal(t, vaultID, vaultsFormData[0].VaultID) {
 		return
 	}
-	if !assert.Equal(t, "0x66ee83f83002b01459b750233f7b21744e679182", address) {
+	if !assert.Equal(t, "0x66EE83F83002b01459B750233F7B21744E679182", address) {
 		return
 	}
 	if !assert.Equal(t, "7d3c016f339f8cc797ee35502a5c93416d47bdd04360d22ea4fcaf85cec229b3",
