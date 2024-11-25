@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -29,7 +30,7 @@ const (
 )
 
 func TestTool_New_V2_List(t *testing.T) {
-	files := []VaultsDataFile{
+	files := []ui.VaultsDataFile{
 		{File: "./test-files/new_bvn.json", Mnemonics: mmNewBvn},
 		{File: "./test-files/new_x2q.json", Mnemonics: mmNewX2q},
 		{File: "./test-files/new_u44.json", Mnemonics: mmNewU44},
@@ -76,7 +77,7 @@ func TestTool_New_V2_Export_lqns(t *testing.T) {
 	// use the correct file path for tests
 	vaultID := "yz5x2a7zhwwt7r0lv4gklqns"
 
-	files := []VaultsDataFile{
+	files := []ui.VaultsDataFile{
 		{File: "./test-files/new_bvn.json", Mnemonics: mmNewBvn},
 		{File: "./test-files/new_x2q.json", Mnemonics: mmNewX2q},
 		{File: "./test-files/new_u44.json", Mnemonics: mmNewU44},
@@ -106,7 +107,7 @@ func TestTool_New_V2_Export_lqns(t *testing.T) {
 }
 
 func TestTool_NewSingle_V2_List(t *testing.T) {
-	files := []VaultsDataFile{
+	files := []ui.VaultsDataFile{
 		{File: "./test-files/new_single.json", Mnemonics: mmNewSingle},
 	}
 	// use the correct file path for tests
@@ -130,7 +131,7 @@ func TestTool_NewSingle_V2_List(t *testing.T) {
 }
 
 func TestTool_NewSingle_V2_List_BadMnemonic(t *testing.T) {
-	files := []VaultsDataFile{
+	files := []ui.VaultsDataFile{
 		{File: "./test-files/new_single.json", Mnemonics: mmV2},
 	}
 	// use the correct file path for tests
@@ -144,7 +145,7 @@ func TestTool_NewSingle_V2_Export_qvl5(t *testing.T) {
 	// use the correct file path for tests
 	vaultID := "phrot42ltzawmn7nrm7mqvl5"
 
-	files := []VaultsDataFile{
+	files := []ui.VaultsDataFile{
 		{File: "./test-files/new_single.json", Mnemonics: mmNewSingle},
 	}
 	_, ecSK, edSK, vaultsFormData, err := runTool(files, &vaultID, nil, nil, nil, nil)
@@ -171,7 +172,7 @@ func TestTool_NewSingle_V2_Export_qvl5_BadMnemonic(t *testing.T) {
 	// use the correct file path for tests
 	vaultID := "phrot42ltzawmn7nrm7mqvl5"
 
-	files := []VaultsDataFile{
+	files := []ui.VaultsDataFile{
 		{File: "./test-files/new_single.json", Mnemonics: mmV2},
 	}
 	_, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil)
@@ -181,7 +182,7 @@ func TestTool_NewSingle_V2_Export_qvl5_BadMnemonic(t *testing.T) {
 }
 
 func TestTool_Legacy_V2_List(t *testing.T) {
-	files := []VaultsDataFile{
+	files := []ui.VaultsDataFile{
 		{File: "./test-files/v2.json", Mnemonics: mmV2},
 	}
 
@@ -208,7 +209,7 @@ func TestTool_Legacy_V2_Export_c20x(t *testing.T) {
 	// use the correct file path for tests
 	vaultID := "yjanjbgmbrptwwa9i5v9c20x"
 
-	files := []VaultsDataFile{
+	files := []ui.VaultsDataFile{
 		{File: "./test-files/v2.json", Mnemonics: mmV2},
 	}
 
@@ -237,7 +238,7 @@ func TestTool_Legacy_V2_Export_c20x(t *testing.T) {
 
 func TestTool_Legacy_V1_IL_List(t *testing.T) {
 	// use the correct file path for tests
-	files := []VaultsDataFile{
+	files := []ui.VaultsDataFile{
 		{File: "./test-files/i.json", Mnemonics: mmI},
 		{File: "./test-files/l.json", Mnemonics: mmL},
 	}
@@ -267,7 +268,7 @@ func TestTool_Legacy_V1_IL_Export_m0k(t *testing.T) {
 	// use the correct file path for tests
 	vaultID := "clujhtm9d0013wc3xso1b2m0k"
 
-	files := []VaultsDataFile{
+	files := []ui.VaultsDataFile{
 		{File: "./test-files/i.json", Mnemonics: mmI},
 		{File: "./test-files/l.json", Mnemonics: mmL},
 	}
@@ -299,7 +300,7 @@ func TestTool_Legacy_V1_IL_Export_m0k(t *testing.T) {
 
 func TestTool_Legacy_V1_ILM_List(t *testing.T) {
 	// use the correct file path for tests
-	files := []VaultsDataFile{
+	files := []ui.VaultsDataFile{
 		{File: "./test-files/i.json", Mnemonics: mmI},
 		{File: "./test-files/m.json", Mnemonics: mmM},
 		{File: "./test-files/l.json", Mnemonics: mmL},
@@ -330,7 +331,7 @@ func TestTool_Legacy_V1_ILM_Export_m0k(t *testing.T) {
 	// use the correct file path for tests
 	vaultID := "clujhtm9d0013wc3xso1b2m0k"
 
-	files := []VaultsDataFile{
+	files := []ui.VaultsDataFile{
 		{File: "./test-files/i.json", Mnemonics: mmI},
 		{File: "./test-files/m.json", Mnemonics: mmM},
 		{File: "./test-files/l.json", Mnemonics: mmL},
@@ -360,7 +361,7 @@ func TestTool_Legacy_V1_ILM_Export_m0k(t *testing.T) {
 	}
 }
 
-func vaultIdsFromFormData(vaultFormData []VaultPickerItem) []string {
+func vaultIdsFromFormData(vaultFormData []ui.VaultPickerItem) []string {
 	vaultIDs := make([]string, len(vaultFormData))
 	for i, v := range vaultFormData {
 		vaultIDs[i] = v.VaultID

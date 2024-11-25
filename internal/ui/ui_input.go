@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Full license text available in LICENSE file in repository root.
 
-package main
+package ui
 
 import (
 	"fmt"
 
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/config"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/list"
@@ -20,9 +21,9 @@ type mnemonicsFormModel struct {
 	filenames []string
 }
 
-func NewMnemonicsForm(config AppConfig) mnemonicsFormModel {
+func NewMnemonicsForm(config config.AppConfig) mnemonicsFormModel {
 	return mnemonicsFormModel{
-		filenames: config.filenames,
+		filenames: config.Filenames,
 	}
 }
 

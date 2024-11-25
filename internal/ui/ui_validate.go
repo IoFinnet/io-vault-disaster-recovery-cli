@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Full license text available in LICENSE file in repository root.
 
-package main
+package ui
 
 import (
 	"os"
 	"strings"
 
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/config"
 	errors2 "github.com/pkg/errors"
 )
 
@@ -25,8 +26,8 @@ func (v VaultsDataFile) ValidateMnemonics() error {
 	return nil
 }
 
-func ValidateFiles(appConfig AppConfig) error {
-	files := appConfig.filenames
+func ValidateFiles(appConfig config.AppConfig) error {
+	files := appConfig.Filenames
 
 	// Make sure all files exist, and ensure they're unique
 	{
@@ -44,7 +45,6 @@ func ValidateFiles(appConfig AppConfig) error {
 	}
 
 	for _, file := range files {
-
 		// read file and basic validate
 		if _, err := os.Stat(file); err != nil {
 			return errors2.Errorf("unable to see file `%s` - does it exist?: %s", file, err)

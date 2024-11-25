@@ -10,24 +10,14 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/config"
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/wif"
 	"github.com/charmbracelet/lipgloss"
 )
 
 const (
-	WORDS         = 24
 	v2MagicPrefix = "_V2_"
-)
-
-var (
-	// ANSI escape seqs for colours in the terminal
-	ansiCodes = map[string]string{
-		"bold":        "\033[1m",
-		"invertOn":    "\033[7m",
-		"darkRedBG":   "\033[41m",
-		"darkGreenBG": "\033[42m",
-		"reset":       "\033[0m",
-	}
 )
 
 func main() {
@@ -45,31 +35,31 @@ func main() {
 		return
 	}
 
-	fmt.Print(banner())
+	fmt.Print(ui.Banner())
 
-	appConfig := AppConfig{
-		filenames:      files,
-		nonceOverride:  *nonceOverride,
-		quorumOverride: *quorumOverride,
-		exportKSFile:   *exportKSFile,
-		passwordForKS:  *passwordForKS,
+	appConfig := config.AppConfig{
+		Filenames:      files,
+		NonceOverride:  *nonceOverride,
+		QuorumOverride: *quorumOverride,
+		ExportKSFile:   *exportKSFile,
+		PasswordForKS:  *passwordForKS,
 	}
 
 	// First validate that files exist and are readable
-	if err := ValidateFiles(appConfig); err != nil {
-		fmt.Print(errorBox(err))
+	if err := ui.ValidateFiles(appConfig); err != nil {
+		fmt.Print(ui.ErrorBox(err))
 		os.Exit(1)
 	}
 
 	/**
 	 * Run the steps to get the menmonics
 	 */
-	// var vaultsDataFiles []VaultsDataFile = make([]VaultsDataFile, 0, len(appConfig.filenames))
-	f := NewMnemonicsForm(appConfig)
+	// var vaultsDataFiles []VaultsDataFile = make([]VaultsDataFile, 0, len(appConfig.Filenames))
+	f := ui.NewMnemonicsForm(appConfig)
 	vaultsDataFiles, err := f.Run()
 	if err != nil {
 		// if err := f.Run(&vaultsDataFiles); err != nil {
-		fmt.Println(errorBox(err))
+		fmt.Println(ui.ErrorBox(err))
 		os.Exit(1)
 	}
 	if vaultsDataFiles == nil {
@@ -89,7 +79,7 @@ func main() {
 	var selectedVaultId string
 	// If the vault ID is not provided, run the vault picker form
 	if *vaultID == "" {
-		selectedVaultId, err = RunVaultPickerForm(vaultsFormInfo)
+		selectedVaultId, err = ui.RunVaultPickerForm(vaultsFormInfo)
 		if err != nil {
 			fmt.Printf("Failed to run form: %s\n", err)
 			os.Exit(1)
@@ -99,7 +89,7 @@ func main() {
 		selectedVaultId = *vaultID
 	}
 
-	var selectedVault VaultPickerItem
+	var selectedVault ui.VaultPickerItem
 	// Get the selected vault from the vaults form data
 	for _, vault := range vaultsFormInfo {
 		if vault.VaultID == selectedVaultId {
@@ -108,7 +98,7 @@ func main() {
 		}
 	}
 	if selectedVault.VaultID == "" {
-		fmt.Println(errorBox(fmt.Errorf("vault with ID %s not found", selectedVaultId)))
+		fmt.Println(ui.ErrorBox(fmt.Errorf("vault with ID %s not found", selectedVaultId)))
 		os.Exit(1)
 	}
 
@@ -121,7 +111,7 @@ func main() {
 
 	address, ecSK, edSK, _, err := runTool(*vaultsDataFiles, &selectedVault.VaultID, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
 	if err != nil {
-		fmt.Println(errorBox(err))
+		fmt.Println(ui.ErrorBox(err))
 		os.Exit(1)
 		return
 	}
@@ -135,26 +125,26 @@ func main() {
 		return
 	}
 
-	fmt.Printf("%s%s                %s\n", ansiCodes["darkGreenBG"], ansiCodes["bold"], ansiCodes["reset"])
-	fmt.Printf("%s%s    Success!    %s\n", ansiCodes["darkGreenBG"], ansiCodes["bold"], ansiCodes["reset"])
-	fmt.Printf("%s%s                %s\n", ansiCodes["darkGreenBG"], ansiCodes["bold"], ansiCodes["reset"])
+	fmt.Printf("%s%s                %s\n", ui.AnsiCodes["darkGreenBG"], ui.AnsiCodes["bold"], ui.AnsiCodes["reset"])
+	fmt.Printf("%s%s    Success!    %s\n", ui.AnsiCodes["darkGreenBG"], ui.AnsiCodes["bold"], ui.AnsiCodes["reset"])
+	fmt.Printf("%s%s                %s\n", ui.AnsiCodes["darkGreenBG"], ui.AnsiCodes["bold"], ui.AnsiCodes["reset"])
 
-	fmt.Printf("\nYour vault has been recovered. Make sure this address matches your vault's Ethereum address:\n")
-	fmt.Printf("%s%s%s\n", ansiCodes["bold"], address, ansiCodes["reset"])
+	fmt.Printf("\nYour vault has been recovered. Make sure this address matches your vault's Ethereum address.\n")
+	fmt.Printf("%s%s%s\n", ui.AnsiCodes["bold"], address, ui.AnsiCodes["reset"])
 
 	fmt.Printf("\nHere is your private key for Ethereum and Tron assets. Keep safe and do not share.\n")
 	fmt.Printf("Recovered ECDSA private key (for ETH/MetaMask, Tron/TronLink): %s%s%s\n",
-		ansiCodes["bold"], hex.EncodeToString(ecSK), ansiCodes["reset"])
+		ui.AnsiCodes["bold"], hex.EncodeToString(ecSK), ui.AnsiCodes["reset"])
 
 	fmt.Printf("\nHere are your private keys for Bitcoin assets. Keep safe and do not share.\n")
-	fmt.Printf("Recovered testnet WIF (for BTC/Electrum Wallet): %s%s%s\n", ansiCodes["bold"],
-		wif.ToBitcoinWIF(ecSK, true, true), ansiCodes["reset"])
-	fmt.Printf("Recovered mainnet WIF (for BTC/Electrum Wallet): %s%s%s\n", ansiCodes["bold"],
-		wif.ToBitcoinWIF(ecSK, false, true), ansiCodes["reset"])
+	fmt.Printf("Recovered testnet WIF (for BTC/Electrum Wallet): %s%s%s\n", ui.AnsiCodes["bold"],
+		wif.ToBitcoinWIF(ecSK, true, true), ui.AnsiCodes["reset"])
+	fmt.Printf("Recovered mainnet WIF (for BTC/Electrum Wallet): %s%s%s\n", ui.AnsiCodes["bold"],
+		wif.ToBitcoinWIF(ecSK, false, true), ui.AnsiCodes["reset"])
 
 	fmt.Printf("\nHere is your private key for EDDSA based assets. Keep safe and do not share.\n")
 	fmt.Printf("Recovered EdDSA/Ed25519 private key (for XRPL, SOL, TAO, etc): %s%s%s\n",
-		ansiCodes["bold"], hex.EncodeToString(edSK), ansiCodes["reset"])
+		ui.AnsiCodes["bold"], hex.EncodeToString(edSK), ui.AnsiCodes["reset"])
 
 	fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.\n")
 }

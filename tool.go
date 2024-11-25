@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/data"
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/binance-chain/tss-lib/crypto"
 	"github.com/binance-chain/tss-lib/crypto/vss"
 	ecdsa_keygen "github.com/binance-chain/tss-lib/ecdsa/keygen"
@@ -34,8 +35,8 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride, quorumOverride *int, exportKSFile, passwordForKS *string) (
-	address string, ecdsaSK, eddsaSK []byte, orderedVaults []VaultPickerItem, welp error) {
+func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride, quorumOverride *int, exportKSFile, passwordForKS *string) (
+	address string, ecdsaSK, eddsaSK []byte, orderedVaults []ui.VaultPickerItem, welp error) {
 
 	if nonceOverride != nil && *nonceOverride > -1 {
 		fmt.Printf("\n⚠ Using reshare nonce override: %d. Be sure to set the threshold of the vault at this reshare point with -threshold, or recovery will produce incorrect data.\n", *nonceOverride)
@@ -218,10 +219,10 @@ func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride, qu
 	sort.Strings(vaultIDs)
 
 	// Create the list of ordered vaults from the ordered vault IDs
-	orderedVaults = make([]VaultPickerItem, 0, len(vaultIDs))
+	orderedVaults = make([]ui.VaultPickerItem, 0, len(vaultIDs))
 	for _, vID := range vaultIDs {
 		vault := clearVaults[vID]
-		vaultFormData := VaultPickerItem{VaultID: vID, Name: vault.Name, Quorum: vault.Quroum, NumberOfShares: len(vaultAllSharesECDSA[vID])}
+		vaultFormData := ui.VaultPickerItem{VaultID: vID, Name: vault.Name, Quorum: vault.Quroum, NumberOfShares: len(vaultAllSharesECDSA[vID])}
 		orderedVaults = append(orderedVaults, vaultFormData)
 	}
 

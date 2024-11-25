@@ -43,14 +43,6 @@ type (
 	VaultAllSharesECDSA map[string][]*ecdsa_keygen.LocalPartySaveData
 	VaultAllSharesEdDSA map[string][]*eddsa_keygen.LocalPartySaveData
 
-	AppConfig struct {
-		filenames      []string
-		nonceOverride  int
-		quorumOverride int
-		exportKSFile   string
-		passwordForKS  string
-	}
-
 	SaveData interface {
 	}
 )
