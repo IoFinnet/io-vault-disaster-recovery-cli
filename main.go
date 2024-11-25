@@ -215,7 +215,7 @@ func main() {
 	fmt.Printf("\nHere is your private key for EDDSA based assets. Keep safe and do not share.\n")
 	fmt.Printf("Recovered EdDSA private key (for XRPL, SOL, TAO, etc.): %s%s%s\n", ansiCodes["bold"], hex.EncodeToString(edSK.Bytes()), ansiCodes["reset"])
 
-	fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.")
+	fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.\n")
 }
 
 func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride, quorumOverride *int, exportKSFile, passwordForKS *string) (address string, ecdsaSK, eddsaSK *big.Int, orderedVaults []VaultPickerItem, welp error) {
@@ -607,7 +607,7 @@ func banner() string {
 	b := "\n"
 	b += fmt.Sprintf("%s%s                                     %s\n", ansiCodes["invertOn"], ansiCodes["bold"], ansiCodes["reset"])
 	b += fmt.Sprintf("%s%s     io.finnet Key Recovery Tool     %s\n", ansiCodes["invertOn"], ansiCodes["bold"], ansiCodes["reset"])
-	b += fmt.Sprintf("%s%s               v4.0.6                %s\n", ansiCodes["invertOn"], ansiCodes["bold"], ansiCodes["reset"])
+	b += fmt.Sprintf("%s%s               v5.0.0                %s\n", ansiCodes["invertOn"], ansiCodes["bold"], ansiCodes["reset"])
 	b += fmt.Sprintf("%s%s                                     %s\n", ansiCodes["invertOn"], ansiCodes["bold"], ansiCodes["reset"])
 	b += "\n"
 	return b
