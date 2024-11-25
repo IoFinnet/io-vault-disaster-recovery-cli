@@ -101,7 +101,7 @@ func main() {
 	vaultID := flag.String("vault-id", "", "(Optional) The vault id to export the keys for.")
 	nonceOverride := flag.Int("nonce", -1, "(Optional) Reshare Nonce override. Try it if the tool advises you to do so.")
 	quorumOverride := flag.Int("threshold", 0, "(Optional) Vault Quorum (Threshold) override. Try it if the tool advises you to do so.")
-	exportKSFile := flag.String("export", "wallet.json", "(Optional) Filename to export a Ethereum/MetaMask wallet v3 JSON (for ECDSA key only) to.")
+	exportKSFile := flag.String("export", "wallet.json", "(Optional) Filename to export a Ethereum/MetaMask wallet v3 JSON to - for ECDSA key only.")
 	passwordForKS := flag.String("password", "", "(Optional) Encryption password for the Ethereum wallet v3 file; use with -export")
 
 	flag.Parse()
