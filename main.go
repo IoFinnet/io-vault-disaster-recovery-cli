@@ -143,7 +143,7 @@ func main() {
 	/**
 	 * Retrieve vaults information and select a vault
 	 */
-	_, _, _, err, vaultsFormInfo := runTool(*vaultsDataFiles, nil, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
+	_, _, _, vaultsFormInfo, err := runTool(*vaultsDataFiles, nil, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
 	if err != nil {
 		fmt.Printf("Failed to run tool to retrieve vault information: %s", err)
 		os.Exit(1)
@@ -182,7 +182,7 @@ func main() {
 		lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("RECOVERING VAULT %s WITH ID %s\n", selectedVault.Name, selectedVault.VaultID)),
 	)
 
-	address, ecSK, edSK, err, _ := runTool(*vaultsDataFiles, &selectedVault.VaultID, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
+	address, ecSK, edSK, _, err := runTool(*vaultsDataFiles, &selectedVault.VaultID, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
 	if err != nil {
 		fmt.Print(errorBox(err))
 		os.Exit(1)
@@ -218,7 +218,7 @@ func main() {
 	fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.")
 }
 
-func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride *int, quorumOverride *int, exportKSFile *string, passwordForKS *string) (address string, ecdsaSK, eddsaSK *big.Int, welp error, orderedVaults []VaultPickerItem) {
+func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride, quorumOverride *int, exportKSFile, passwordForKS *string) (address string, ecdsaSK, eddsaSK *big.Int, orderedVaults []VaultPickerItem, welp error) {
 
 	if nonceOverride != nil && *nonceOverride > -1 {
 		fmt.Printf("\n⚠ Using reshare nonce override: %d. Be sure to set the threshold of the vault at this reshare point with -threshold, or recovery will produce incorrect data.\n", *nonceOverride)
@@ -410,7 +410,7 @@ func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride *in
 
 	// Just list the ID's and names?
 	if justListingVaults {
-		return "", nil, nil, nil, orderedVaults
+		return "", nil, nil, orderedVaults, nil
 	}
 
 	println()
@@ -480,6 +480,7 @@ func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride *in
 
 	// if applicable, ensure the EDDSA PK matches our expected share 0 PK
 	if vaultHasEDDSA[*vaultID] {
+		fmt.Printf("EdDSA SK: %s\n", hex.EncodeToString(eddsaSK.Bytes()))
 		_, edPK, err := edwards.PrivKeyFromScalar(eddsaSK.Bytes())
 		if err != nil {
 			welp = err
@@ -528,7 +529,7 @@ func runTool(vaultsDataFile []VaultsDataFile, vaultID *string, nonceOverride *in
 		}
 		fmt.Printf("\nWrote a MetaMask wallet v3 (for ECDSA key only) to: %s.\n", *exportKSFile)
 	}
-	return address, ecdsaSK, eddsaSK, nil, orderedVaults
+	return address, ecdsaSK, eddsaSK, orderedVaults, nil
 }
 
 func inflateSharesForCurve[T SaveData](shares []string, justListingVaults bool) ([]*T, error) {
