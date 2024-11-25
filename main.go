@@ -145,7 +145,7 @@ func main() {
 	 */
 	_, _, _, vaultsFormInfo, err := runTool(*vaultsDataFiles, nil, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
 	if err != nil {
-		fmt.Printf("Failed to run tool to retrieve vault information: %s", err)
+		fmt.Printf("Failed to run tool to retrieve vault information: %s\n", err)
 		os.Exit(1)
 	}
 
@@ -154,7 +154,7 @@ func main() {
 	if *vaultID == "" {
 		selectedVaultId, err = RunVaultPickerForm(vaultsFormInfo)
 		if err != nil {
-			fmt.Printf("Failed to run form: %s", err)
+			fmt.Printf("Failed to run form: %s\n", err)
 			os.Exit(1)
 		}
 	} else {
@@ -171,7 +171,7 @@ func main() {
 		}
 	}
 	if selectedVault.VaultID == "" {
-		fmt.Print(errorBox(fmt.Errorf("vault with ID %s not found", selectedVaultId)))
+		fmt.Println(errorBox(fmt.Errorf("vault with ID %s not found", selectedVaultId)))
 		os.Exit(1)
 	}
 
@@ -179,12 +179,12 @@ func main() {
 	 * Run the recovery for the chosen vault
 	 */
 	fmt.Println(
-		lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("RECOVERING VAULT %s WITH ID %s\n", selectedVault.Name, selectedVault.VaultID)),
+		lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("RECOVERING VAULT \"%s\" WITH ID %s\n", selectedVault.Name, selectedVault.VaultID)),
 	)
 
 	address, ecSK, edSK, _, err := runTool(*vaultsDataFiles, &selectedVault.VaultID, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
 	if err != nil {
-		fmt.Print(errorBox(err))
+		fmt.Println(errorBox(err))
 		os.Exit(1)
 		return
 	}
