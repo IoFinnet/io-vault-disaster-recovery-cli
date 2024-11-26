@@ -19,14 +19,14 @@ type (
 		File      string
 		Mnemonics string
 	}
-)
 
-/**
- * mnemmonicsFormModel is a struct that represents the model for the mnemonics entry.
- */
-type mnemonicsFormModel struct {
-	filenames []string
-}
+	/**
+	 * mnemmonicsFormModel is a struct that represents the model for the mnemonics entry.
+	 */
+	mnemonicsFormModel struct {
+		filenames []string
+	}
+)
 
 func NewMnemonicsForm(config config.AppConfig) mnemonicsFormModel {
 	return mnemonicsFormModel{
