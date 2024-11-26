@@ -1,9 +1,15 @@
+// Copyright (C) 2021 io finnet group, inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Full license text available in LICENSE file in repository root.
+
 package main
 
 import (
 	"encoding/hex"
+	"math/big"
 	"testing"
 
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -18,17 +24,20 @@ const (
 	mmNewBvn = "domain damp hill depth label eye erode dutch impulse betray floor donate bonus hover bitter ring unfold poet identify capital combine question profit april"
 	mmNewX2q = "found midnight praise exhibit weather neutral inmate strong grass famous blind pet frozen shock avocado ring fringe planet opera license stand coil beauty capable"
 	mmNewU44 = "aerobic foam smooth immune card tragic window myth planet notice piece agree add target tortoise weather kite track spot dish dignity twice gadget spell"
+
+	// Single Signer test case mnemonics
+	mmNewSingle = "jacket zone rotate merry forward paper cruel forget train prevent teach bitter lumber razor uncle stairs finger chief curtain render tray tower odor garbage"
 )
 
 func TestTool_New_V2_List(t *testing.T) {
-	files := []VaultsDataFile{
+	files := []ui.VaultsDataFile{
 		{File: "./test-files/new_bvn.json", Mnemonics: mmNewBvn},
 		{File: "./test-files/new_x2q.json", Mnemonics: mmNewX2q},
 		{File: "./test-files/new_u44.json", Mnemonics: mmNewU44},
 	}
 
 	// use the correct file path for tests
-	address, sk, vaultFormData, err := runTool(files, nil, nil, nil, nil, nil)
+	address, ecSK, edSK, vaultFormData, err := runTool(files, nil, nil, nil, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -59,7 +68,7 @@ func TestTool_New_V2_List(t *testing.T) {
 	if !assert.Empty(t, address) {
 		return
 	}
-	if !assert.Nil(t, sk) {
+	if !assert.Nil(t, ecSK) || !assert.Nil(t, edSK) {
 		return
 	}
 }
@@ -68,13 +77,13 @@ func TestTool_New_V2_Export_lqns(t *testing.T) {
 	// use the correct file path for tests
 	vaultID := "yz5x2a7zhwwt7r0lv4gklqns"
 
-	files := []VaultsDataFile{
+	files := []ui.VaultsDataFile{
 		{File: "./test-files/new_bvn.json", Mnemonics: mmNewBvn},
 		{File: "./test-files/new_x2q.json", Mnemonics: mmNewX2q},
 		{File: "./test-files/new_u44.json", Mnemonics: mmNewU44},
 	}
 
-	address, sk, vaultsFormData, err := runTool(files, &vaultID, nil, nil, nil, nil)
+	address, ecSK, edSK, vaultsFormData, err := runTool(files, &vaultID, nil, nil, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -84,22 +93,101 @@ func TestTool_New_V2_Export_lqns(t *testing.T) {
 	if !assert.Equal(t, vaultID, vaultsFormData[0].VaultID) {
 		return
 	}
-	if !assert.Equal(t, "0x620ac72121234f1b313bd4e8b78c81323502679a", address) {
+	if !assert.Equal(t, "0x620Ac72121234f1b313BD4e8b78C81323502679A", address) {
 		return
 	}
 	if !assert.Equal(t, "4cc05b1d3216da8ef91729744159019b25ea1ed5932e387199f1de6ff6667ac2",
-		hex.EncodeToString(sk.Bytes())) {
+		hex.EncodeToString(ecSK)) {
+		return
+	}
+	if !assert.Equal(t, "0e6f0e12d72483d32255000d01242fa4e179b9bbfa060de26cfb9c84e1d02d9e",
+		hex.EncodeToString(edSK)) {
+		return
+	}
+}
+
+func TestTool_NewSingle_V2_List(t *testing.T) {
+	files := []ui.VaultsDataFile{
+		{File: "./test-files/new_single.json", Mnemonics: mmNewSingle},
+	}
+	// use the correct file path for tests
+	address, _, edSK, vaultFormData, err := runTool(files, nil, nil, nil, nil, nil)
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Len(t, vaultFormData, 1) {
+		return
+	}
+	vaultIDs := vaultIdsFromFormData(vaultFormData)
+	if !assert.Contains(t, vaultIDs, "phrot42ltzawmn7nrm7mqvl5", "vaults must contain expected vaultId qvl5") {
+		return
+	}
+	if !assert.Empty(t, address) {
+		return
+	}
+	if !assert.Nil(t, edSK) {
+		return
+	}
+}
+
+func TestTool_NewSingle_V2_List_BadMnemonic(t *testing.T) {
+	files := []ui.VaultsDataFile{
+		{File: "./test-files/new_single.json", Mnemonics: mmV2},
+	}
+	// use the correct file path for tests
+	_, _, _, _, err := runTool(files, nil, nil, nil, nil, nil)
+	if !assert.Error(t, err) {
+		return
+	}
+}
+
+func TestTool_NewSingle_V2_Export_qvl5(t *testing.T) {
+	// use the correct file path for tests
+	vaultID := "phrot42ltzawmn7nrm7mqvl5"
+
+	files := []ui.VaultsDataFile{
+		{File: "./test-files/new_single.json", Mnemonics: mmNewSingle},
+	}
+	_, ecSK, edSK, vaultsFormData, err := runTool(files, &vaultID, nil, nil, nil, nil)
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Len(t, vaultsFormData, 1) {
+		return
+	}
+	if !assert.Equal(t, vaultID, vaultsFormData[0].VaultID) {
+		return
+	}
+	if !assert.Equal(t, "0a8376f6cb75d7e4197d35d2f7254f60f08827d5604589ea57843c3f754983b7",
+		hex.EncodeToString(ecSK)) {
+		return
+	}
+	if !assert.Equal(t, "04523b4b19d426517fb20b51935bc969900e016d26da0a3357f4cb1af57d8e44",
+		hex.EncodeToString(edSK)) {
+		return
+	}
+}
+
+func TestTool_NewSingle_V2_Export_qvl5_BadMnemonic(t *testing.T) {
+	// use the correct file path for tests
+	vaultID := "phrot42ltzawmn7nrm7mqvl5"
+
+	files := []ui.VaultsDataFile{
+		{File: "./test-files/new_single.json", Mnemonics: mmV2},
+	}
+	_, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil)
+	if !assert.Error(t, err) {
 		return
 	}
 }
 
 func TestTool_Legacy_V2_List(t *testing.T) {
-	files := []VaultsDataFile{
+	files := []ui.VaultsDataFile{
 		{File: "./test-files/v2.json", Mnemonics: mmV2},
 	}
 
 	// use the correct file path for tests
-	address, sk, vaultsFormData, err := runTool(files, nil, nil, nil, nil, nil)
+	address, ecSK, edSK, vaultsFormData, err := runTool(files, nil, nil, nil, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -112,7 +200,7 @@ func TestTool_Legacy_V2_List(t *testing.T) {
 	if !assert.Empty(t, address) {
 		return
 	}
-	if !assert.Nil(t, sk) {
+	if !assert.Nil(t, ecSK) || !assert.Nil(t, edSK) {
 		return
 	}
 }
@@ -121,11 +209,11 @@ func TestTool_Legacy_V2_Export_c20x(t *testing.T) {
 	// use the correct file path for tests
 	vaultID := "yjanjbgmbrptwwa9i5v9c20x"
 
-	files := []VaultsDataFile{
+	files := []ui.VaultsDataFile{
 		{File: "./test-files/v2.json", Mnemonics: mmV2},
 	}
 
-	address, sk, vaultsFormData, err := runTool(files, &vaultID, nil, nil, nil, nil)
+	address, ecSK, edSK, vaultsFormData, err := runTool(files, &vaultID, nil, nil, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -135,23 +223,27 @@ func TestTool_Legacy_V2_Export_c20x(t *testing.T) {
 	if !assert.Equal(t, vaultID, vaultsFormData[0].VaultID) {
 		return
 	}
-	if !assert.Equal(t, "0x66e36b136fb8b2c98c72eec8ae02d531e526f454", address) {
+	if !assert.Equal(t, "0x66e36b136fb8b2C98c72eEC8Ae02D531e526f454", address) {
 		return
 	}
 	if !assert.Equal(t, "9ca4dc783e108938e81b06d76d7b74ec4488e1acc9c569eedfaf4c949c3531d7",
-		hex.EncodeToString(sk.Bytes())) {
+		hex.EncodeToString(ecSK)) {
+		return
+	}
+	// no EdDSA key for this vault
+	if !assert.Nil(t, edSK) {
 		return
 	}
 }
 
 func TestTool_Legacy_V1_IL_List(t *testing.T) {
 	// use the correct file path for tests
-	files := []VaultsDataFile{
+	files := []ui.VaultsDataFile{
 		{File: "./test-files/i.json", Mnemonics: mmI},
 		{File: "./test-files/l.json", Mnemonics: mmL},
 	}
 
-	address, sk, vaultsFormData, err := runTool(files, nil, nil, nil, nil, nil)
+	address, ecSK, edSK, vaultsFormData, err := runTool(files, nil, nil, nil, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -167,7 +259,7 @@ func TestTool_Legacy_V1_IL_List(t *testing.T) {
 	if !assert.Empty(t, address) {
 		return
 	}
-	if !assert.Nil(t, sk) {
+	if !assert.Nil(t, ecSK) || !assert.Nil(t, edSK) {
 		return
 	}
 }
@@ -176,12 +268,12 @@ func TestTool_Legacy_V1_IL_Export_m0k(t *testing.T) {
 	// use the correct file path for tests
 	vaultID := "clujhtm9d0013wc3xso1b2m0k"
 
-	files := []VaultsDataFile{
+	files := []ui.VaultsDataFile{
 		{File: "./test-files/i.json", Mnemonics: mmI},
 		{File: "./test-files/l.json", Mnemonics: mmL},
 	}
 
-	address, sk, vaultFormData, err := runTool(files, &vaultID, nil, nil, nil, nil)
+	address, ecSK, edSK, vaultFormData, err := runTool(files, &vaultID, nil, nil, nil, nil)
 
 	if !assert.NoError(t, err) {
 		return
@@ -193,24 +285,28 @@ func TestTool_Legacy_V1_IL_Export_m0k(t *testing.T) {
 	if !assert.Equal(t, vaultID, vaultIDs[0]) {
 		return
 	}
-	if !assert.Equal(t, "0x66ee83f83002b01459b750233f7b21744e679182", address) {
+	if !assert.Equal(t, "0x66EE83F83002b01459B750233F7B21744E679182", address) {
 		return
 	}
 	if !assert.Equal(t, "7d3c016f339f8cc797ee35502a5c93416d47bdd04360d22ea4fcaf85cec229b3",
-		hex.EncodeToString(sk.Bytes())) {
+		hex.EncodeToString(ecSK)) {
+		return
+	}
+	// no EdDSA key for this vault
+	if !assert.Nil(t, edSK) {
 		return
 	}
 }
 
 func TestTool_Legacy_V1_ILM_List(t *testing.T) {
 	// use the correct file path for tests
-	files := []VaultsDataFile{
+	files := []ui.VaultsDataFile{
 		{File: "./test-files/i.json", Mnemonics: mmI},
 		{File: "./test-files/m.json", Mnemonics: mmM},
 		{File: "./test-files/l.json", Mnemonics: mmL},
 	}
 
-	address, sk, vaultsFormData, err := runTool(files, nil, nil, nil, nil, nil)
+	address, ecSK, edSK, vaultsFormData, err := runTool(files, nil, nil, nil, nil, nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -226,7 +322,7 @@ func TestTool_Legacy_V1_ILM_List(t *testing.T) {
 	if !assert.Empty(t, address) {
 		return
 	}
-	if !assert.Nil(t, sk) {
+	if !assert.Nil(t, ecSK) || !assert.Nil(t, edSK) {
 		return
 	}
 }
@@ -235,13 +331,13 @@ func TestTool_Legacy_V1_ILM_Export_m0k(t *testing.T) {
 	// use the correct file path for tests
 	vaultID := "clujhtm9d0013wc3xso1b2m0k"
 
-	files := []VaultsDataFile{
+	files := []ui.VaultsDataFile{
 		{File: "./test-files/i.json", Mnemonics: mmI},
 		{File: "./test-files/m.json", Mnemonics: mmM},
 		{File: "./test-files/l.json", Mnemonics: mmL},
 	}
 
-	address, sk, vaultsFormData, err := runTool(files, &vaultID, nil, nil, nil, nil)
+	address, ecSK, edSK, vaultsFormData, err := runTool(files, &vaultID, nil, nil, nil, nil)
 
 	if !assert.NoError(t, err) {
 		return
@@ -252,19 +348,49 @@ func TestTool_Legacy_V1_ILM_Export_m0k(t *testing.T) {
 	if !assert.Equal(t, vaultID, vaultsFormData[0].VaultID) {
 		return
 	}
-	if !assert.Equal(t, "0x66ee83f83002b01459b750233f7b21744e679182", address) {
+	if !assert.Equal(t, "0x66EE83F83002b01459B750233F7B21744E679182", address) {
 		return
 	}
 	if !assert.Equal(t, "7d3c016f339f8cc797ee35502a5c93416d47bdd04360d22ea4fcaf85cec229b3",
-		hex.EncodeToString(sk.Bytes())) {
+		hex.EncodeToString(ecSK)) {
+		return
+	}
+	// no EdDSA key for this vault
+	if !assert.Nil(t, edSK) {
 		return
 	}
 }
 
-func vaultIdsFromFormData(vaultFormData []VaultPickerItem) []string {
+func vaultIdsFromFormData(vaultFormData []ui.VaultPickerItem) []string {
 	vaultIDs := make([]string, len(vaultFormData))
 	for i, v := range vaultFormData {
 		vaultIDs[i] = v.VaultID
 	}
 	return vaultIDs
+}
+
+func TestLeftPadTo32Bytes(t *testing.T) {
+	bytes32Input, _ := hex.DecodeString("04523b4b19d426517fb20b51935bc969900e016d26da0a3357f4cb1af57d8e44")
+	bytes34Input, _ := hex.DecodeString("04523b4b19d426517fb20b51935bc969900e016d26da0a3357f4cb1af57d8e440f0f")
+
+	tests := []struct {
+		name     string
+		input    []byte
+		expected string
+	}{
+		{"Nil Input", nil, "0000000000000000000000000000000000000000000000000000000000000000"},
+		{"Empty Input", []byte{}, "0000000000000000000000000000000000000000000000000000000000000000"},
+		{"Short Input", []byte{0xab, 0xcd}, "000000000000000000000000000000000000000000000000000000000000abcd"},
+		{"32 Bytes Input", bytes32Input, "04523b4b19d426517fb20b51935bc969900e016d26da0a3357f4cb1af57d8e44"},
+		{"Long Input", bytes34Input, "04523b4b19d426517fb20b51935bc969900e016d26da0a3357f4cb1af57d8e440f0f"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := leftPadTo32Bytes(new(big.Int).SetBytes(tt.input))
+			if !assert.Equal(t, tt.expected, hex.EncodeToString(result)) {
+				return
+			}
+		})
+	}
 }

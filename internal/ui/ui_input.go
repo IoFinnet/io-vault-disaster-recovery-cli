@@ -1,24 +1,36 @@
-package main
+// Copyright (C) 2021 io finnet group, inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Full license text available in LICENSE file in repository root.
+
+package ui
 
 import (
 	"fmt"
 
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/config"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/list"
 	errors2 "github.com/pkg/errors"
 )
 
-/**
- * mnemmonicsFormModel is a struct that represents the model for the mnemonics entry.
- */
-type mnemonicsFormModel struct {
-	filenames []string
-}
+type (
+	VaultsDataFile struct {
+		File      string
+		Mnemonics string
+	}
 
-func NewMnemonicsForm(config AppConfig) mnemonicsFormModel {
+	/**
+	 * mnemmonicsFormModel is a struct that represents the model for the mnemonics entry.
+	 */
+	mnemonicsFormModel struct {
+		filenames []string
+	}
+)
+
+func NewMnemonicsForm(config config.AppConfig) mnemonicsFormModel {
 	return mnemonicsFormModel{
-		filenames: config.filenames,
+		filenames: config.Filenames,
 	}
 }
 

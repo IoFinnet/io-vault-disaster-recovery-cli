@@ -1,4 +1,8 @@
-package main
+// Copyright (C) 2021 io finnet group, inc.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Full license text available in LICENSE file in repository root.
+
+package data
 
 import (
 	"bytes"
@@ -19,8 +23,8 @@ const deflateCommonJSONDict = `null` +
 	`Anomalous` + `M-221` + `E-222` + `M-511` + `E-521` + `NIST P-224` + `Curve1174` + `curve25519` + `BN(2,254)` + `brainpoolP256t1` + `ANSSI` + `FRP256v1` + `NIST P-256` + `E-382` + `M-383` + `Curve383187` + `brainpoolP384t1` + `NIST P-384` + `Curve41417` + `Ed448-Goldilocks` +
 	`LocalSecrets` + `LocalPreParams`
 
-// inflateSaveDataJSON decompresses TSS save data in JSON format using the DEFLATE algorithm using a custom dictionary.
-func inflateSaveDataJSON(compressed []byte) ([]byte, error) {
+// InflateSaveDataJSON decompresses TSS save data in JSON format using the DEFLATE algorithm using a custom dictionary.
+func InflateSaveDataJSON(compressed []byte) ([]byte, error) {
 	reader := flate.NewReaderDict(bytes.NewReader(compressed), []byte(deflateCommonJSONDict))
 	decompressed, err := io.ReadAll(reader)
 	if err != nil {
