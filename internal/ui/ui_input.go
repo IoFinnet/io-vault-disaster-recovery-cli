@@ -14,6 +14,13 @@ import (
 	errors2 "github.com/pkg/errors"
 )
 
+type (
+	VaultsDataFile struct {
+		File      string
+		Mnemonics string
+	}
+)
+
 /**
  * mnemmonicsFormModel is a struct that represents the model for the mnemonics entry.
  */

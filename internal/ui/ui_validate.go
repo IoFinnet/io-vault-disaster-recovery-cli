@@ -12,11 +12,6 @@ import (
 	errors2 "github.com/pkg/errors"
 )
 
-type VaultsDataFile struct {
-	File      string
-	Mnemonics string
-}
-
 func (v VaultsDataFile) ValidateMnemonics() error {
 	phrase := cleanMnemonicInput(v.Mnemonics)
 	words := strings.Split(phrase, " ")
