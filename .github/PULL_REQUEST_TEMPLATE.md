@@ -5,7 +5,7 @@ fix: Some thing does not crash anymore [VAULT-111]
 feat: Some new fancy feature [VAULT-111]
 ```
 
-[SIGNER-111](https://iofinnet.atlassian.net/browse/SIGNER-111)
+[VAULT-111](https://iofinnet.atlassian.net/browse/VAULT-111)
 
 ### Description:
 
@@ -33,4 +33,8 @@ feat: Some new fancy feature [VAULT-111]
 
 - [ ] Tests added or updated
 - [ ] Readme updated
-- [ ] [Docs](https://github.com/IoFinnet/public-api-docs) updated
+- [ ] Public API Documentation updates
+
+### REMEMBER: Steps after deployment
+
+- [ ] When the GQL schema changes, it must be merged in the supergraph schema in Appsync: [steps to do it](https://github.com/IoFinnet/io-vault-cldsvc-gql-backend)
