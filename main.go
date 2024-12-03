@@ -142,9 +142,13 @@ func main() {
 	fmt.Printf("Recovered mainnet WIF (for BTC/Electrum Wallet): %s%s%s\n", ui.AnsiCodes["bold"],
 		wif.ToBitcoinWIF(ecSK, false, true), ui.AnsiCodes["reset"])
 
-	fmt.Printf("\nHere is your private key for EDDSA based assets. Keep safe and do not share.\n")
-	fmt.Printf("Recovered EdDSA/Ed25519 private key (for XRPL, SOL, TAO, etc): %s%s%s\n",
-		ui.AnsiCodes["bold"], hex.EncodeToString(edSK), ui.AnsiCodes["reset"])
+	if edSK != nil {
+		fmt.Printf("\nHere is your private key for EDDSA based assets. Keep safe and do not share.\n")
+		fmt.Printf("Recovered EdDSA/Ed25519 private key (for XRPL, SOL, TAO, etc): %s%s%s\n",
+			ui.AnsiCodes["bold"], hex.EncodeToString(edSK), ui.AnsiCodes["reset"])
+	} else {
+		fmt.Println("\nNo EdDSA/Ed25519 private key found for this older vault.")
+	}
 
 	fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.\n")
 }
