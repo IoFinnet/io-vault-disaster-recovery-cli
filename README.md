@@ -97,6 +97,6 @@ Please use [TronLink](https://www.tronlink.org) to recover Tron and Tron assets.
 
 We use a different key format than XRPL usually uses, so there is a separate script that we must use after running the DR tool. Head to [scripts/xrpl-tool](./scripts/xrpl-tool) and run `npm start` in that directory to start running the interactive tool.
 
-### Others (XRPL, SOL, TON, TAO, etc.)
+### Others (SOL, TON, TAO, etc.)
 
 Use the EdDSA key output for these chains that use EdDSA (Edwards / Ed25519) keys.
