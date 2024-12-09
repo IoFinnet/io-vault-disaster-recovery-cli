@@ -170,8 +170,7 @@ async function main() {
     } else {
       console.log('\nTo broadcast this transaction later:');
       console.log('1. Use the XRPL CLI tool: xrpl submit <tx_blob>');
-      console.log('2. Or use the XRPL.org Transaction Sender: https://xrpl.org/tx-sender');
-      console.log('3. Or use any XRPL node\'s RPC interface with the submit method');
+      console.log('2. Or use any XRPL node\'s RPC interface with the submit method');
     }
 
     await client.disconnect();
