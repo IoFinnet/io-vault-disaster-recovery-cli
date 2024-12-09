@@ -43,7 +43,7 @@ npx tsx main.ts
 
 ## Offline Usage
 
-The tool can work entirely offline except for:
+The tool can work offline except for:
 
 - Balance checking (optional)
 - Transaction broadcasting (optional)
@@ -54,7 +54,7 @@ broadcasting the signed transaction later using other tools.
 ## Security Notes
 
 - Your private key is never stored or transmitted
-- The tool can be used offline for maximum security
+- The tool can be used offline for the most part
 - Always verify transaction details before broadcasting
 - Use testnet first to familiarize yourself with the tool
 
