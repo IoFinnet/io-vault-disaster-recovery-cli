@@ -9,7 +9,7 @@ allows you to:
 
 ## Prerequisites
 
-- Node.js 16 or higher
+- Node.js 20 or higher
 - npm or yarn
 
 ## Installation

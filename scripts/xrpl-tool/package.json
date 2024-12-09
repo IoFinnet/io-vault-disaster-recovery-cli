@@ -14,5 +14,5 @@
     "xrpl": "^4.0.0"
   },
   "author": "io.finnet group, inc.",
-  "description": ""
+  "description": "Loads in a scalar format EDDSA keypair for onchain recovery of XRPL assets."
 }
