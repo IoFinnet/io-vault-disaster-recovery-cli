@@ -14,6 +14,7 @@ import (
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/wif"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/decred/dcrd/dcrec/edwards/v2"
 )
 
 const (
@@ -146,9 +147,17 @@ func main() {
 		fmt.Printf("\nHere is your private key for EDDSA based assets. Keep safe and do not share.\n")
 		fmt.Printf("Recovered EdDSA/Ed25519 private key (for XRPL, SOL, TAO, etc): %s%s%s\n",
 			ui.AnsiCodes["bold"], hex.EncodeToString(edSK), ui.AnsiCodes["reset"])
+
+		// load the eddsa private key in edSK and output the public key
+		_, edPK, err2 := edwards.PrivKeyFromScalar(edSK)
+		if err2 != nil {
+			panic("ed25519: internal error: setting scalar failed")
+		}
+		fmt.Printf("Recovered EdDSA/Ed25519 public key (for XRPL tool): %s%s%s\n",
+			ui.AnsiCodes["bold"], hex.EncodeToString(edPK.SerializeCompressed()), ui.AnsiCodes["reset"])
+
 	} else {
 		fmt.Println("\nNo EdDSA/Ed25519 private key found for this older vault.")
 	}
-
 	fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.\n")
 }
