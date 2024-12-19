@@ -1,10 +1,12 @@
 import { ApiPromise, WsProvider, Keyring } from '@polkadot/api';
 import readlineSync from 'readline-sync';
 import { BN } from 'bn.js';
-import { cryptoWaitReady } from '@polkadot/util-crypto';
+import { blake2AsHex, cryptoWaitReady } from '@polkadot/util-crypto';
+import { Signer, SignerPayloadRaw, SignerResult } from '@polkadot/types/types';
 import * as ed from '@noble/ed25519';
-import { bytesToNumberBE } from '@noble/curves/abstract/utils';
+import { bytesToNumberBE, bytesToNumberLE, numberToBytesLE } from '@noble/curves/abstract/utils';
 import { sha512 } from '@noble/hashes/sha512';
+import {webcrypto} from "crypto";
 
 // Constants
 const DECIMALS = 9;
@@ -16,12 +18,12 @@ ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
 
 /**
  * Transfers funds on the Bittensor network.
- * @param privateKey - The raw Ed25519 private key in hex format.
+ * @param privateKeyHex - The raw Ed25519 private key in hex format.
  * @param destination - The SS58 destination address.
  * @param amount - The amount to transfer in Planck units.
  * @param endpoint - The WebSocket endpoint for the Bittensor network.
  */
-async function transferFunds(privateKey: string, destination: string, amount: string, endpoint: string) {
+async function transferFunds(privateKeyHex: string, destination: string, amount: string, endpoint: string) {
   console.log("Initializing cryptography...");
   await cryptoWaitReady();
 
@@ -33,31 +35,35 @@ async function transferFunds(privateKey: string, destination: string, amount: st
   const keyring = new Keyring({ type: 'ed25519', ss58Format: SS58_FORMAT });
 
   // Prepare the private key
-  let privateKeyBytes = Buffer.from(privateKey, 'hex');
-  if (privateKeyBytes.length !== 32) {
+  let privateKey = Buffer.from(privateKeyHex, 'hex');
+  if (privateKey.length !== 32) {
     throw new Error('Private key must be 32 bytes');
   }
 
   // Derive the public key from the private key
-  const derivedPublicKeyBytes = ed.ExtendedPoint.BASE.multiply(bytesToNumberBE(privateKeyBytes)).toRawBytes();
-  console.log("Derived Public Key (Hex):", Buffer.from(derivedPublicKeyBytes).toString('hex'));
-
-  // Combine private and public keys to create the Ed25519 secret key
-  const secretKey = Buffer.concat([privateKeyBytes, Buffer.from(derivedPublicKeyBytes)]);
+  const publicKey = ed.ExtendedPoint.BASE.multiply(bytesToNumberBE(privateKey)).toRawBytes();
+  console.log("Derived Public Key (Hex):", Buffer.from(publicKey).toString('hex'));
 
   // Add the keypair to the keyring
   const keyPair = keyring.addFromPair({
-    publicKey: derivedPublicKeyBytes,
-    secretKey: secretKey,
+    publicKey: publicKey,
+    secretKey: new Uint8Array(0),
   });
 
   console.log("Derived Address (SS58):", keyPair.address);
+
+  const wantToTransfer = readlineSync.keyInYNStrict('\nWould you like to proceed with the transaction?');
+  if (!wantToTransfer) {
+    console.log('Exiting...');
+    throw new Error('User cancelled');
+  }
 
   console.log("Creating transfer transaction...");
   const transfer = api.tx.balances.transferKeepAlive(destination, amount);
 
   console.log("Signing and sending transaction...");
-  const hash = await transfer.signAndSend(keyPair, { nonce: -1 });
+  const signer = new CustomSigner(privateKey);
+  const hash = await transfer.signAndSend(keyPair.address, { nonce: -1, signer });
   console.log(`Transaction sent successfully. Hash: ${hash.toHex()}`);
 
   await api.disconnect();
@@ -129,10 +135,106 @@ async function main() {
     // Convert amount to Planck units (smallest denomination)
     const amountInPlanck = new BN(Number(amount) * Number(PLANCK));
     await transferFunds(privateKey, destination, amountInPlanck.toString(), endpoint);
-    console.log('Transaction completed successfully.');
   } catch (error) {
     console.error('Error processing transaction:', error.message);
+    process.exit(1);
   }
 }
 
-main();
+main().catch(console.error);
+
+class CustomSigner implements Signer {
+  private privateKey: Uint8Array;
+
+  constructor(privateKey: Uint8Array) {
+    this.privateKey = privateKey;
+  }
+
+  // this is the interface function of the Signer interface called by Polkadot.js
+  public async signRaw({ data }: SignerPayloadRaw): Promise<SignerResult> {
+    // eslint-disable-next-line no-async-promise-executor
+    return new Promise(async (resolve, reject): Promise<void> => {
+      const payloadHex = (data.length > (256 + 1) * 2 ? blake2AsHex(data) : data) as `0x${string}`;
+      console.info('Signer Payload:', payloadHex);
+
+      let { signature: signatureHex } = await signWithScalar(payloadHex, Buffer.from(this.privateKey).toString('hex'));
+      signatureHex = '00' + signatureHex.slice(0, 128)
+      if (signatureHex.length !== 65 * 2) {
+        reject(new Error(`Invalid signature, must be hex of the expected length (got: ${signatureHex.length})`));
+        return;
+      } else {
+        resolve({ id: 1, signature: '0x' + signatureHex as `0x{string}` });
+      }
+    });
+  }
+}
+
+async function signWithScalar(messageHex: string, privateKeyHex: string): Promise<{ signature: string, publicKey: string }> {
+  // Remove '0x' prefix if present from inputs
+  messageHex = messageHex.replace(/^0x/, '');
+  privateKeyHex = privateKeyHex.replace(/^0x/, '');
+
+  // Convert hex message to Uint8Array
+  const message = Buffer.from(messageHex, 'hex');
+
+  // Convert hex private key scalar to Uint8Array
+  const privateKeyBytes = Buffer.from(privateKeyHex, 'hex');
+  const scalar = bytesToNumberBE(privateKeyBytes);
+  if (scalar >= ed.CURVE.n) {
+    throw new Error('Private key scalar must be less than curve order');
+  }
+
+  // Validate private key length (32 bytes for Ed25519)
+  if (privateKeyBytes.length !== 32) {
+    throw new Error('Private key must be 32 bytes');
+  }
+
+  // Calculate public key directly from private key scalar
+  const publicKey = ed.ExtendedPoint.BASE.multiply(bytesToNumberBE(privateKeyBytes)).toRawBytes();
+
+  // Note: This nonce generation differs from standard Ed25519, which uses
+  // the first half of SHA-512(private_key_seed). We're creating a deterministic
+  // nonce from the raw scalar and message instead.
+  const nonceInput = new Uint8Array([...privateKeyBytes, ...message]);
+  const nonceArrayBuffer = await webcrypto.subtle.digest('SHA-512', nonceInput);
+  const nonceArray = new Uint8Array(nonceArrayBuffer);
+
+  // Reduce nonce modulo L (Ed25519 curve order)
+  const reducedNonce = bytesToNumberLE(nonceArray) % ed.CURVE.n;
+
+  // Calculate R = k * G
+  const R = ed.ExtendedPoint.BASE.multiply(reducedNonce);
+
+  // Calculate S = (r + H(R,A,m) * s) mod L
+  const hramInput = new Uint8Array([
+    ...R.toRawBytes(),
+    ...publicKey,
+    ...message
+  ]);
+
+  const hArrayBuffer = await webcrypto.subtle.digest('SHA-512', hramInput);
+  const h = new Uint8Array(hArrayBuffer);
+  const hnum = bytesToNumberLE(h) % ed.CURVE.n;
+
+  const s = bytesToNumberBE(privateKeyBytes);
+  const S = (reducedNonce + (hnum * s)) % ed.CURVE.n;
+
+  // Combine R and S to form signature
+  const signature = new Uint8Array([
+    ...R.toRawBytes(),
+    ...numberToBytesLE(S, 32)
+  ]);
+
+  // Convert outputs to hex strings
+  return {
+    signature: bytesToHex(signature),
+    publicKey: bytesToHex(publicKey)
+  };
+}
+
+// Helper function to convert Uint8Array to hex string
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+  .map(b => b.toString(16).padStart(2, '0'))
+  .join('');
+}
