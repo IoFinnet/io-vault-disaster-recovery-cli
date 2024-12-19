@@ -24,7 +24,6 @@ ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
  * @param endpoint - The WebSocket endpoint for the Bittensor network.
  */
 async function transferFunds(privateKeyHex: string, destination: string, amount: string, endpoint: string) {
-  console.log("Initializing cryptography...");
   await cryptoWaitReady();
 
   console.log("Connecting to the Bittensor network...");
