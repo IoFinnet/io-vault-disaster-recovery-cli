@@ -15,7 +15,7 @@
     "elliptic": "^6.6.1",
     "readline-sync": "^1.4.10"
   },
-  "author": "io.finnet group, inc.",
+  "author": "io finnet group, inc.",
   "description": "A tool for converting private keys into 12-word mnemonic seeds for disaster recovery.",
   "devDependencies": {
     "tsx": "^4.19.2"

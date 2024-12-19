@@ -13,7 +13,7 @@
     "readline-sync": "^1.4.10",
     "xrpl": "^4.0.0"
   },
-  "author": "io.finnet group, inc.",
+  "author": "io finnet group, inc.",
   "description": "Loads in a scalar format EDDSA keypair for onchain recovery of XRPL assets.",
   "devDependencies": {
     "@types/node": "^22.10.2"
