@@ -6,7 +6,7 @@ import { Signer, SignerPayloadRaw, SignerResult } from '@polkadot/types/types';
 import * as ed from '@noble/ed25519';
 import { bytesToNumberBE, bytesToNumberLE, numberToBytesLE } from '@noble/curves/abstract/utils';
 import { sha512 } from '@noble/hashes/sha512';
-import {webcrypto} from "crypto";
+import { webcrypto } from 'crypto';
 
 // Constants
 const DECIMALS = 9;

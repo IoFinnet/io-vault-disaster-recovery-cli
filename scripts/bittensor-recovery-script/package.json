@@ -18,6 +18,7 @@
   "author": "io finnet group, inc.",
   "description": "A tool for converting private keys into 12-word mnemonic seeds for disaster recovery.",
   "devDependencies": {
+    "@types/node": "^22.10.2",
     "tsx": "^4.19.2"
   }
 }
