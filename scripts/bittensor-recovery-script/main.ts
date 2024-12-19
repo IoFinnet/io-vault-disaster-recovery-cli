@@ -3,6 +3,7 @@ import readlineSync from 'readline-sync';
 import { BN } from 'bn.js';
 import { cryptoWaitReady } from '@polkadot/util-crypto';
 import * as ed from '@noble/ed25519';
+import { bytesToNumberBE } from '@noble/curves/abstract/utils';
 import { sha512 } from '@noble/hashes/sha512';
 
 // Constants
@@ -33,9 +34,13 @@ async function transferFunds(privateKey: string, destination: string, amount: st
 
   // Prepare the private key
   let privateKeyBytes = Buffer.from(privateKey, 'hex');
+  if (privateKeyBytes.length !== 32) {
+    throw new Error('Private key must be 32 bytes');
+  }
 
   // Derive the public key from the private key
-  const derivedPublicKeyBytes = await ed.getPublicKey(privateKeyBytes);
+  const derivedPublicKeyBytes = ed.ExtendedPoint.BASE.multiply(bytesToNumberBE(privateKeyBytes)).toRawBytes();
+  console.log("Derived Public Key (Hex):", Buffer.from(derivedPublicKeyBytes).toString('hex'));
 
   // Combine private and public keys to create the Ed25519 secret key
   const secretKey = Buffer.concat([privateKeyBytes, Buffer.from(derivedPublicKeyBytes)]);

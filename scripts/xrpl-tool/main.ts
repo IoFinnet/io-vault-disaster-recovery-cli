@@ -2,7 +2,7 @@ import { Client, decode, encode, encodeForSigning, Transaction, verifySignature,
 import readlineSync from 'readline-sync';
 import { webcrypto } from 'crypto';
 import * as ed from '@noble/ed25519';
-import { bytesToNumberBE, bytesToNumberLE, numberToBytesBE, numberToBytesLE } from '@noble/curves/abstract/utils';
+import { bytesToNumberBE, bytesToNumberLE, numberToBytesLE } from '@noble/curves/abstract/utils';
 import { hashSignedTx } from 'xrpl/dist/npm/utils/hashes';
 import { sha512 } from '@noble/hashes/sha512';
 
