@@ -6,8 +6,10 @@ package ui
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/config"
+	"github.com/cdfmlr/ellipsis"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/list"
@@ -20,30 +22,30 @@ type (
 		Mnemonics string
 	}
 
-	/**
-	 * mnemmonicsFormModel is a struct that represents the model for the mnemonics entry.
-	 */
-	mnemonicsFormModel struct {
+	// MnemonicsFormModel is a struct that represents the model for the mnemonics entry.
+	MnemonicsFormModel struct {
 		filenames []string
 	}
 )
 
-func NewMnemonicsForm(config config.AppConfig) mnemonicsFormModel {
-	return mnemonicsFormModel{
+func NewMnemonicsForm(config config.AppConfig) MnemonicsFormModel {
+	return MnemonicsFormModel{
 		filenames: config.Filenames,
 	}
 }
 
-func (m mnemonicsFormModel) Run() (*[]VaultsDataFile, error) {
-	filesWithMnemonics := []VaultsDataFile{}
+func (m MnemonicsFormModel) Run() (*[]VaultsDataFile, error) {
+	filesWithMnemonics := make([]VaultsDataFile, 0, len(m.filenames))
 
-	for _, filename := range m.filenames {
+	for _, pathname := range m.filenames {
+		displayFileName := ellipsis.Centering(filepath.Base(pathname), 64)
+
 		input := huh.NewText().
 			Key("phrase").
-			Title(fmt.Sprintf("Mnemonics for %s", filename)).
+			Title(fmt.Sprintf("Mnemonics for %s", displayFileName)).
 			Description(fmt.Sprintf("Enter the %d word phrase", WORDS)).
 			Validate(func(input string) error {
-				fileWithMnemonic := VaultsDataFile{File: filename, Mnemonics: input}
+				fileWithMnemonic := VaultsDataFile{File: pathname, Mnemonics: input}
 				return fileWithMnemonic.ValidateMnemonics()
 			})
 
@@ -68,10 +70,10 @@ func (m mnemonicsFormModel) Run() (*[]VaultsDataFile, error) {
 
 		mnemonics := form.GetString("phrase")
 		if mnemonics == "" {
-			return nil, fmt.Errorf("phrase for %s is empty", filename)
+			return nil, fmt.Errorf("phrase for %s is empty", displayFileName)
 		}
 
-		f := VaultsDataFile{File: filename, Mnemonics: mnemonics}
+		f := VaultsDataFile{File: pathname, Mnemonics: mnemonics}
 		filesWithMnemonics = append(filesWithMnemonics, f)
 	}
 
@@ -81,7 +83,7 @@ func (m mnemonicsFormModel) Run() (*[]VaultsDataFile, error) {
 	return &filesWithMnemonics, nil
 }
 
-func (m mnemonicsFormModel) fileList(filesWithMnemonics []VaultsDataFile) string {
+func (m MnemonicsFormModel) fileList(filesWithMnemonics []VaultsDataFile) string {
 	if len(filesWithMnemonics) == 0 {
 		return ""
 	}
@@ -101,7 +103,7 @@ func (m mnemonicsFormModel) fileList(filesWithMnemonics []VaultsDataFile) string
 		EnumeratorStyleFunc(checklistEnumStyle)
 
 	for i, f := range filesWithMnemonics {
-		l = l.Item(fmt.Sprintf("%s (file %d of %d)", f.File, i+1, len(m.filenames)))
+		l = l.Item(fmt.Sprintf("%s (file %d of %d)", filepath.Base(f.File), i+1, len(m.filenames)))
 	}
 
 	return l.String()
