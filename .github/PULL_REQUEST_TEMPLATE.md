@@ -33,4 +33,4 @@ feat: Some new fancy feature [VAULT-111]
 
 - [ ] Tests added or updated
 - [ ] Readme updated
-- [ ] Public API Documentation updates
+- [ ] Public docs & guides updated
