@@ -27,7 +27,7 @@ func Banner() string {
 	b := "\n"
 	b += fmt.Sprintf("%s%s                                     %s\n", AnsiCodes["invertOn"], AnsiCodes["bold"], AnsiCodes["reset"])
 	b += fmt.Sprintf("%s%s     io.finnet Key Recovery Tool     %s\n", AnsiCodes["invertOn"], AnsiCodes["bold"], AnsiCodes["reset"])
-	b += fmt.Sprintf("%s%s               v5.2.1                %s\n", AnsiCodes["invertOn"], AnsiCodes["bold"], AnsiCodes["reset"])
+	b += fmt.Sprintf("%s%s               v5.1.3                %s\n", AnsiCodes["invertOn"], AnsiCodes["bold"], AnsiCodes["reset"])
 	b += fmt.Sprintf("%s%s                                     %s\n", AnsiCodes["invertOn"], AnsiCodes["bold"], AnsiCodes["reset"])
 	b += "\n"
 	return b
