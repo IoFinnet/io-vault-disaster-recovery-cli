@@ -33,8 +33,4 @@ feat: Some new fancy feature [VAULT-111]
 
 - [ ] Tests added or updated
 - [ ] Readme updated
-- [ ] Public API Documentation updates
-
-### REMEMBER: Steps after deployment
-
-- [ ] When the GQL schema changes, it must be merged in the supergraph schema in Appsync: [steps to do it](https://github.com/IoFinnet/io-vault-cldsvc-gql-backend)
+- [ ] Public docs & guides updated
