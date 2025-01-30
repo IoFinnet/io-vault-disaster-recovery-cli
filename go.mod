@@ -4,11 +4,12 @@ go 1.22
 
 require (
 	github.com/binance-chain/tss-lib v1.3.3
+	github.com/cdfmlr/ellipsis v0.0.1
 	github.com/charmbracelet/huh v0.6.0
 	github.com/charmbracelet/lipgloss v0.13.0
 	github.com/decred/dcrd/dcrec/edwards/v2 v2.0.3
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0
-	github.com/ethereum/go-ethereum v1.14.12
+	github.com/ethereum/go-ethereum v1.14.13
 	github.com/google/uuid v1.3.0
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.9.0
@@ -24,7 +25,6 @@ require (
 	github.com/bits-and-blooms/bitset v1.13.0 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.3.3 // indirect
 	github.com/catppuccin/go v0.2.0 // indirect
-	github.com/cdfmlr/ellipsis v0.0.1 // indirect
 	github.com/charmbracelet/bubbles v0.20.0 // indirect
 	github.com/charmbracelet/bubbletea v1.1.1 // indirect
 	github.com/charmbracelet/x/ansi v0.2.3 // indirect
