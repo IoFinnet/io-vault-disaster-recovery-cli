@@ -103,7 +103,7 @@ func (m MnemonicsFormModel) fileList(filesWithMnemonics []VaultsDataFile) string
 		EnumeratorStyleFunc(checklistEnumStyle)
 
 	for i, f := range filesWithMnemonics {
-		l = l.Item(fmt.Sprintf("%s (file %d of %d)", filepath.Base(f.File), i+1, len(m.filenames)))
+		l = l.Item(fmt.Sprintf("%s (file %d of %d)", ellipsis.Centering(filepath.Base(f.File), 64), i+1, len(m.filenames)))
 	}
 
 	return l.String()
