@@ -1,15 +1,16 @@
-# TSS Recovery Tool
+# TSS Recovery Tools
+![Screenshot](https://github.com/user-attachments/assets/d1ab307a-6059-44d1-828a-be27d0fb9944)
 
-This tool recovers the private keys of vaults by
-'combining' the secrets of each TSS app backup file.
+This terminal app recovers the private keys of vaults by combining the shares of each TSS app backup file.
 
-It exports a WIF for Bitcoin key import to Electrum Wallet.
+It exports a WIF for Bitcoin key import to Electrum Wallet. It will also create a wallet V3 file for importing to MetaMask and other Ethereum wallets.
 
-It will also create a wallet V3 file for importing to MetaMask and other Ethereum wallets.
+For other coins and wallets, please see the specific recovery information below or on our [guides page](https://docs.iofinnet.com/docs/disaster-recovery).
+You may be required to run another script contained in the [scripts](./scripts) area of this repository.
 
 > ### **Important Notice**
 >
-> This tool does not do ANY communication with any external host or service. It does not need an Internet connection at all.
+> This app does not do ANY communication with any external host or service. It does not need an Internet connection at all.
 >
 > It is recommended that you run it on a non internet connected ("air gapped") device such as a laptop not connected to any network.
 
@@ -23,7 +24,7 @@ Compile from source:
 $ make
 ```
 
-Compile for Windows, Linux (x86) or Mac (Apple Silicon):
+Compile individually for Windows, Linux (x86) or Mac (Apple Silicon):
 
 ```
 $ make build-win
@@ -31,11 +32,13 @@ $ make build-linux
 $ make build-mac
 ```
 
-The resulting executable(s) will be in the `bin/` folder.
+The resulting executable(s) will be in the `bin/` folder. If you are on Mac or Linux, you may have to run `chmod +x bin/*` on the file and accept any security warnings via system settings due to this being an unsigned release. Windows may display a security warning too.
 
 ## Download a Binary
 
 If you prefer the convenience of downloading a pre-built binary for your platform, head to the [Releases area](https://github.com/IoFinnet/io-vault-disaster-recovery-cli/releases). We have pre-built binaries for Linux, Windows and Mac.
+
+If you are on Mac or Linux, you may have to run `chmod +x bin/*` on the file and accept any security warnings via system settings due to these being unsigned releases. Windows may display a security warning too.
 
 ## Usage
 
@@ -101,6 +104,6 @@ We use a different key format than XRPL usually uses, so there is a separate scr
 
 Similar to the XRPL recovery procedure above, use the [scripts/bittensor-tool](./scripts/bittensor-tool) and run `npm start` in that directory to start running the interactive tool. Please use the [Bittensor Wallet](https://bittensor.com/wallet) on mobile to recover TAO assets, or you can use the Bittensor CLI in offline mode.
 
-### Others (SOL, TON, TAO, etc.)
+### Others (SOL, TON, ATOM, etc.)
 
 Use the EdDSA key output for these chains that use EdDSA (Edwards / Ed25519) keys.
