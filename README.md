@@ -4,9 +4,9 @@
 This tool recovers the private keys of vaults by
 'combining' the secrets of each TSS app backup file.
 
-It exports a WIF for Bitcoin key import to Electrum Wallet.
+It exports a WIF for Bitcoin key import to Electrum Wallet. It will also create a wallet V3 file for importing to MetaMask and other Ethereum wallets.
 
-It will also create a wallet V3 file for importing to MetaMask and other Ethereum wallets.
+For other coins and wallets, please see the specific recovery information below or on our [guides page](https://docs.iofinnet.com/docs/disaster-recovery).
 
 > ### **Important Notice**
 >
