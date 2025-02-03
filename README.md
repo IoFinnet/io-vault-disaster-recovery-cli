@@ -1,12 +1,12 @@
 # TSS Recovery Tools
 ![Screenshot](https://github.com/user-attachments/assets/d1ab307a-6059-44d1-828a-be27d0fb9944)
 
-This tool recovers the private keys of vaults by
-'combining' the secrets of each TSS app backup file.
+This terminal app recovers the private keys of vaults by 'combining' the secrets of each TSS app backup file.
 
 It exports a WIF for Bitcoin key import to Electrum Wallet. It will also create a wallet V3 file for importing to MetaMask and other Ethereum wallets.
 
 For other coins and wallets, please see the specific recovery information below or on our [guides page](https://docs.iofinnet.com/docs/disaster-recovery).
+You may be required to run another script contained in the [scripts/](./scripts) area of this repository.
 
 > ### **Important Notice**
 >
