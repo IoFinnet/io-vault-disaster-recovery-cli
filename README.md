@@ -1,4 +1,4 @@
-# TSS Recovery Tool
+# TSS Recovery Tools
 ![Screenshot](https://github.com/user-attachments/assets/d1ab307a-6059-44d1-828a-be27d0fb9944)
 
 This tool recovers the private keys of vaults by
