@@ -10,7 +10,7 @@ You may be required to run another script contained in the [scripts](./scripts) 
 
 > ### **Important Notice**
 >
-> This tool does not do ANY communication with any external host or service. It does not need an Internet connection at all.
+> This terminal app does not do ANY communication with any external host or service. It does not need an Internet connection at all.
 >
 > It is recommended that you run it on a non internet connected ("air gapped") device such as a laptop not connected to any network.
 
