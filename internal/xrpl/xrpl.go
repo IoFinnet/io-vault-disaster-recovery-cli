@@ -6,8 +6,6 @@ package xrpl
 
 import (
 	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -100,31 +98,31 @@ func DeriveXRPLAddress(pubKey []byte) (string, error) {
 	// 2. RIPEMD-160 hash of the result
 	// 3. Add prefix 0x00
 	// 4. Base58 encode with checksum
-	
+
 	// Step 1: SHA-256 hash
 	sha256Hash := sha256.Sum256(pubKey)
-	
+
 	// Step 2: RIPEMD-160 hash
 	ripemd160Hasher := ripemd160.New()
 	if _, err := ripemd160Hasher.Write(sha256Hash[:]); err != nil {
 		return "", fmt.Errorf("failed to hash public key: %v", err)
 	}
 	ripemd160Hash := ripemd160Hasher.Sum(nil)
-	
+
 	// Step 3: Add prefix 0x00 (AccountID prefix)
 	prefixedHash := append([]byte{AccountIDPrefix}, ripemd160Hash...)
-	
+
 	// Step 4: Calculate checksum (first 4 bytes of double SHA-256)
 	firstHash := sha256.Sum256(prefixedHash)
 	secondHash := sha256.Sum256(firstHash[:])
 	checksum := secondHash[:4]
-	
+
 	// Append checksum to prefixed hash
 	addressBytes := append(prefixedHash, checksum...)
-	
+
 	// Base58 encode
 	address := "r" + base58.Encode(addressBytes)
-	
+
 	return address, nil
 }
 
@@ -133,20 +131,20 @@ func GenerateFamilySeed(privateKey []byte) (string, error) {
 	// Family seed format for XRPL:
 	// 1. Add prefix 0x21 (FamilySeedPrefix)
 	// 2. Base58 encode with checksum
-	
+
 	// Add prefix
 	prefixedKey := append([]byte{FamilySeedPrefix}, privateKey[:16]...) // Use only first 16 bytes
-	
+
 	// Calculate checksum (first 4 bytes of double SHA-256)
 	firstHash := sha256.Sum256(prefixedKey)
 	secondHash := sha256.Sum256(firstHash[:])
 	checksum := secondHash[:4]
-	
+
 	// Append checksum
 	seedBytes := append(prefixedKey, checksum...)
-	
+
 	// Base58 encode
 	seed := base58.Encode(seedBytes)
-	
+
 	return seed, nil
 }

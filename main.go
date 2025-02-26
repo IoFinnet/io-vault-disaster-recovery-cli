@@ -33,7 +33,7 @@ func main() {
 	
 	// Transaction mode flags
 	xrplMode := flag.Bool("xrpl", false, "Enable XRPL transaction mode")
-	bitTensorMode := flag.Bool("bittensor", false, "Enable BitTensor transaction mode")
+	bitTensorMode := flag.Bool("bittensor", false, "Enable Bittensor transaction mode")
 	solanaMode := flag.Bool("solana", false, "Enable Solana transaction mode")
 
 	flag.Parse()
