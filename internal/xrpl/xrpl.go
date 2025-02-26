@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"math/big"
 	"strings"
 
 	"github.com/btcsuite/btcd/btcutil/base58"
@@ -98,6 +99,9 @@ func networkName(testnet bool) string {
 	return "Mainnet"
 }
 
+// XRPL specific base58 alphabet that starts with 'r' instead of '1'
+const xrplBase58Alphabet = "rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz"
+
 // DeriveXRPLAddress derives an XRPL address from a public key
 // Following the standard XRPL address derivation process exactly as in the Node.js implementation:
 // 1. Prepend ED25519 prefix (0xED) if not already present
@@ -106,7 +110,7 @@ func networkName(testnet bool) string {
 // 4. Add prefix 0x00 (AccountID prefix)
 // 5. Calculate checksum (first 4 bytes of double SHA-256)
 // 6. Append checksum
-// 7. Base58 encode the result
+// 7. Base58 encode the result using XRPL's alphabet
 func DeriveXRPLAddress(pubKey []byte) (string, error) {
 	if len(pubKey) == 0 {
 		return "", fmt.Errorf("empty public key")
@@ -142,11 +146,42 @@ func DeriveXRPLAddress(pubKey []byte) (string, error) {
 	// Step 6: Append checksum to prefixed hash
 	addressBytes := append(prefixedHash, checksum...)
 
-	// Step 7: Base58 encode the result
-	// The XRPL base58 alphabet naturally produces addresses starting with 'r'
-	address := base58.Encode(addressBytes)
+	// Step 7: Base58 encode the result using XRPL's alphabet
+	address := encodeBase58WithXRPLAlphabet(addressBytes)
 
 	return address, nil
+}
+
+// encodeBase58WithXRPLAlphabet encodes a byte slice to base58 using XRPL's alphabet
+func encodeBase58WithXRPLAlphabet(b []byte) string {
+	x := new(big.Int)
+	x.SetBytes(b)
+
+	// Initialize
+	answer := make([]byte, 0, len(b)*136/100)
+	mod := new(big.Int)
+
+	for x.Sign() > 0 {
+		// Convert to base58
+		x.DivMod(x, big.NewInt(58), mod)
+		answer = append(answer, xrplBase58Alphabet[mod.Int64()])
+	}
+
+	// Leading zeros
+	for _, i := range b {
+		if i != 0 {
+			break
+		}
+		answer = append(answer, xrplBase58Alphabet[0])
+	}
+
+	// Reverse
+	alen := len(answer)
+	for i := 0; i < alen/2; i++ {
+		answer[i], answer[alen-1-i] = answer[alen-1-i], answer[i]
+	}
+
+	return string(answer)
 }
 
 // GenerateFamilySeed converts a private key to XRPL's family seed format

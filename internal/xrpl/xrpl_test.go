@@ -89,9 +89,13 @@ func TestDeriveXRPLAddress(t *testing.T) {
 				addressBytes := append(prefixedHash, checksum...)
 				t.Logf("Final bytes for base58: %x", addressBytes)
 				
-				// Raw base58 encoding
+				// Raw base58 encoding with standard alphabet
 				rawBase58 := base58.Encode(addressBytes)
-				t.Logf("Raw base58 encoding: %s", rawBase58)
+				t.Logf("Standard base58 encoding: %s", rawBase58)
+				
+				// XRPL base58 encoding
+				xrplBase58 := encodeBase58WithXRPLAlphabet(addressBytes)
+				t.Logf("XRPL base58 encoding: %s", xrplBase58)
 			}
 			
 			gotAddr, err := DeriveXRPLAddress(pubKey)
