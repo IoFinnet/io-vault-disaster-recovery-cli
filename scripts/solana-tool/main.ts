@@ -108,6 +108,7 @@ async function transferSOL(
 
 async function main() {
   console.log('Solana Transfer Tool\n');
+  console.log(EXIT_MESSAGE);
 
   // Select network
   const networkOptions = ['Mainnet', 'Testnet', 'Devnet'];
@@ -126,6 +127,10 @@ async function main() {
   let privateKey;
   do {
     privateKey = readlineSync.question('\nPrivate Key (64 hex chars): ', { hideEchoBack: true });
+    if (privateKey === EXIT_KEYWORD) {
+      console.log('Exiting program...');
+      process.exit(0);
+    }
     if (!validateHexKey(privateKey, 32)) {
       console.log('Invalid private key format. Must be 64 hexadecimal characters.');
     }
@@ -164,6 +169,10 @@ async function main() {
     let destination;
     do {
       destination = readlineSync.question('\nEnter destination address: ');
+      if (destination === EXIT_KEYWORD) {
+        console.log('Exiting program...');
+        process.exit(0);
+      }
       if (!validateSolanaAddress(destination)) {
         console.log('Invalid Solana address format.');
       }
@@ -173,6 +182,10 @@ async function main() {
     let amount;
     do {
       amount = readlineSync.question('\nEnter amount of SOL to send: ');
+      if (amount === EXIT_KEYWORD) {
+        console.log('Exiting program...');
+        process.exit(0);
+      }
       if (!validateAmount(amount)) {
         console.log('Invalid amount. Must be a positive number.');
       } else if (balance !== undefined && Number(amount) > balance / LAMPORTS_PER_SOL) {
