@@ -15,6 +15,14 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
+// Override readlineSync to handle CTRL+C
+const originalQuestion = readlineSync.question;
+readlineSync.question = function(...args) {
+  process.stdin.setRawMode(false);
+  const result = originalQuestion.apply(this, args);
+  return result;
+};
+
 const TESTNET_URL = 'wss://testnet.xrpl-labs.com';
 const MAINNET_URL = 'wss://s1.ripple.com';
 

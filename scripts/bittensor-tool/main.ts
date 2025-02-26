@@ -14,6 +14,14 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
+// Override readlineSync to handle CTRL+C
+const originalQuestion = readlineSync.question;
+readlineSync.question = function(...args) {
+  process.stdin.setRawMode(false);
+  const result = originalQuestion.apply(this, args);
+  return result;
+};
+
 // Constants
 const DECIMALS = 9;
 const PLANCK = new BN(10).pow(new BN(DECIMALS)); // 1 unit = 10^9 Planck

@@ -213,3 +213,18 @@ process.on('SIGINT', () => {
   console.log('\nProcess terminated by user (CTRL+C)');
   process.exit(0);
 });
+import readlineSync from 'readline-sync';
+
+// Handle CTRL+C gracefully
+process.on('SIGINT', () => {
+  console.log('\nProcess terminated by user (CTRL+C)');
+  process.exit(0);
+});
+
+// Override readlineSync to handle CTRL+C
+const originalQuestion = readlineSync.question;
+readlineSync.question = function(...args) {
+  process.stdin.setRawMode(false);
+  const result = originalQuestion.apply(this, args);
+  return result;
+};
