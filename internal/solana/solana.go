@@ -103,5 +103,21 @@ func GetBase58EncodedPrivateKey(privateKey []byte) (string, error) {
 	if len(privateKey) != 32 {
 		return "", fmt.Errorf("invalid private key length: expected 32 bytes, got %d", len(privateKey))
 	}
-	return base58.Encode(privateKey), nil
+	
+	// For Phantom Wallet, we need to encode the private key in the proper format
+	// Solana wallets expect a 64-byte array where:
+	// - First 32 bytes are the private key
+	// - Second 32 bytes are the public key derived from the private key
+	
+	// Derive the public key from the private key
+	_, pubKey, err := edwards.PrivKeyFromScalar(privateKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to derive public key: %v", err)
+	}
+	
+	// Combine private key and public key
+	fullKeypair := append(privateKey, pubKey.SerializeCompressed()...)
+	
+	// Base58 encode the full keypair
+	return base58.Encode(fullKeypair), nil
 }
