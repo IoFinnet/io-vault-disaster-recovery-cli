@@ -104,6 +104,10 @@ We use a different key format than XRPL usually uses, so there is a separate scr
 
 Similar to the XRPL recovery procedure above, use the [scripts/bittensor-tool](./scripts/bittensor-tool) and run `npm start` in that directory to start running the interactive tool. Please use the [Bittensor Wallet](https://bittensor.com/wallet) on mobile to recover TAO assets, or you can use the Bittensor CLI in offline mode.
 
-### Others (SOL, TON, ATOM, etc.)
+### Solana Recovery
+
+For Solana (SOL) recovery, use the [scripts/solana-tool](./scripts/solana-tool) and run `npm start` in that directory to start running the interactive tool. This tool will help you recover and transfer SOL using your EdDSA private key.
+
+### Others (TON, ATOM, etc.)
 
 Use the EdDSA key output for these chains that use EdDSA (Edwards / Ed25519) keys.
