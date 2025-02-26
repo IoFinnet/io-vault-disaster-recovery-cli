@@ -98,7 +98,7 @@ func networkName(testnet bool) string {
 // 3. Add prefix 0x00 (AccountID prefix)
 // 4. Calculate checksum (first 4 bytes of double SHA-256)
 // 5. Append checksum
-// 6. Base58 encode with 'r' prefix
+// 6. Base58 encode (the 'r' prefix is part of the base58 alphabet for XRPL)
 func DeriveXRPLAddress(pubKey []byte) (string, error) {
 	if len(pubKey) == 0 {
 		return "", fmt.Errorf("empty public key")
@@ -125,8 +125,8 @@ func DeriveXRPLAddress(pubKey []byte) (string, error) {
 	// Step 5: Append checksum to prefixed hash
 	addressBytes := append(prefixedHash, checksum...)
 
-	// Step 6: Base58 encode with 'r' prefix
-	address := "r" + base58.Encode(addressBytes)
+	// Step 6: Base58 encode (the 'r' prefix is part of the base58 alphabet for XRPL)
+	address := base58.Encode(addressBytes)
 
 	return address, nil
 }

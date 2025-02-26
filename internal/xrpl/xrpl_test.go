@@ -191,6 +191,11 @@ func TestIsValidXRPAmount(t *testing.T) {
 }
 
 func TestHandleTransaction(t *testing.T) {
+	// Create a valid mock private key for testing
+	mockPrivateKey := make([]byte, 32)
+	// Set the first byte to a non-zero value to avoid "zero or negative scalar" error
+	mockPrivateKey[0] = 1
+	
 	tests := []struct {
 		name        string
 		privateKey  []byte
@@ -201,7 +206,7 @@ func TestHandleTransaction(t *testing.T) {
 	}{
 		{
 			name:        "Valid transaction parameters",
-			privateKey:  make([]byte, 32), // Mock private key
+			privateKey:  mockPrivateKey,
 			destination: "rQKFCzntQegDZNfgCa48pREVdikKyRdHvj",
 			amount:      "10.5",
 			testnet:     false,
@@ -209,7 +214,7 @@ func TestHandleTransaction(t *testing.T) {
 		},
 		{
 			name:        "Invalid destination",
-			privateKey:  make([]byte, 32),
+			privateKey:  mockPrivateKey,
 			destination: "invalid",
 			amount:      "10",
 			testnet:     false,
@@ -217,7 +222,7 @@ func TestHandleTransaction(t *testing.T) {
 		},
 		{
 			name:        "Invalid amount",
-			privateKey:  make([]byte, 32),
+			privateKey:  mockPrivateKey,
 			destination: "rQKFCzntQegDZNfgCa48pREVdikKyRdHvj",
 			amount:      "-10",
 			testnet:     false,
