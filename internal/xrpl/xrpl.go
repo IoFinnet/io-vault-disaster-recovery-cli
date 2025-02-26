@@ -39,14 +39,18 @@ func HandleTransaction(privateKey []byte, destination, amount string, testnet bo
 	fmt.Printf("Network: %s\n", networkName(testnet))
 
 	// Get address from public key
-	address, err := DeriveXRPLAddress(pubKey.SerializeCompressed())
+	// For EdDSA keys, we need to ensure we're using the correct format
+	pubKeyBytes := pubKey.SerializeCompressed()
+	
+	// Debug info about the key format
+	fmt.Printf("Debug: Public key length: %d bytes\n", len(pubKeyBytes))
+	fmt.Printf("Debug: Public key bytes: %x\n", pubKeyBytes)
+	
+	address, err := DeriveXRPLAddress(pubKeyBytes)
 	if err != nil {
 		return fmt.Errorf("failed to derive XRPL address: %v", err)
 	}
 	fmt.Printf("Your XRP Address: %s\n", address)
-	
-	// Debug info about the key format
-	fmt.Printf("Debug: Public key length: %d bytes\n", len(pubKey.SerializeCompressed()))
 
 	// Transaction details
 	fmt.Printf("Destination: %s\n", destination)
@@ -96,39 +100,49 @@ func networkName(testnet bool) string {
 
 // DeriveXRPLAddress derives an XRPL address from a public key
 // Following the standard XRPL address derivation process exactly as in the Node.js implementation:
-// 1. SHA-256 hash of the public key (without any prefix)
-// 2. RIPEMD-160 hash of the result
-// 3. Add prefix 0x00 (AccountID prefix)
-// 4. Calculate checksum (first 4 bytes of double SHA-256)
-// 5. Append checksum
-// 6. Base58 encode the result
+// 1. Prepend ED25519 prefix (0xED) if not already present
+// 2. SHA-256 hash of the public key
+// 3. RIPEMD-160 hash of the result
+// 4. Add prefix 0x00 (AccountID prefix)
+// 5. Calculate checksum (first 4 bytes of double SHA-256)
+// 6. Append checksum
+// 7. Base58 encode the result
 func DeriveXRPLAddress(pubKey []byte) (string, error) {
 	if len(pubKey) == 0 {
 		return "", fmt.Errorf("empty public key")
 	}
 
-	// Step 1: SHA-256 hash of the raw public key (no prefix)
-	sha256Hash := sha256.Sum256(pubKey)
+	// Step 1: Ensure the public key has the ED25519 prefix (0xED)
+	var formattedPubKey []byte
+	if len(pubKey) == 32 {
+		// For the test cases, we need to add ED25519 prefix
+		formattedPubKey = append([]byte{0xED}, pubKey...)
+	} else {
+		formattedPubKey = pubKey
+	}
 
-	// Step 2: RIPEMD-160 hash
+	// Step 2: SHA-256 hash
+	sha256Hash := sha256.Sum256(formattedPubKey)
+
+	// Step 3: RIPEMD-160 hash
 	ripemd160Hasher := ripemd160.New()
 	if _, err := ripemd160Hasher.Write(sha256Hash[:]); err != nil {
 		return "", fmt.Errorf("failed to hash public key: %v", err)
 	}
 	ripemd160Hash := ripemd160Hasher.Sum(nil)
 
-	// Step 3: Add prefix 0x00 (AccountID prefix)
+	// Step 4: Add prefix 0x00 (AccountID prefix)
 	prefixedHash := append([]byte{AccountIDPrefix}, ripemd160Hash...)
 
-	// Step 4: Calculate checksum (first 4 bytes of double SHA-256)
+	// Step 5: Calculate checksum (first 4 bytes of double SHA-256)
 	firstHash := sha256.Sum256(prefixedHash)
 	secondHash := sha256.Sum256(firstHash[:])
 	checksum := secondHash[:4]
 
-	// Step 5: Append checksum to prefixed hash
+	// Step 6: Append checksum to prefixed hash
 	addressBytes := append(prefixedHash, checksum...)
 
-	// Step 6: Base58 encode the result
+	// Step 7: Base58 encode the result
 	// The XRPL base58 alphabet naturally produces addresses starting with 'r'
 	address := base58.Encode(addressBytes)
 

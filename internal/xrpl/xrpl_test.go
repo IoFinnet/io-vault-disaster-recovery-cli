@@ -60,9 +60,14 @@ func TestDeriveXRPLAddress(t *testing.T) {
 			if tt.pubKeyHex != "" {
 				t.Logf("Public key length: %d bytes", len(pubKey))
 				
-				// Hash the public key for debugging
-				sha256Hash := sha256.Sum256(pubKey)
-				t.Logf("SHA-256 hash of pubKey: %x", sha256Hash)
+				// Add ED25519 prefix for debugging
+				formattedPubKey := append([]byte{0xED}, pubKey...)
+				t.Logf("Formatted pubKey with ED prefix: %x", formattedPubKey)
+				t.Logf("Formatted pubKey length: %d bytes", len(formattedPubKey))
+				
+				// Hash the formatted public key for debugging
+				sha256Hash := sha256.Sum256(formattedPubKey)
+				t.Logf("SHA-256 hash of formatted pubKey: %x", sha256Hash)
 				
 				// RIPEMD-160 hash for debugging
 				ripemd160Hasher := ripemd160.New()
