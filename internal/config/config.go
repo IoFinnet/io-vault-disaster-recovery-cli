@@ -10,4 +10,14 @@ type AppConfig struct {
 	QuorumOverride int
 	ExportKSFile   string
 	PasswordForKS  string
+	// New options for XRPL
+	XRPLMode       bool
+	XRPLDestAddr   string
+	XRPLAmount     string
+	XRPLTestnet    bool
+	// New options for Bittensor
+	BitTensorMode  bool
+	BitTensorDest  string
+	BitTensorAmt   string
+	BitTensorEndpt string
 }

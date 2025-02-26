@@ -10,9 +10,11 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/bittensor"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/config"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/wif"
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/xrpl"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/decred/dcrd/dcrec/edwards/v2"
 )
@@ -27,6 +29,18 @@ func main() {
 	quorumOverride := flag.Int("threshold", 0, "(Optional) Vault Quorum (Threshold) override. Try it if the tool advises you to do so.")
 	passwordForKS := flag.String("password", "", "(Optional) Encryption password for the Ethereum wallet v3 file; use with -export")
 	exportKSFile := flag.String("export", "wallet.json", "(Optional) Filename to export a Ethereum wallet v3 JSON to; use with -password.")
+	
+	// XRPL transaction flags
+	xrplMode := flag.Bool("xrpl", false, "Enable XRPL transaction mode")
+	xrplDest := flag.String("xrpl-dest", "", "XRPL destination address")
+	xrplAmount := flag.String("xrpl-amount", "", "XRPL amount to transfer")
+	xrplTestnet := flag.Bool("xrpl-testnet", false, "Use XRPL testnet instead of mainnet")
+
+	// BitTensor transaction flags
+	bitTensorMode := flag.Bool("bittensor", false, "Enable BitTensor transaction mode")
+	bitTensorDest := flag.String("bittensor-dest", "", "BitTensor destination address")
+	bitTensorAmt := flag.String("bittensor-amount", "", "BitTensor amount to transfer")
+	bitTensorEndpt := flag.String("bittensor-endpoint", "wss://entrypoint-finney.opentensor.ai:443", "BitTensor network endpoint")
 
 	flag.Parse()
 	files := flag.Args()
@@ -44,6 +58,14 @@ func main() {
 		QuorumOverride: *quorumOverride,
 		ExportKSFile:   *exportKSFile,
 		PasswordForKS:  *passwordForKS,
+		XRPLMode:       *xrplMode,
+		XRPLDestAddr:   *xrplDest,
+		XRPLAmount:     *xrplAmount,
+		XRPLTestnet:    *xrplTestnet,
+		BitTensorMode:  *bitTensorMode,
+		BitTensorDest:  *bitTensorDest,
+		BitTensorAmt:   *bitTensorAmt,
+		BitTensorEndpt: *bitTensorEndpt,
 	}
 
 	// First validate that files exist and are readable
@@ -153,9 +175,68 @@ func main() {
 		if err2 != nil {
 			panic("ed25519: internal error: setting scalar failed")
 		}
-		fmt.Printf("Recovered EdDSA/Ed25519 public key (for XRPL tool): %s%s%s\n",
+		fmt.Printf("Recovered EdDSA/Ed25519 public key: %s%s%s\n",
 			ui.AnsiCodes["bold"], hex.EncodeToString(edPK.SerializeCompressed()), ui.AnsiCodes["reset"])
+		
+		// Generate XRPL-specific formats
+		xrplAddress, err := xrpl.DeriveXRPLAddress(edPK.SerializeCompressed())
+		if err == nil {
+			fmt.Printf("\nXRP Ledger (XRPL) Information:\n")
+			fmt.Printf("XRP Address: %s%s%s\n", 
+				ui.AnsiCodes["bold"], xrplAddress, ui.AnsiCodes["reset"])
+			
+			familySeed, err := xrpl.GenerateFamilySeed(edSK)
+			if err == nil {
+				fmt.Printf("Family Seed (for XUMM wallet): %s%s%s\n", 
+					ui.AnsiCodes["bold"], familySeed, ui.AnsiCodes["reset"])
+			}
+		}
+		
+		// Generate Bittensor-specific formats
+		bittensorAddress, err := bittensor.GenerateSS58Address(edPK.SerializeCompressed())
+		if err == nil {
+			fmt.Printf("\nBittensor Information:\n")
+			fmt.Printf("Bittensor Address (SS58): %s%s%s\n", 
+				ui.AnsiCodes["bold"], bittensorAddress, ui.AnsiCodes["reset"])
+		}
+		
+		// Add transaction mode handling
+		if appConfig.XRPLMode {
+			if appConfig.XRPLDestAddr == "" || appConfig.XRPLAmount == "" {
+				fmt.Println(ui.ErrorBox(fmt.Errorf("XRPL transaction requires destination address and amount")))
+			} else {
+				fmt.Println("\nXRPL Transaction Mode")
+				err := xrpl.HandleTransaction(edSK, appConfig.XRPLDestAddr, appConfig.XRPLAmount, appConfig.XRPLTestnet)
+				if err != nil {
+					fmt.Println(ui.ErrorBox(err))
+				}
+			}
+		}
 
+		if appConfig.BitTensorMode {
+			if appConfig.BitTensorDest == "" || appConfig.BitTensorAmt == "" {
+				fmt.Println(ui.ErrorBox(fmt.Errorf("BitTensor transaction requires destination address and amount")))
+			} else {
+				fmt.Println("\nBitTensor Transaction Mode")
+				err := bittensor.HandleTransaction(edSK, appConfig.BitTensorDest, appConfig.BitTensorAmt, appConfig.BitTensorEndpt)
+				if err != nil {
+					fmt.Println(ui.ErrorBox(err))
+				}
+			}
+		}
+		
+		// Add wallet import instructions
+		fmt.Println("\nWallet Import Instructions:")
+		fmt.Println("- XRPL (XUMM): Use the XRPL tool in scripts/xrpl-tool/ with your private key")
+		fmt.Println("- Bittensor: Use the Bittensor tool in scripts/bittensor-tool/ with your private key")
+		fmt.Println("- Solana: Import private key in hex format to your wallet")
+		
+		// Add transaction instructions
+		if !appConfig.XRPLMode && !appConfig.BitTensorMode {
+			fmt.Println("\nTo perform transactions:")
+			fmt.Println("- For XRPL: Run with --xrpl --xrpl-dest=ADDRESS --xrpl-amount=AMOUNT flags")
+			fmt.Println("- For Bittensor: Run with --bittensor --bittensor-dest=ADDRESS --bittensor-amount=AMOUNT flags")
+		}
 	} else {
 		fmt.Println("\nNo EdDSA/Ed25519 private key found for this older vault.")
 	}
