@@ -11,7 +11,6 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/btcsuite/btcd/btcutil/base58"
 	"github.com/decred/dcrd/dcrec/edwards/v2"
 	"golang.org/x/crypto/ripemd160"
 )
@@ -183,31 +182,4 @@ func encodeBase58WithXRPLAlphabet(b []byte) string {
 	}
 
 	return string(answer)
-}
-
-// GenerateFamilySeed converts a private key to XRPL's family seed format
-func GenerateFamilySeed(privateKey []byte) (string, error) {
-	if len(privateKey) == 0 {
-		return "", fmt.Errorf("empty private key")
-	}
-
-	// Family seed format for XRPL:
-	// 1. Add prefix 0x21 (FamilySeedPrefix)
-	// 2. Base58 encode with checksum
-
-	// Add prefix - use only first 16 bytes of private key for family seed
-	prefixedKey := append([]byte{FamilySeedPrefix}, privateKey[:16]...)
-
-	// Calculate checksum (first 4 bytes of double SHA-256)
-	firstHash := sha256.Sum256(prefixedKey)
-	secondHash := sha256.Sum256(firstHash[:])
-	checksum := secondHash[:4]
-
-	// Append checksum
-	seedBytes := append(prefixedKey, checksum...)
-
-	// Base58 encode
-	seed := base58.Encode(seedBytes)
-
-	return seed, nil
 }
