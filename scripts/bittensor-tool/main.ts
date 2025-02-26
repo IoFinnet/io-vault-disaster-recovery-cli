@@ -8,6 +8,10 @@ import { bytesToNumberBE, bytesToNumberLE, numberToBytesLE } from '@noble/curves
 import { sha512 } from '@noble/hashes/sha512';
 import { webcrypto } from 'crypto';
 
+// Constants
+const EXIT_KEYWORD = '.exit';
+const EXIT_MESSAGE = `Type '${EXIT_KEYWORD}' at any prompt to exit the program`;
+
 // Handle CTRL+C gracefully
 process.on('SIGINT', () => {
   console.log('\nProcess terminated by user (CTRL+C)');
@@ -68,7 +72,7 @@ async function transferFunds(privateKeyHex: string, destination: string, amount:
   const wantToTransfer = readlineSync.keyInYNStrict('\nWould you like to proceed with the transaction?');
   if (!wantToTransfer) {
     console.log('Exiting...');
-    throw new Error('User cancelled');
+    process.exit(0);
   }
 
   console.log("Creating transfer transaction...");
@@ -113,10 +117,15 @@ function validateAmount(amount: string): boolean {
 
 async function main() {
   console.log('Bittensor Transfer Tool\n');
+  console.log(EXIT_MESSAGE);
 
   let privateKey;
   do {
     privateKey = readlineSync.question('Private Key (64 hex chars): ', { hideEchoBack: true });
+    if (privateKey === EXIT_KEYWORD) {
+      console.log('Exiting program...');
+      process.exit(0);
+    }
     if (!validateHex(privateKey, 32)) {
       console.log('Invalid private key format. Must be 64 hexadecimal characters.');
     }
@@ -125,6 +134,10 @@ async function main() {
   let destination;
   do {
     destination = readlineSync.question('Enter the destination address: ');
+    if (destination === EXIT_KEYWORD) {
+      console.log('Exiting program...');
+      process.exit(0);
+    }
     if (!validateAddress(destination)) {
       console.log('Invalid address format. Must be a valid Bittensor address.');
     }
@@ -133,6 +146,10 @@ async function main() {
   let amount;
   do {
     amount = readlineSync.question('Enter the amount to transfer: ');
+    if (amount === EXIT_KEYWORD) {
+      console.log('Exiting program...');
+      process.exit(0);
+    }
     if (!validateAmount(amount)) {
       console.log('Invalid amount. Must be a positive number.');
     }
@@ -142,6 +159,10 @@ async function main() {
     'Enter the endpoint (e.g., wss://entrypoint-finney.opentensor.ai:443): ',
     { defaultInput: 'wss://entrypoint-finney.opentensor.ai:443' }
   );
+  if (endpoint === EXIT_KEYWORD) {
+    console.log('Exiting program...');
+    process.exit(0);
+  }
 
   console.log('\nProcessing your transaction...\n');
   try {

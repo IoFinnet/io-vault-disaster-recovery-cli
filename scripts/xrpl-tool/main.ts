@@ -6,6 +6,10 @@ import { bytesToNumberBE, bytesToNumberLE, numberToBytesLE } from '@noble/curves
 import { hashSignedTx } from 'xrpl/dist/npm/utils/hashes';
 import { sha512 } from '@noble/hashes/sha512';
 
+// Constants
+const EXIT_KEYWORD = '.exit';
+const EXIT_MESSAGE = `Type '${EXIT_KEYWORD}' at any prompt to exit the program`;
+
 // polyfill for Node.js
 ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
 
@@ -44,6 +48,7 @@ function validateDestinationAddress(address) {
 
 async function main() {
   console.log('XRP Transfer Tool\n');
+  console.log(EXIT_MESSAGE);
 
   const useMainNet = readlineSync.keyInYNStrict('Would you like to use mainnet? (No for testnet)');
   const rpcUrl = !useMainNet ? TESTNET_URL : MAINNET_URL;
@@ -53,6 +58,10 @@ async function main() {
   let publicKey, privateKey;
   do {
     publicKey = readlineSync.question('Public Key (64 hex chars): ');
+    if (publicKey === EXIT_KEYWORD) {
+      console.log('Exiting program...');
+      process.exit(0);
+    }
     if (!validateHexKey(publicKey, 32)) {
       console.log('Invalid public key format. Must be 64 hexadecimal characters.');
     }
@@ -62,6 +71,10 @@ async function main() {
     privateKey = readlineSync.question('Private Key (64 hex chars): ', {
       hideEchoBack: true
     });
+    if (privateKey === EXIT_KEYWORD) {
+      console.log('Exiting program...');
+      process.exit(0);
+    }
     if (!validateHexKey(privateKey, 32)) {
       console.log('Invalid private key format. Must be 64 hexadecimal characters.');
     }
@@ -97,13 +110,17 @@ async function main() {
   const wantToTransfer = readlineSync.keyInYNStrict('\nWould you like to transfer XRP?');
   if (!wantToTransfer) {
     console.log('Exiting...');
-    return;
+    process.exit(0);
   }
 
   // Get and validate destination address
   let destinationAddress;
   do {
     destinationAddress = readlineSync.question('\nEnter destination address: ');
+    if (destinationAddress === EXIT_KEYWORD) {
+      console.log('Exiting program...');
+      process.exit(0);
+    }
     if (!validateDestinationAddress(destinationAddress)) {
       console.log('Invalid destination address format. Must be a valid XRPL address starting with "r".');
     }
@@ -113,6 +130,10 @@ async function main() {
   let amount;
   do {
     amount = readlineSync.question('\nEnter amount of XRP to send: ');
+    if (amount === EXIT_KEYWORD) {
+      console.log('Exiting program...');
+      process.exit(0);
+    }
     if (!validateXRPAmount(amount)) {
       console.log('Invalid amount. Must be a positive number less than 100 billion XRP.');
     } else if (xrpBalance !== undefined && Number(amount) > xrpBalance) {
@@ -156,6 +177,14 @@ async function main() {
     if (!verifySignature(encodedTxHex, tx.SigningPubKey)) throw new Error('Signature verification failed');
 
     const wantToBroadcast = readlineSync.keyInYNStrict('\nWould you like to broadcast this transaction now?');
+    if (wantToBroadcast === EXIT_KEYWORD) {
+      console.log('Exiting program...');
+      process.exit(0);
+    }
+    if (wantToBroadcast === EXIT_KEYWORD) {
+      console.log('Exiting program...');
+      process.exit(0);
+    }
 
     if (wantToBroadcast) {
       console.log('\nBroadcasting transaction...');

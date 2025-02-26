@@ -228,3 +228,6 @@ readlineSync.question = function(...args) {
   const result = originalQuestion.apply(this, args);
   return result;
 };
+// Constants
+const EXIT_KEYWORD = '.exit';
+const EXIT_MESSAGE = `Type '${EXIT_KEYWORD}' at any prompt to exit the program`;
