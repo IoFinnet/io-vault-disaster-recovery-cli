@@ -12,6 +12,7 @@ import (
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/bittensor"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/config"
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/solana"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/wif"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/xrpl"
@@ -42,6 +43,11 @@ func main() {
 	bitTensorAmt := flag.String("bittensor-amount", "", "BitTensor amount to transfer")
 	bitTensorEndpt := flag.String("bittensor-endpoint", "wss://entrypoint-finney.opentensor.ai:443", "BitTensor network endpoint")
 
+	// Solana transaction flags
+	solanaMode := flag.Bool("solana", false, "Enable Solana transaction mode")
+	solanaDest := flag.String("solana-dest", "", "Solana destination address")
+	solanaAmount := flag.String("solana-amount", "", "Solana amount to transfer")
+
 	flag.Parse()
 	files := flag.Args()
 	if len(files) < 1 {
@@ -66,6 +72,9 @@ func main() {
 		BitTensorDest:  *bitTensorDest,
 		BitTensorAmt:   *bitTensorAmt,
 		BitTensorEndpt: *bitTensorEndpt,
+		SolanaMode:     *solanaMode,
+		SolanaDestAddr: *solanaDest,
+		SolanaAmount:   *solanaAmount,
 	}
 
 	// First validate that files exist and are readable
@@ -200,6 +209,28 @@ func main() {
 				ui.AnsiCodes["bold"], bittensorAddress, ui.AnsiCodes["reset"])
 		}
 		
+		// Generate Solana-specific formats
+		solanaAddress, err := solana.DeriveSolanaAddress(edPK.SerializeCompressed())
+		if err == nil {
+			fmt.Printf("\nSolana Information:\n")
+			fmt.Printf("Solana Address: %s%s%s\n", 
+				ui.AnsiCodes["bold"], solanaAddress, ui.AnsiCodes["reset"])
+			
+			// Generate Solana keypair format (used by Solana CLI)
+			keypairString, err := solana.GenerateKeyPairString(edSK, edPK.SerializeCompressed())
+			if err == nil {
+				fmt.Printf("Solana Keypair (for Solana CLI): %s%s%s\n", 
+					ui.AnsiCodes["bold"], keypairString, ui.AnsiCodes["reset"])
+			}
+			
+			// Generate Base58 encoded private key (used by some wallets)
+			base58PrivKey, err := solana.GetBase58EncodedPrivateKey(edSK)
+			if err == nil {
+				fmt.Printf("Solana Base58 Private Key (for some wallets): %s%s%s\n", 
+					ui.AnsiCodes["bold"], base58PrivKey, ui.AnsiCodes["reset"])
+			}
+		}
+		
 		// Add transaction mode handling
 		if appConfig.XRPLMode {
 			if appConfig.XRPLDestAddr == "" || appConfig.XRPLAmount == "" {
@@ -225,17 +256,32 @@ func main() {
 			}
 		}
 		
+		if appConfig.SolanaMode {
+			if appConfig.SolanaDestAddr == "" || appConfig.SolanaAmount == "" {
+				fmt.Println(ui.ErrorBox(fmt.Errorf("Solana transaction requires destination address and amount")))
+			} else {
+				fmt.Println("\nSolana Transaction Mode")
+				err := solana.HandleTransaction(edSK, appConfig.SolanaDestAddr, appConfig.SolanaAmount)
+				if err != nil {
+					fmt.Println(ui.ErrorBox(err))
+				}
+			}
+		}
+		
 		// Add wallet import instructions
 		fmt.Println("\nWallet Import Instructions:")
 		fmt.Println("- XRPL (XUMM): Use the XRPL tool in scripts/xrpl-tool/ with your private key")
 		fmt.Println("- Bittensor: Use the Bittensor tool in scripts/bittensor-tool/ with your private key")
+		fmt.Println("- Solana (Phantom/Solflare): Import using the Base58 private key")
+		fmt.Println("- Solana (CLI): Save the keypair string to a file and use with solana-keygen")
 		fmt.Println("- Solana: Import private key in hex format to your wallet")
 		
 		// Add transaction instructions
-		if !appConfig.XRPLMode && !appConfig.BitTensorMode {
+		if !appConfig.XRPLMode && !appConfig.BitTensorMode && !appConfig.SolanaMode {
 			fmt.Println("\nTo perform transactions:")
 			fmt.Println("- For XRPL: Run with --xrpl --xrpl-dest=ADDRESS --xrpl-amount=AMOUNT flags")
 			fmt.Println("- For Bittensor: Run with --bittensor --bittensor-dest=ADDRESS --bittensor-amount=AMOUNT flags")
+			fmt.Println("- For Solana: Run with --solana --solana-dest=ADDRESS --solana-amount=AMOUNT flags")
 		}
 	} else {
 		fmt.Println("\nNo EdDSA/Ed25519 private key found for this older vault.")

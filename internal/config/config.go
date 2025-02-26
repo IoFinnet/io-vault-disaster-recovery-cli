@@ -20,4 +20,8 @@ type AppConfig struct {
 	BitTensorDest  string
 	BitTensorAmt   string
 	BitTensorEndpt string
+	// New options for Solana
+	SolanaMode     bool
+	SolanaDestAddr string
+	SolanaAmount   string
 }
