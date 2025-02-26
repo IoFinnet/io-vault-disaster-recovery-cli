@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/btcsuite/btcd/btcutil/base58"
 	"github.com/decred/dcrd/dcrec/edwards/v2"
 )
 
@@ -83,13 +84,9 @@ func isValidAmount(amount string) bool {
 // DeriveSolanaAddress derives a Solana address from a public key
 // Solana addresses are the Base58 encoding of the public key bytes
 func DeriveSolanaAddress(pubKey []byte) (string, error) {
-	// For simplicity, we'll return a placeholder address
-	// In a production environment, you'd want to use a proper Solana library
-
-	// Simplified Solana address generation - not actual implementation
-	// In production, use a proper Base58 encoding library
-	pubKeyHex := hex.EncodeToString(pubKey)
-	return pubKeyHex[:32], nil
+	// Solana addresses are just Base58 encoded public keys
+	address := base58.Encode(pubKey)
+	return address, nil
 }
 
 // GenerateKeyPairString generates a Solana keypair string format
@@ -103,7 +100,5 @@ func GenerateKeyPairString(privateKey []byte, publicKey []byte) (string, error) 
 // GetBase58EncodedPrivateKey returns the Base58 encoded private key
 // Some Solana wallets use this format for private key import
 func GetBase58EncodedPrivateKey(privateKey []byte) (string, error) {
-	// For simplicity, we'll return a placeholder
-	// In production, use a proper Base58 encoding library
-	return base64.StdEncoding.EncodeToString(privateKey), nil
+	return base58.Encode(privateKey), nil
 }

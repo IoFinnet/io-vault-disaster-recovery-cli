@@ -5,13 +5,16 @@
 package xrpl
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/btcsuite/btcd/btcutil/base58"
 	"github.com/decred/dcrd/dcrec/edwards/v2"
+	"golang.org/x/crypto/ripemd160"
 )
 
 // Constants for XRPL
@@ -92,22 +95,58 @@ func networkName(testnet bool) string {
 
 // DeriveXRPLAddress derives an XRPL address from a public key
 func DeriveXRPLAddress(pubKey []byte) (string, error) {
-	// For simplicity, we'll return a placeholder address
-	// In a production environment, you'd want to use a proper XRPL library
-	// This is just to demonstrate the concept
-
-	// Simplified address generation - not actual implementation
-	// In production, use a proper XRPL library
-	pubKeyHex := hex.EncodeToString(pubKey)
-	return fmt.Sprintf("r%s", pubKeyHex[:20]), nil
+	// XRPL addresses use a specific algorithm:
+	// 1. SHA-256 hash of the public key
+	// 2. RIPEMD-160 hash of the result
+	// 3. Add prefix 0x00
+	// 4. Base58 encode with checksum
+	
+	// Step 1: SHA-256 hash
+	sha256Hash := sha256.Sum256(pubKey)
+	
+	// Step 2: RIPEMD-160 hash
+	ripemd160Hasher := ripemd160.New()
+	if _, err := ripemd160Hasher.Write(sha256Hash[:]); err != nil {
+		return "", fmt.Errorf("failed to hash public key: %v", err)
+	}
+	ripemd160Hash := ripemd160Hasher.Sum(nil)
+	
+	// Step 3: Add prefix 0x00 (AccountID prefix)
+	prefixedHash := append([]byte{AccountIDPrefix}, ripemd160Hash...)
+	
+	// Step 4: Calculate checksum (first 4 bytes of double SHA-256)
+	firstHash := sha256.Sum256(prefixedHash)
+	secondHash := sha256.Sum256(firstHash[:])
+	checksum := secondHash[:4]
+	
+	// Append checksum to prefixed hash
+	addressBytes := append(prefixedHash, checksum...)
+	
+	// Base58 encode
+	address := "r" + base58.Encode(addressBytes)
+	
+	return address, nil
 }
 
 // GenerateFamilySeed converts a private key to XRPL's family seed format
 func GenerateFamilySeed(privateKey []byte) (string, error) {
-	// For simplicity, we'll return a placeholder family seed
-	// In a production environment, you'd want to use a proper XRPL library
-
-	// Simplified family seed generation - not actual implementation
-	// In production, use a proper XRPL library
-	return fmt.Sprintf("s%s", base64.StdEncoding.EncodeToString(privateKey)[:28]), nil
+	// Family seed format for XRPL:
+	// 1. Add prefix 0x21 (FamilySeedPrefix)
+	// 2. Base58 encode with checksum
+	
+	// Add prefix
+	prefixedKey := append([]byte{FamilySeedPrefix}, privateKey[:16]...) // Use only first 16 bytes
+	
+	// Calculate checksum (first 4 bytes of double SHA-256)
+	firstHash := sha256.Sum256(prefixedKey)
+	secondHash := sha256.Sum256(firstHash[:])
+	checksum := secondHash[:4]
+	
+	// Append checksum
+	seedBytes := append(prefixedKey, checksum...)
+	
+	// Base58 encode
+	seed := base58.Encode(seedBytes)
+	
+	return seed, nil
 }
