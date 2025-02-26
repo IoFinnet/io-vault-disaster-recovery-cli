@@ -145,7 +145,7 @@ func main() {
 	fmt.Printf("%s%s%s\n", ui.AnsiCodes["bold"], address, ui.AnsiCodes["reset"])
 
 	fmt.Printf("\nHere is your private key for Ethereum and Tron assets. Keep safe and do not share.\n")
-	fmt.Printf("Recovered ECDSA private key (for ETH/MetaMask, Tron/TronLink): %s%s%s\n",
+	fmt.Printf("Recovered ECDSA private key (for MetaMask, Phantom, TronLink): %s%s%s\n",
 		ui.AnsiCodes["bold"], hex.EncodeToString(ecSK), ui.AnsiCodes["reset"])
 
 	fmt.Printf("\nHere are your private keys for Bitcoin assets. Keep safe and do not share.\n")
@@ -156,7 +156,7 @@ func main() {
 
 	if edSK != nil {
 		fmt.Printf("\nHere is your private key for EDDSA based assets. Keep safe and do not share.\n")
-		fmt.Printf("Recovered EdDSA/Ed25519 private key (for XRPL, SOL, TAO, etc): %s%s%s\n",
+		fmt.Printf("Recovered EdDSA/Ed25519 private key: %s%s%s\n",
 			ui.AnsiCodes["bold"], hex.EncodeToString(edSK), ui.AnsiCodes["reset"])
 
 		// load the eddsa private key in edSK and output the public key
@@ -173,12 +173,6 @@ func main() {
 			fmt.Printf("\nXRP Ledger (XRPL) Information:\n")
 			fmt.Printf("XRP Address: %s%s%s\n",
 				ui.AnsiCodes["bold"], xrplAddress, ui.AnsiCodes["reset"])
-
-			familySeed, err := xrpl.GenerateFamilySeed(edSK)
-			if err == nil {
-				fmt.Printf("Family Seed (for XUMM wallet): %s%s%s\n",
-					ui.AnsiCodes["bold"], familySeed, ui.AnsiCodes["reset"])
-			}
 		}
 
 		// Generate Bittensor-specific formats
@@ -253,7 +247,7 @@ func main() {
 
 		// Add wallet import instructions
 		fmt.Println("\nWallet Import Instructions:")
-		fmt.Println("- XRPL (XUMM): Use the XRPL tool in scripts/xrpl-tool/ with your private key")
+		fmt.Println("- XRPL: Use the XRPL tool in scripts/xrpl-tool/ with your private key")
 		fmt.Println("- Bittensor: Use the Bittensor tool in scripts/bittensor-tool/ with your private key")
 		fmt.Println("- Solana (Phantom/Solflare): Import using the Base58 private key")
 		fmt.Println("- Solana (CLI): Save the keypair string to a file and use with solana-keygen")
@@ -261,7 +255,7 @@ func main() {
 
 		// Add transaction instructions
 		if !appConfig.XRPLMode && !appConfig.BitTensorMode && !appConfig.SolanaMode {
-			fmt.Println("\nTo perform transactions:")
+			fmt.Println("\nFor Extra Guidance:")
 			fmt.Println("- For XRPL: Run with --xrpl flag")
 			fmt.Println("- For Bittensor: Run with --bittensor flag")
 			fmt.Println("- For Solana: Run with --solana flag")
