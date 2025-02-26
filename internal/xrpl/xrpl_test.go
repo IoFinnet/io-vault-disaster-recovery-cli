@@ -46,6 +46,10 @@ func TestDeriveXRPLAddress(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Failed to decode hex public key: %v", err)
 				}
+				
+				// Debug information
+				t.Logf("Input pubKey hex: %s", tt.pubKeyHex)
+				t.Logf("Input pubKey bytes: %v", pubKey)
 			}
 			
 			gotAddr, err := DeriveXRPLAddress(pubKey)
@@ -55,8 +59,12 @@ func TestDeriveXRPLAddress(t *testing.T) {
 				return
 			}
 			
-			if !tt.wantErr && gotAddr != tt.wantAddr {
-				t.Errorf("DeriveXRPLAddress() = %v, want %v", gotAddr, tt.wantAddr)
+			if !tt.wantErr {
+				if gotAddr != tt.wantAddr {
+					t.Errorf("DeriveXRPLAddress() = %v, want %v", gotAddr, tt.wantAddr)
+				} else {
+					t.Logf("Successfully derived address: %s", gotAddr)
+				}
 			}
 		})
 	}

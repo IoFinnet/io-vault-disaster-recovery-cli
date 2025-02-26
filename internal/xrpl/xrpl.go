@@ -93,19 +93,29 @@ func networkName(testnet bool) string {
 
 // DeriveXRPLAddress derives an XRPL address from a public key
 // Following the standard XRPL address derivation process:
-// 1. SHA-256 hash of the public key
-// 2. RIPEMD-160 hash of the result
-// 3. Add prefix 0x00 (AccountID prefix)
-// 4. Calculate checksum (first 4 bytes of double SHA-256)
-// 5. Append checksum
-// 6. Base58 encode (the 'r' prefix is part of the base58 alphabet for XRPL)
+// 1. Prepend ED25519 prefix (0xED) if not already present
+// 2. SHA-256 hash of the public key
+// 3. RIPEMD-160 hash of the result
+// 4. Add prefix 0x00 (AccountID prefix)
+// 5. Calculate checksum (first 4 bytes of double SHA-256)
+// 6. Append checksum
+// 7. Base58 encode with XRPL dictionary (which starts with 'r')
 func DeriveXRPLAddress(pubKey []byte) (string, error) {
 	if len(pubKey) == 0 {
 		return "", fmt.Errorf("empty public key")
 	}
 
+	// Ensure the public key has the ED25519 prefix (0xED)
+	var formattedPubKey []byte
+	if len(pubKey) == 32 {
+		// Add ED25519 prefix if it's a raw 32-byte key
+		formattedPubKey = append([]byte{0xED}, pubKey...)
+	} else {
+		formattedPubKey = pubKey
+	}
+
 	// Step 1: SHA-256 hash
-	sha256Hash := sha256.Sum256(pubKey)
+	sha256Hash := sha256.Sum256(formattedPubKey)
 
 	// Step 2: RIPEMD-160 hash
 	ripemd160Hasher := ripemd160.New()
@@ -125,7 +135,8 @@ func DeriveXRPLAddress(pubKey []byte) (string, error) {
 	// Step 5: Append checksum to prefixed hash
 	addressBytes := append(prefixedHash, checksum...)
 
-	// Step 6: Base58 encode (the 'r' prefix is part of the base58 alphabet for XRPL)
+	// Step 6: Base58 encode with XRPL dictionary
+	// The XRPL base58 encoding automatically adds the 'r' prefix
 	address := base58.Encode(addressBytes)
 
 	return address, nil
