@@ -9,6 +9,12 @@ import { sha512 } from '@noble/hashes/sha512';
 // polyfill for Node.js
 ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
 
+// Handle CTRL+C gracefully
+process.on('SIGINT', () => {
+  console.log('\nProcess terminated by user (CTRL+C)');
+  process.exit(0);
+});
+
 const TESTNET_URL = 'wss://testnet.xrpl-labs.com';
 const MAINNET_URL = 'wss://s1.ripple.com';
 

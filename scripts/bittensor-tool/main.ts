@@ -8,6 +8,12 @@ import { bytesToNumberBE, bytesToNumberLE, numberToBytesLE } from '@noble/curves
 import { sha512 } from '@noble/hashes/sha512';
 import { webcrypto } from 'crypto';
 
+// Handle CTRL+C gracefully
+process.on('SIGINT', () => {
+  console.log('\nProcess terminated by user (CTRL+C)');
+  process.exit(0);
+});
+
 // Constants
 const DECIMALS = 9;
 const PLANCK = new BN(10).pow(new BN(DECIMALS)); // 1 unit = 10^9 Planck

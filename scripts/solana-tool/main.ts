@@ -208,3 +208,8 @@ async function main() {
 }
 
 main().catch(console.error);
+// Handle CTRL+C gracefully
+process.on('SIGINT', () => {
+  console.log('\nProcess terminated by user (CTRL+C)');
+  process.exit(0);
+});
