@@ -5,18 +5,18 @@
 package xrpl
 
 import (
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/decred/dcrd/dcrec/edwards/v2"
 	"strings"
+
+	"github.com/decred/dcrd/dcrec/edwards/v2"
 )
 
 // Constants for XRPL
 const (
-	AccountIDPrefix byte = 0x00
+	AccountIDPrefix  byte = 0x00
 	FamilySeedPrefix byte = 0x21 // 's' in XRPL's base58 encoding
 )
 
@@ -36,25 +36,25 @@ func HandleTransaction(privateKey []byte, destination, amount string, testnet bo
 	// Display key information
 	fmt.Println("\nXRP Ledger Transaction Information:")
 	fmt.Printf("Network: %s\n", networkName(testnet))
-	
+
 	// Get address from public key
 	address, err := DeriveXRPLAddress(pubKey.SerializeCompressed())
 	if err != nil {
 		return fmt.Errorf("failed to derive XRPL address: %v", err)
 	}
 	fmt.Printf("Your XRP Address: %s\n", address)
-	
+
 	// Transaction details
 	fmt.Printf("Destination: %s\n", destination)
 	fmt.Printf("Amount: %s XRP\n", amount)
-	
+
 	// Instructions for manual transaction
 	fmt.Println("\nTo complete this transaction:")
 	fmt.Println("1. Use the XRPL tool in scripts/xrpl-tool/")
 	fmt.Println("2. Import your private key")
 	fmt.Println("3. Enter the destination address and amount")
 	fmt.Println("4. Submit the transaction")
-	
+
 	return nil
 }
 
@@ -63,11 +63,11 @@ func validateInputs(destination, amount string) error {
 	if !isValidXRPAddress(destination) {
 		return errors.New("invalid XRP destination address format")
 	}
-	
+
 	if !isValidXRPAmount(amount) {
 		return errors.New("invalid XRP amount (must be a positive number)")
 	}
-	
+
 	return nil
 }
 
@@ -95,7 +95,7 @@ func DeriveXRPLAddress(pubKey []byte) (string, error) {
 	// For simplicity, we'll return a placeholder address
 	// In a production environment, you'd want to use a proper XRPL library
 	// This is just to demonstrate the concept
-	
+
 	// Simplified address generation - not actual implementation
 	// In production, use a proper XRPL library
 	pubKeyHex := hex.EncodeToString(pubKey)
@@ -106,9 +106,8 @@ func DeriveXRPLAddress(pubKey []byte) (string, error) {
 func GenerateFamilySeed(privateKey []byte) (string, error) {
 	// For simplicity, we'll return a placeholder family seed
 	// In a production environment, you'd want to use a proper XRPL library
-	
+
 	// Simplified family seed generation - not actual implementation
 	// In production, use a proper XRPL library
-	privKeyHex := hex.EncodeToString(privateKey)
 	return fmt.Sprintf("s%s", base64.StdEncoding.EncodeToString(privateKey)[:28]), nil
 }

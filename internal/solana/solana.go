@@ -9,8 +9,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+
 	"github.com/decred/dcrd/dcrec/edwards/v2"
-	"strings"
 )
 
 // Constants for Solana
@@ -33,25 +33,25 @@ func HandleTransaction(privateKey []byte, destination, amount string) error {
 
 	// Display key information
 	fmt.Println("\nSolana Transaction Information:")
-	
+
 	// Get Solana address from public key
 	solanaAddress, err := DeriveSolanaAddress(pubKey.SerializeCompressed())
 	if err != nil {
 		return fmt.Errorf("failed to derive Solana address: %v", err)
 	}
 	fmt.Printf("Your Solana Address: %s\n", solanaAddress)
-	
+
 	// Transaction details
 	fmt.Printf("Destination: %s\n", destination)
 	fmt.Printf("Amount: %s SOL\n", amount)
-	
+
 	// Instructions for manual transaction
 	fmt.Println("\nTo complete this transaction:")
 	fmt.Println("1. Install the Solana CLI or use a wallet like Phantom or Solflare")
 	fmt.Println("2. Import your private key")
 	fmt.Println("3. Create a transfer transaction to the destination address")
 	fmt.Println("4. Submit the transaction")
-	
+
 	return nil
 }
 
@@ -60,11 +60,11 @@ func validateInputs(destination, amount string) error {
 	if !isValidSolanaAddress(destination) {
 		return errors.New("invalid Solana destination address format")
 	}
-	
+
 	if !isValidAmount(amount) {
 		return errors.New("invalid SOL amount (must be a positive number)")
 	}
-	
+
 	return nil
 }
 
@@ -85,7 +85,7 @@ func isValidAmount(amount string) bool {
 func DeriveSolanaAddress(pubKey []byte) (string, error) {
 	// For simplicity, we'll return a placeholder address
 	// In a production environment, you'd want to use a proper Solana library
-	
+
 	// Simplified Solana address generation - not actual implementation
 	// In production, use a proper Base58 encoding library
 	pubKeyHex := hex.EncodeToString(pubKey)

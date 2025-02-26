@@ -8,8 +8,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/decred/dcrd/dcrec/edwards/v2"
 	"strings"
+
+	"github.com/decred/dcrd/dcrec/edwards/v2"
 )
 
 // Constants for Bittensor
@@ -32,26 +33,26 @@ func HandleTransaction(privateKey []byte, destination, amount, endpoint string) 
 
 	// Display key information
 	fmt.Println("\nBittensor Transaction Information:")
-	
+
 	// Get SS58 address from public key
 	ss58Address, err := GenerateSS58Address(pubKey.SerializeCompressed())
 	if err != nil {
 		return fmt.Errorf("failed to generate SS58 address: %v", err)
 	}
 	fmt.Printf("Your Bittensor Address: %s\n", ss58Address)
-	
+
 	// Transaction details
 	fmt.Printf("Network Endpoint: %s\n", endpoint)
 	fmt.Printf("Destination: %s\n", destination)
 	fmt.Printf("Amount: %s TAO\n", amount)
-	
+
 	// Instructions for manual transaction
 	fmt.Println("\nTo complete this transaction:")
 	fmt.Println("1. Use the Bittensor tool in scripts/bittensor-tool/")
 	fmt.Println("2. Import your private key")
 	fmt.Println("3. Enter the destination address and amount")
 	fmt.Println("4. Submit the transaction")
-	
+
 	return nil
 }
 
@@ -60,15 +61,15 @@ func validateInputs(destination, amount, endpoint string) error {
 	if !isValidSS58Address(destination) {
 		return errors.New("invalid Bittensor destination address format")
 	}
-	
+
 	if !isValidAmount(amount) {
 		return errors.New("invalid amount (must be a positive number)")
 	}
-	
+
 	if !strings.HasPrefix(endpoint, "wss://") {
 		return errors.New("invalid endpoint (must start with wss://)")
 	}
-	
+
 	return nil
 }
 
@@ -88,7 +89,7 @@ func isValidAmount(amount string) bool {
 func GenerateSS58Address(pubKey []byte) (string, error) {
 	// For simplicity, we'll return a placeholder SS58 address
 	// In a production environment, you'd want to use a proper Substrate library
-	
+
 	// Simplified SS58 address generation - not actual implementation
 	// In production, use a proper SS58 encoding library
 	pubKeyHex := hex.EncodeToString(pubKey)
