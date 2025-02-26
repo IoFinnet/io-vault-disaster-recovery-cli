@@ -30,11 +30,11 @@ func main() {
 	quorumOverride := flag.Int("threshold", 0, "(Optional) Vault Quorum (Threshold) override. Try it if the tool advises you to do so.")
 	passwordForKS := flag.String("password", "", "(Optional) Encryption password for the Ethereum wallet v3 file; use with -export")
 	exportKSFile := flag.String("export", "wallet.json", "(Optional) Filename to export a Ethereum wallet v3 JSON to; use with -password.")
-	
+
 	// Transaction mode flags
-	xrplMode := flag.Bool("xrpl", false, "Enable XRPL transaction mode")
-	bitTensorMode := flag.Bool("bittensor", false, "Enable Bittensor transaction mode")
-	solanaMode := flag.Bool("solana", false, "Enable Solana transaction mode")
+	xrplMode := flag.Bool("xrpl", false, "Enable XRPL guided mode")
+	bitTensorMode := flag.Bool("bittensor", false, "Enable Bittensor guided mode")
+	solanaMode := flag.Bool("solana", false, "Enable Solana guided mode")
 
 	flag.Parse()
 	files := flag.Args()
@@ -166,54 +166,54 @@ func main() {
 		}
 		fmt.Printf("Recovered EdDSA/Ed25519 public key: %s%s%s\n",
 			ui.AnsiCodes["bold"], hex.EncodeToString(edPK.SerializeCompressed()), ui.AnsiCodes["reset"])
-		
+
 		// Generate XRPL-specific formats
 		xrplAddress, err := xrpl.DeriveXRPLAddress(edPK.SerializeCompressed())
 		if err == nil {
 			fmt.Printf("\nXRP Ledger (XRPL) Information:\n")
-			fmt.Printf("XRP Address: %s%s%s\n", 
+			fmt.Printf("XRP Address: %s%s%s\n",
 				ui.AnsiCodes["bold"], xrplAddress, ui.AnsiCodes["reset"])
-			
+
 			familySeed, err := xrpl.GenerateFamilySeed(edSK)
 			if err == nil {
-				fmt.Printf("Family Seed (for XUMM wallet): %s%s%s\n", 
+				fmt.Printf("Family Seed (for XUMM wallet): %s%s%s\n",
 					ui.AnsiCodes["bold"], familySeed, ui.AnsiCodes["reset"])
 			}
 		}
-		
+
 		// Generate Bittensor-specific formats
 		bittensorAddress, err := bittensor.GenerateSS58Address(edPK.SerializeCompressed())
 		if err == nil {
 			fmt.Printf("\nBittensor Information:\n")
-			fmt.Printf("Bittensor Address (SS58): %s%s%s\n", 
+			fmt.Printf("Bittensor Address (SS58): %s%s%s\n",
 				ui.AnsiCodes["bold"], bittensorAddress, ui.AnsiCodes["reset"])
 		}
-		
+
 		// Generate Solana-specific formats
 		solanaAddress, err := solana.DeriveSolanaAddress(edPK.SerializeCompressed())
 		if err == nil {
 			fmt.Printf("\nSolana Information:\n")
-			fmt.Printf("Solana Address: %s%s%s\n", 
+			fmt.Printf("Solana Address: %s%s%s\n",
 				ui.AnsiCodes["bold"], solanaAddress, ui.AnsiCodes["reset"])
-			
+
 			// Generate Solana keypair format (used by Solana CLI)
 			keypairString, err := solana.GenerateKeyPairString(edSK, edPK.SerializeCompressed())
 			if err == nil {
-				fmt.Printf("Solana Keypair (for Solana CLI): %s%s%s\n", 
+				fmt.Printf("Solana Keypair (for Solana CLI): %s%s%s\n",
 					ui.AnsiCodes["bold"], keypairString, ui.AnsiCodes["reset"])
 			}
-			
+
 			// Generate Base58 encoded private key (used by some wallets)
 			base58PrivKey, err := solana.GetBase58EncodedPrivateKey(edSK)
 			if err == nil {
-				fmt.Printf("Solana Base58 Private Key (for some wallets): %s%s%s\n", 
+				fmt.Printf("Solana Base58 Private Key (for some wallets): %s%s%s\n",
 					ui.AnsiCodes["bold"], base58PrivKey, ui.AnsiCodes["reset"])
 			}
 		}
-		
+
 		// Add transaction mode handling
 		if appConfig.XRPLMode {
-			fmt.Println("\nXRPL Transaction Mode")
+			fmt.Println("\nXRPL Guided Mode")
 			details, err := ui.PromptXRPLTransaction()
 			if err != nil {
 				fmt.Println(ui.ErrorBox(err))
@@ -226,7 +226,7 @@ func main() {
 		}
 
 		if appConfig.BitTensorMode {
-			fmt.Println("\nBitTensor Transaction Mode")
+			fmt.Println("\nBittensor Guided Mode")
 			details, err := ui.PromptBittensorTransaction()
 			if err != nil {
 				fmt.Println(ui.ErrorBox(err))
@@ -237,9 +237,9 @@ func main() {
 				}
 			}
 		}
-		
+
 		if appConfig.SolanaMode {
-			fmt.Println("\nSolana Transaction Mode")
+			fmt.Println("\nSolana Guided Mode")
 			details, err := ui.PromptSolanaTransaction()
 			if err != nil {
 				fmt.Println(ui.ErrorBox(err))
@@ -250,7 +250,7 @@ func main() {
 				}
 			}
 		}
-		
+
 		// Add wallet import instructions
 		fmt.Println("\nWallet Import Instructions:")
 		fmt.Println("- XRPL (XUMM): Use the XRPL tool in scripts/xrpl-tool/ with your private key")
@@ -258,7 +258,7 @@ func main() {
 		fmt.Println("- Solana (Phantom/Solflare): Import using the Base58 private key")
 		fmt.Println("- Solana (CLI): Save the keypair string to a file and use with solana-keygen")
 		fmt.Println("- Solana: Import private key in hex format to your wallet")
-		
+
 		// Add transaction instructions
 		if !appConfig.XRPLMode && !appConfig.BitTensorMode && !appConfig.SolanaMode {
 			fmt.Println("\nTo perform transactions:")
