@@ -5,8 +5,12 @@
 package xrpl
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
 	"testing"
+
+	"github.com/btcsuite/btcd/btcutil/base58"
+	"golang.org/x/crypto/ripemd160"
 )
 
 func TestDeriveXRPLAddress(t *testing.T) {
