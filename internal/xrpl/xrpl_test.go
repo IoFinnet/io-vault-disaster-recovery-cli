@@ -56,10 +56,33 @@ func TestDeriveXRPLAddress(t *testing.T) {
 			if tt.pubKeyHex != "" {
 				t.Logf("Public key length: %d bytes", len(pubKey))
 				
-				// Format with ED25519 prefix for debugging
-				formattedPubKey := append([]byte{0xED}, pubKey...)
-				t.Logf("Formatted pubKey with ED prefix: %v", formattedPubKey)
-				t.Logf("Formatted pubKey length: %d bytes", len(formattedPubKey))
+				// Hash the public key for debugging
+				sha256Hash := sha256.Sum256(pubKey)
+				t.Logf("SHA-256 hash of pubKey: %x", sha256Hash)
+				
+				// RIPEMD-160 hash for debugging
+				ripemd160Hasher := ripemd160.New()
+				ripemd160Hasher.Write(sha256Hash[:])
+				ripemd160Hash := ripemd160Hasher.Sum(nil)
+				t.Logf("RIPEMD-160 hash: %x", ripemd160Hash)
+				
+				// Prefixed hash for debugging
+				prefixedHash := append([]byte{AccountIDPrefix}, ripemd160Hash...)
+				t.Logf("Prefixed hash (with 0x00): %x", prefixedHash)
+				
+				// Checksum for debugging
+				firstHash := sha256.Sum256(prefixedHash)
+				secondHash := sha256.Sum256(firstHash[:])
+				checksum := secondHash[:4]
+				t.Logf("Checksum: %x", checksum)
+				
+				// Final bytes for base58 encoding
+				addressBytes := append(prefixedHash, checksum...)
+				t.Logf("Final bytes for base58: %x", addressBytes)
+				
+				// Raw base58 encoding
+				rawBase58 := base58.Encode(addressBytes)
+				t.Logf("Raw base58 encoding: %s", rawBase58)
 			}
 			
 			gotAddr, err := DeriveXRPLAddress(pubKey)
