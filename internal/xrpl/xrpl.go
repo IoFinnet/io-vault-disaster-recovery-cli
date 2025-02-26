@@ -44,6 +44,9 @@ func HandleTransaction(privateKey []byte, destination, amount string, testnet bo
 		return fmt.Errorf("failed to derive XRPL address: %v", err)
 	}
 	fmt.Printf("Your XRP Address: %s\n", address)
+	
+	// Debug info about the key format
+	fmt.Printf("Debug: Public key length: %d bytes\n", len(pubKey.SerializeCompressed()))
 
 	// Transaction details
 	fmt.Printf("Destination: %s\n", destination)
@@ -136,10 +139,8 @@ func DeriveXRPLAddress(pubKey []byte) (string, error) {
 	addressBytes := append(prefixedHash, checksum...)
 
 	// Step 6: Base58 encode with XRPL dictionary
-	// The XRPL base58 encoding automatically adds the 'r' prefix
-	address := base58.Encode(addressBytes)
-
-	return address, nil
+	// Force 'r' prefix for XRPL addresses
+	return "r" + base58.Encode(addressBytes), nil
 }
 
 // GenerateFamilySeed converts a private key to XRPL's family seed format

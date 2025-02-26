@@ -52,6 +52,16 @@ func TestDeriveXRPLAddress(t *testing.T) {
 				t.Logf("Input pubKey bytes: %v", pubKey)
 			}
 			
+			// Add more debug info about the key format
+			if tt.pubKeyHex != "" {
+				t.Logf("Public key length: %d bytes", len(pubKey))
+				
+				// Format with ED25519 prefix for debugging
+				formattedPubKey := append([]byte{0xED}, pubKey...)
+				t.Logf("Formatted pubKey with ED prefix: %v", formattedPubKey)
+				t.Logf("Formatted pubKey length: %d bytes", len(formattedPubKey))
+			}
+			
 			gotAddr, err := DeriveXRPLAddress(pubKey)
 			
 			if (err != nil) != tt.wantErr {
@@ -62,6 +72,10 @@ func TestDeriveXRPLAddress(t *testing.T) {
 			if !tt.wantErr {
 				if gotAddr != tt.wantAddr {
 					t.Errorf("DeriveXRPLAddress() = %v, want %v", gotAddr, tt.wantAddr)
+					
+					// Additional debug info for address comparison
+					t.Logf("Address length: got=%d, want=%d", len(gotAddr), len(tt.wantAddr))
+					t.Logf("First 5 chars: got=%s, want=%s", gotAddr[:5], tt.wantAddr[:5])
 				} else {
 					t.Logf("Successfully derived address: %s", gotAddr)
 				}
