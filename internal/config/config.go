@@ -10,18 +10,8 @@ type AppConfig struct {
 	QuorumOverride int
 	ExportKSFile   string
 	PasswordForKS  string
-	// New options for XRPL
-	XRPLMode       bool
-	XRPLDestAddr   string
-	XRPLAmount     string
-	XRPLTestnet    bool
-	// New options for Bittensor
-	BitTensorMode  bool
-	BitTensorDest  string
-	BitTensorAmt   string
-	BitTensorEndpt string
-	// New options for Solana
-	SolanaMode     bool
-	SolanaDestAddr string
-	SolanaAmount   string
+	// Simplified transaction mode flags
+	XRPLMode      bool
+	BitTensorMode bool
+	SolanaMode    bool
 }

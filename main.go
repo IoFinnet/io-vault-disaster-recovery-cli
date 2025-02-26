@@ -31,22 +31,10 @@ func main() {
 	passwordForKS := flag.String("password", "", "(Optional) Encryption password for the Ethereum wallet v3 file; use with -export")
 	exportKSFile := flag.String("export", "wallet.json", "(Optional) Filename to export a Ethereum wallet v3 JSON to; use with -password.")
 	
-	// XRPL transaction flags
+	// Transaction mode flags
 	xrplMode := flag.Bool("xrpl", false, "Enable XRPL transaction mode")
-	xrplDest := flag.String("xrpl-dest", "", "XRPL destination address")
-	xrplAmount := flag.String("xrpl-amount", "", "XRPL amount to transfer")
-	xrplTestnet := flag.Bool("xrpl-testnet", false, "Use XRPL testnet instead of mainnet")
-
-	// BitTensor transaction flags
 	bitTensorMode := flag.Bool("bittensor", false, "Enable BitTensor transaction mode")
-	bitTensorDest := flag.String("bittensor-dest", "", "BitTensor destination address")
-	bitTensorAmt := flag.String("bittensor-amount", "", "BitTensor amount to transfer")
-	bitTensorEndpt := flag.String("bittensor-endpoint", "wss://entrypoint-finney.opentensor.ai:443", "BitTensor network endpoint")
-
-	// Solana transaction flags
 	solanaMode := flag.Bool("solana", false, "Enable Solana transaction mode")
-	solanaDest := flag.String("solana-dest", "", "Solana destination address")
-	solanaAmount := flag.String("solana-amount", "", "Solana amount to transfer")
 
 	flag.Parse()
 	files := flag.Args()
@@ -65,16 +53,8 @@ func main() {
 		ExportKSFile:   *exportKSFile,
 		PasswordForKS:  *passwordForKS,
 		XRPLMode:       *xrplMode,
-		XRPLDestAddr:   *xrplDest,
-		XRPLAmount:     *xrplAmount,
-		XRPLTestnet:    *xrplTestnet,
 		BitTensorMode:  *bitTensorMode,
-		BitTensorDest:  *bitTensorDest,
-		BitTensorAmt:   *bitTensorAmt,
-		BitTensorEndpt: *bitTensorEndpt,
 		SolanaMode:     *solanaMode,
-		SolanaDestAddr: *solanaDest,
-		SolanaAmount:   *solanaAmount,
 	}
 
 	// First validate that files exist and are readable
@@ -233,11 +213,12 @@ func main() {
 		
 		// Add transaction mode handling
 		if appConfig.XRPLMode {
-			if appConfig.XRPLDestAddr == "" || appConfig.XRPLAmount == "" {
-				fmt.Println(ui.ErrorBox(fmt.Errorf("XRPL transaction requires destination address and amount")))
+			fmt.Println("\nXRPL Transaction Mode")
+			details, err := ui.PromptXRPLTransaction()
+			if err != nil {
+				fmt.Println(ui.ErrorBox(err))
 			} else {
-				fmt.Println("\nXRPL Transaction Mode")
-				err := xrpl.HandleTransaction(edSK, appConfig.XRPLDestAddr, appConfig.XRPLAmount, appConfig.XRPLTestnet)
+				err := xrpl.HandleTransaction(edSK, details.Destination, details.Amount, details.TestNet)
 				if err != nil {
 					fmt.Println(ui.ErrorBox(err))
 				}
@@ -245,11 +226,12 @@ func main() {
 		}
 
 		if appConfig.BitTensorMode {
-			if appConfig.BitTensorDest == "" || appConfig.BitTensorAmt == "" {
-				fmt.Println(ui.ErrorBox(fmt.Errorf("BitTensor transaction requires destination address and amount")))
+			fmt.Println("\nBitTensor Transaction Mode")
+			details, err := ui.PromptBittensorTransaction()
+			if err != nil {
+				fmt.Println(ui.ErrorBox(err))
 			} else {
-				fmt.Println("\nBitTensor Transaction Mode")
-				err := bittensor.HandleTransaction(edSK, appConfig.BitTensorDest, appConfig.BitTensorAmt, appConfig.BitTensorEndpt)
+				err := bittensor.HandleTransaction(edSK, details.Destination, details.Amount, details.Endpoint)
 				if err != nil {
 					fmt.Println(ui.ErrorBox(err))
 				}
@@ -257,11 +239,12 @@ func main() {
 		}
 		
 		if appConfig.SolanaMode {
-			if appConfig.SolanaDestAddr == "" || appConfig.SolanaAmount == "" {
-				fmt.Println(ui.ErrorBox(fmt.Errorf("Solana transaction requires destination address and amount")))
+			fmt.Println("\nSolana Transaction Mode")
+			details, err := ui.PromptSolanaTransaction()
+			if err != nil {
+				fmt.Println(ui.ErrorBox(err))
 			} else {
-				fmt.Println("\nSolana Transaction Mode")
-				err := solana.HandleTransaction(edSK, appConfig.SolanaDestAddr, appConfig.SolanaAmount)
+				err := solana.HandleTransaction(edSK, details.Destination, details.Amount)
 				if err != nil {
 					fmt.Println(ui.ErrorBox(err))
 				}
@@ -279,9 +262,9 @@ func main() {
 		// Add transaction instructions
 		if !appConfig.XRPLMode && !appConfig.BitTensorMode && !appConfig.SolanaMode {
 			fmt.Println("\nTo perform transactions:")
-			fmt.Println("- For XRPL: Run with --xrpl --xrpl-dest=ADDRESS --xrpl-amount=AMOUNT flags")
-			fmt.Println("- For Bittensor: Run with --bittensor --bittensor-dest=ADDRESS --bittensor-amount=AMOUNT flags")
-			fmt.Println("- For Solana: Run with --solana --solana-dest=ADDRESS --solana-amount=AMOUNT flags")
+			fmt.Println("- For XRPL: Run with --xrpl flag")
+			fmt.Println("- For Bittensor: Run with --bittensor flag")
+			fmt.Println("- For Solana: Run with --solana flag")
 		}
 	} else {
 		fmt.Println("\nNo EdDSA/Ed25519 private key found for this older vault.")
