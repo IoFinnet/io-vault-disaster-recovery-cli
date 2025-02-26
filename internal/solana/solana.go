@@ -98,7 +98,10 @@ func GenerateKeyPairString(privateKey []byte, publicKey []byte) (string, error) 
 }
 
 // GetBase58EncodedPrivateKey returns the Base58 encoded private key
-// Some Solana wallets use this format for private key import
+// This format is used by Phantom Wallet for private key import
 func GetBase58EncodedPrivateKey(privateKey []byte) (string, error) {
+	if len(privateKey) != 32 {
+		return "", fmt.Errorf("invalid private key length: expected 32 bytes, got %d", len(privateKey))
+	}
 	return base58.Encode(privateKey), nil
 }

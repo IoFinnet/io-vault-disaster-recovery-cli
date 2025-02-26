@@ -190,17 +190,10 @@ func main() {
 			fmt.Printf("Solana Address: %s%s%s\n",
 				ui.AnsiCodes["bold"], solanaAddress, ui.AnsiCodes["reset"])
 
-			// Generate Solana keypair format (used by Solana CLI)
-			keypairString, err := solana.GenerateKeyPairString(edSK, edPK.SerializeCompressed())
-			if err == nil {
-				fmt.Printf("Solana Keypair (for Solana CLI): %s%s%s\n",
-					ui.AnsiCodes["bold"], keypairString, ui.AnsiCodes["reset"])
-			}
-
-			// Generate Base58 encoded private key (used by some wallets)
+			// Generate Base58 encoded private key (used by Phantom Wallet)
 			base58PrivKey, err := solana.GetBase58EncodedPrivateKey(edSK)
 			if err == nil {
-				fmt.Printf("Solana Base58 Private Key (for some wallets): %s%s%s\n",
+				fmt.Printf("Solana Private Key (for Phantom Wallet): %s%s%s\n",
 					ui.AnsiCodes["bold"], base58PrivKey, ui.AnsiCodes["reset"])
 			}
 		}
@@ -249,8 +242,7 @@ func main() {
 		fmt.Println("\nWallet Import Instructions:")
 		fmt.Println("- XRPL: Use the XRPL tool in scripts/xrpl-tool/ with your private key")
 		fmt.Println("- Bittensor: Use the Bittensor tool in scripts/bittensor-tool/ with your private key")
-		fmt.Println("- Solana (Phantom/Solflare): Import using the Base58 private key")
-		fmt.Println("- Solana (CLI): Save the keypair string to a file and use with solana-keygen")
+		fmt.Println("- Solana (Phantom): Import using the Base58 private key")
 		fmt.Println("- Solana: Import private key in hex format to your wallet")
 
 		// Add transaction instructions
