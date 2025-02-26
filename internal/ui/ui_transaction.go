@@ -73,7 +73,7 @@ func PromptBittensorTransaction() (TransactionDetails, error) {
 			huh.NewInput().
 				Title("Endpoint").
 				Description("Enter the Bittensor network endpoint").
-				Default(details.Endpoint).
+				Placeholder(details.Endpoint).
 				Value(&details.Endpoint),
 		),
 	)
