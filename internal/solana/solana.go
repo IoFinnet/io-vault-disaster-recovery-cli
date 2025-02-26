@@ -47,6 +47,7 @@ func HandleTransaction(privateKey []byte, destination, amount string) error {
 
 	// Instructions for manual transaction
 	fmt.Println("\nTo complete this transaction:")
+	fmt.Println("(Warning! These scripts require that you go online to perform the transaction as live data must be fetched from the chain.)")
 	fmt.Println("1. Install the Solana CLI or use a wallet like Phantom or Solflare")
 	fmt.Println("2. Import your private key")
 	fmt.Println("3. Create a transfer transaction to the destination address")

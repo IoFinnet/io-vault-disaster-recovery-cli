@@ -42,11 +42,11 @@ func HandleTransaction(privateKey []byte, destination, amount string, testnet bo
 	// Get address from public key
 	// For EdDSA keys, we need to ensure we're using the correct format
 	pubKeyBytes := pubKey.SerializeCompressed()
-	
+
 	// Debug info about the key format
 	fmt.Printf("Debug: Public key length: %d bytes\n", len(pubKeyBytes))
 	fmt.Printf("Debug: Public key bytes: %x\n", pubKeyBytes)
-	
+
 	address, err := DeriveXRPLAddress(pubKeyBytes)
 	if err != nil {
 		return fmt.Errorf("failed to derive XRPL address: %v", err)
@@ -59,9 +59,10 @@ func HandleTransaction(privateKey []byte, destination, amount string, testnet bo
 
 	// Instructions for manual transaction
 	fmt.Println("\nTo complete this transaction:")
-	fmt.Println("1. Use the XRPL tool in scripts/xrpl-tool/")
-	fmt.Println("2. Import your private key")
-	fmt.Println("3. Enter the destination address and amount")
+	fmt.Println("(Warning! These scripts require that you go online to perform the transaction as live data must be fetched from the chain.)")
+	fmt.Println("1. Install Node.js on your machine: https://nodejs.org")
+	fmt.Println("2. In a terminal, go to scripts/xrpl-tool/ and run `npm start`")
+	fmt.Println("3. Enter your eddsa key, the destination address and amount")
 	fmt.Println("4. Submit the transaction")
 
 	return nil
