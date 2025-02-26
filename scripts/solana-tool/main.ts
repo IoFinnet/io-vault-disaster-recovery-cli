@@ -57,10 +57,10 @@ function validateAmount(amount: string): boolean {
  */
 function createKeypairFromPrivateKey(privateKeyHex: string): Keypair {
   const privateKeyBytes = Buffer.from(privateKeyHex, 'hex');
-  
+
   // Calculate public key from private key
   const publicKeyBytes = ed.getPublicKey(privateKeyBytes);
-  
+
   // Create a Solana keypair
   return Keypair.fromSecretKey(
     Uint8Array.from([...privateKeyBytes, ...publicKeyBytes])
@@ -112,12 +112,12 @@ async function main() {
   // Select network
   const networkOptions = ['Mainnet', 'Testnet', 'Devnet'];
   const networkIndex = readlineSync.keyInSelect(networkOptions, 'Which network would you like to use?');
-  
+
   if (networkIndex === -1) {
     console.log('Exiting...');
     return;
   }
-  
+
   const networkUrls = [MAINNET_URL, TESTNET_URL, DEVNET_URL];
   const selectedUrl = networkUrls[networkIndex];
   console.log(`Using ${networkOptions[networkIndex]} network: ${selectedUrl}`);
@@ -141,13 +141,13 @@ async function main() {
 
     // Check balance
     const checkBalance = readlineSync.keyInYNStrict('\nWould you like to check the wallet balance? (requires network connection)');
-    
+
     let balance;
     if (checkBalance) {
       try {
         balance = await connection.getBalance(keypair.publicKey);
         console.log(`Balance: ${balance / LAMPORTS_PER_SOL} SOL`);
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error fetching balance:', error.message);
         console.log('Continuing in offline mode...');
       }
@@ -187,7 +187,7 @@ async function main() {
     console.log(`From: ${keypair.publicKey.toString()}`);
     console.log(`To: ${destination}`);
     console.log(`Amount: ${amount} SOL`);
-    
+
     const confirmTransaction = readlineSync.keyInYNStrict('\nConfirm transaction?');
     if (!confirmTransaction) {
       console.log('Transaction cancelled.');
@@ -197,11 +197,11 @@ async function main() {
     // Send transaction
     console.log('\nSending transaction...');
     const signature = await transferSOL(keypair, destination, Number(amount), connection);
-    
+
     console.log('\nTransaction successful!');
     console.log(`Transaction signature: ${signature}`);
     console.log(`View on Solana Explorer: https://explorer.solana.com/tx/${signature}?cluster=${networkOptions[networkIndex].toLowerCase()}`);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error:', error.message);
     process.exit(1);
   }
