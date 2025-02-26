@@ -92,12 +92,17 @@ func networkName(testnet bool) string {
 }
 
 // DeriveXRPLAddress derives an XRPL address from a public key
+// Following the standard XRPL address derivation process:
+// 1. SHA-256 hash of the public key
+// 2. RIPEMD-160 hash of the result
+// 3. Add prefix 0x00 (AccountID prefix)
+// 4. Calculate checksum (first 4 bytes of double SHA-256)
+// 5. Append checksum
+// 6. Base58 encode with 'r' prefix
 func DeriveXRPLAddress(pubKey []byte) (string, error) {
-	// XRPL addresses use a specific algorithm:
-	// 1. SHA-256 hash of the public key
-	// 2. RIPEMD-160 hash of the result
-	// 3. Add prefix 0x00
-	// 4. Base58 encode with checksum
+	if len(pubKey) == 0 {
+		return "", fmt.Errorf("empty public key")
+	}
 
 	// Step 1: SHA-256 hash
 	sha256Hash := sha256.Sum256(pubKey)
@@ -117,10 +122,10 @@ func DeriveXRPLAddress(pubKey []byte) (string, error) {
 	secondHash := sha256.Sum256(firstHash[:])
 	checksum := secondHash[:4]
 
-	// Append checksum to prefixed hash
+	// Step 5: Append checksum to prefixed hash
 	addressBytes := append(prefixedHash, checksum...)
 
-	// Base58 encode
+	// Step 6: Base58 encode with 'r' prefix
 	address := "r" + base58.Encode(addressBytes)
 
 	return address, nil
@@ -128,12 +133,16 @@ func DeriveXRPLAddress(pubKey []byte) (string, error) {
 
 // GenerateFamilySeed converts a private key to XRPL's family seed format
 func GenerateFamilySeed(privateKey []byte) (string, error) {
+	if len(privateKey) == 0 {
+		return "", fmt.Errorf("empty private key")
+	}
+
 	// Family seed format for XRPL:
 	// 1. Add prefix 0x21 (FamilySeedPrefix)
 	// 2. Base58 encode with checksum
 
-	// Add prefix
-	prefixedKey := append([]byte{FamilySeedPrefix}, privateKey[:16]...) // Use only first 16 bytes
+	// Add prefix - use only first 16 bytes of private key for family seed
+	prefixedKey := append([]byte{FamilySeedPrefix}, privateKey[:16]...)
 
 	// Calculate checksum (first 4 bytes of double SHA-256)
 	firstHash := sha256.Sum256(prefixedKey)
