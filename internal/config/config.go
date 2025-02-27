@@ -10,8 +10,4 @@ type AppConfig struct {
 	QuorumOverride int
 	ExportKSFile   string
 	PasswordForKS  string
-	// Simplified Guided mode flags
-	XRPLMode      bool
-	BitTensorMode bool
-	SolanaMode    bool
 }

@@ -34,10 +34,7 @@ func main() {
 	passwordForKS := flag.String("password", "", "(Optional) Encryption password for the Ethereum wallet v3 file; use with -export")
 	exportKSFile := flag.String("export", "wallet.json", "(Optional) Filename to export a Ethereum wallet v3 JSON to; use with -password.")
 
-	// Transaction mode flags
-	xrplMode := flag.Bool("xrpl", false, "Enable XRPL guided mode")
-	bitTensorMode := flag.Bool("bittensor", false, "Enable Bittensor guided mode")
-	solanaMode := flag.Bool("solana", false, "Enable Solana guided mode")
+	// Note: Transaction modes have been removed - use scripts in scripts/ directory instead
 	
 	// Web mode flag
 	webMode := flag.Bool("web", false, "Launch in web interface mode")
@@ -91,9 +88,6 @@ func main() {
 		QuorumOverride: *quorumOverride,
 		ExportKSFile:   *exportKSFile,
 		PasswordForKS:  *passwordForKS,
-		XRPLMode:       *xrplMode,
-		BitTensorMode:  *bitTensorMode,
-		SolanaMode:     *solanaMode,
 	}
 
 	// First validate that files exist and are readable
@@ -231,60 +225,12 @@ func main() {
 				ui.AnsiCodes["bold"], solanaAddress, ui.AnsiCodes["reset"])
 		}
 
-		// Add transaction mode handling
-		if appConfig.XRPLMode {
-			fmt.Println("\nXRPL Guided Mode")
-			details, err := ui.PromptXRPLTransaction()
-			if err != nil {
-				fmt.Println(ui.ErrorBox(err))
-			} else {
-				err := xrpl.HandleTransaction(edSK, details.Destination, details.Amount, details.TestNet)
-				if err != nil {
-					fmt.Println(ui.ErrorBox(err))
-				}
-			}
-		}
-
-		if appConfig.BitTensorMode {
-			fmt.Println("\nBittensor Guided Mode")
-			details, err := ui.PromptBittensorTransaction()
-			if err != nil {
-				fmt.Println(ui.ErrorBox(err))
-			} else {
-				err := bittensor.HandleTransaction(edSK, details.Destination, details.Amount, details.Endpoint)
-				if err != nil {
-					fmt.Println(ui.ErrorBox(err))
-				}
-			}
-		}
-
-		if appConfig.SolanaMode {
-			fmt.Println("\nSolana Guided Mode")
-			details, err := ui.PromptSolanaTransaction()
-			if err != nil {
-				fmt.Println(ui.ErrorBox(err))
-			} else {
-				err := solana.HandleTransaction(edSK, details.Destination, details.Amount)
-				if err != nil {
-					fmt.Println(ui.ErrorBox(err))
-				}
-			}
-		}
-
 		// Add wallet import instructions
 		fmt.Println("\nWallet Import Instructions:")
 		fmt.Println("- XRPL: Use the XRPL tool in scripts/xrpl-tool/ with your private key")
 		fmt.Println("- Bittensor: Use the Bittensor tool in scripts/bittensor-tool/ with your private key")
 		fmt.Println("- Solana (Phantom): Import using the Base58 private key")
 		fmt.Println("- Solana: Import private key in hex format to your wallet")
-
-		// Add transaction instructions
-		if !appConfig.XRPLMode && !appConfig.BitTensorMode && !appConfig.SolanaMode {
-			fmt.Println("\nFor Extra Guidance:")
-			fmt.Println("- For XRPL: Run with --xrpl flag")
-			fmt.Println("- For Bittensor: Run with --bittensor flag")
-			fmt.Println("- For Solana: Run with --solana flag")
-		}
 	} else {
 		fmt.Println("\nNo EdDSA/Ed25519 private key found for this older vault.")
 	}
