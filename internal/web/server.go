@@ -43,17 +43,17 @@ type ServerConfig struct {
 
 // RecoveryResult stores the recovery data to be sent to the frontend
 type RecoveryResult struct {
-	Success        bool   `json:"success"`
-	ErrorMessage   string `json:"errorMessage,omitempty"`
-	Address        string `json:"address,omitempty"`
-	EcdsaPrivateKey string `json:"ecdsaPrivateKey,omitempty"`
-	TestnetWIF     string `json:"testnetWIF,omitempty"`
-	MainnetWIF     string `json:"mainnetWIF,omitempty"`
-	EddsaPrivateKey string `json:"eddsaPrivateKey,omitempty"`
-	EddsaPublicKey  string `json:"eddsaPublicKey,omitempty"`
-	XRPLAddress     string `json:"xrplAddress,omitempty"`
+	Success          bool   `json:"success"`
+	ErrorMessage     string `json:"errorMessage,omitempty"`
+	Address          string `json:"address,omitempty"`
+	EcdsaPrivateKey  string `json:"ecdsaPrivateKey,omitempty"`
+	TestnetWIF       string `json:"testnetWIF,omitempty"`
+	MainnetWIF       string `json:"mainnetWIF,omitempty"`
+	EddsaPrivateKey  string `json:"eddsaPrivateKey,omitempty"`
+	EddsaPublicKey   string `json:"eddsaPublicKey,omitempty"`
+	XRPLAddress      string `json:"xrplAddress,omitempty"`
 	BittensorAddress string `json:"bittensorAddress,omitempty"`
-	SolanaAddress   string `json:"solanaAddress,omitempty"`
+	SolanaAddress    string `json:"solanaAddress,omitempty"`
 }
 
 // Server represents the web server for the disaster recovery tool
@@ -127,6 +127,11 @@ func (s *Server) Start() (string, error) {
 
 	// API endpoint for listing vaults
 	mux.HandleFunc("POST /api/list-vaults", s.handleListVaults)
+
+	// API endpoints for address validation
+	mux.HandleFunc("POST /api/validate/xrpl", s.handleValidateXRPL)
+	mux.HandleFunc("POST /api/validate/bittensor", s.handleValidateBittensor)
+	mux.HandleFunc("POST /api/validate/solana", s.handleValidateSolana)
 
 	// Find an available port
 	port := s.config.Port
@@ -290,7 +295,7 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 	// Run the recovery tool
 	result := RecoveryResult{}
 	address, ecSK, edSK, _, err := runTool(vaultsDataFiles, &vaultID, nonceOverride, quorumOverride, exportFile, password)
-	
+
 	if err != nil {
 		result.Success = false
 		result.ErrorMessage = err.Error()
@@ -304,25 +309,25 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 
 		if edSK != nil {
 			result.EddsaPrivateKey = hex.EncodeToString(edSK)
-			
+
 			// Get the EdDSA public key
 			_, edPK, err := edwards.PrivKeyFromScalar(edSK)
 			if err == nil {
 				edPKC := edPK.SerializeCompressed()
 				result.EddsaPublicKey = hex.EncodeToString(edPKC)
-				
+
 				// Generate XRPL address
 				xrplAddress, err := xrpl.DeriveXRPLAddress(edPKC)
 				if err == nil {
 					result.XRPLAddress = xrplAddress
 				}
-				
+
 				// Generate Bittensor address
 				bittensorAddress, err := bittensor.GenerateSS58Address(edPKC)
 				if err == nil {
 					result.BittensorAddress = bittensorAddress
 				}
-				
+
 				// Generate Solana address
 				solanaAddress, err := solana.DeriveSolanaAddress(edPKC)
 				if err == nil {
@@ -347,37 +352,31 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 // processFilesAndMnemonics processes the uploaded files and their mnemonics
 func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile, error) {
 	// Debug logging to help diagnose form issues
-	fmt.Printf("Debug: Processing form data\n")
-	fmt.Printf("Debug: Form value keys: %v\n", getMapKeys(r.MultipartForm.Value))
-	fmt.Printf("Debug: Form file keys: %v\n", getMapKeys(r.MultipartForm.File))
-	
 	// Get file uploads - the frontend might use "files" or file input specific IDs
 	var fileHeaders []*multipart.FileHeader
-	for key, uploadedFiles := range r.MultipartForm.File {
-		fmt.Printf("Debug: Found file field: %s with %d files\n", key, len(uploadedFiles))
+	for _, uploadedFiles := range r.MultipartForm.File {
 		fileHeaders = append(fileHeaders, uploadedFiles...)
 	}
-	
+
 	if len(fileHeaders) == 0 {
 		return nil, fmt.Errorf("no files uploaded")
 	}
-	
+
 	// Get mnemonics - might be "mnemonics" or specific IDs
 	var mnemonicValues []string
 	for key, values := range r.MultipartForm.Value {
 		if strings.Contains(key, "mnemonic") {
-			fmt.Printf("Debug: Found mnemonic field: %s\n", key)
 			mnemonicValues = append(mnemonicValues, values...)
 		}
 	}
-	
+
 	// If we couldn't find mnemonic fields by name, try using all form values
 	if len(mnemonicValues) == 0 {
 		for _, values := range r.MultipartForm.Value {
 			mnemonicValues = append(mnemonicValues, values...)
 		}
 	}
-	
+
 	// Ensure we have the right number of mnemonics
 	if len(mnemonicValues) < len(fileHeaders) {
 		return nil, fmt.Errorf("number of mnemonics (%d) does not match number of files (%d)", len(mnemonicValues), len(fileHeaders))
@@ -406,7 +405,7 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 		if _, err := io.Copy(outFile, file); err != nil {
 			return nil, fmt.Errorf("failed to copy file content: %w", err)
 		}
-		
+
 		// Make sure to close and sync the file to ensure it's fully written
 		outFile.Close()
 
@@ -415,14 +414,11 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 		if mnemonicIndex >= len(mnemonicValues) {
 			mnemonicIndex = 0 // Fall back to first mnemonic if not enough
 		}
-		
+
 		mnemonic := ui.CleanMnemonicInput(mnemonicValues[mnemonicIndex])
 		if err := ui.ValidateMnemonics(mnemonic); err != nil {
 			return nil, fmt.Errorf("invalid mnemonic for file %s: %w", fileHeader.Filename, err)
 		}
-		
-		fmt.Printf("Debug: Processing file %s with mnemonic (%d words)\n", 
-			fileHeader.Filename, len(strings.Split(mnemonic, " ")))
 
 		// Add the file to the vaultsDataFiles
 		vaultsDataFiles = append(vaultsDataFiles, ui.VaultsDataFile{
@@ -455,7 +451,7 @@ func OpenBrowser(url string) error {
 // Helper function to get map keys for debugging
 func getMapKeys(m interface{}) []string {
 	var keys []string
-	
+
 	switch v := m.(type) {
 	case map[string][]string:
 		for k := range v {
@@ -466,8 +462,104 @@ func getMapKeys(m interface{}) []string {
 			keys = append(keys, k)
 		}
 	}
-	
+
 	return keys
+}
+
+// handleValidateXRPL validates an XRPL address
+func (s *Server) handleValidateXRPL(w http.ResponseWriter, r *http.Request) {
+	// Parse the form data
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to parse form: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Get the address from the form
+	address := r.FormValue("address")
+	if address == "" {
+		http.Error(w, "Address is required", http.StatusBadRequest)
+		return
+	}
+
+	// Validate the address using our internal package
+	isValid := xrpl.ValidateXRPLAddress(address)
+
+	// Return the result as JSON
+	response := struct {
+		Valid bool `json:"valid"`
+	}{
+		Valid: isValid,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// handleValidateBittensor validates a Bittensor SS58 address
+func (s *Server) handleValidateBittensor(w http.ResponseWriter, r *http.Request) {
+	// Parse the form data
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to parse form: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Get the address from the form
+	address := r.FormValue("address")
+	if address == "" {
+		http.Error(w, "Address is required", http.StatusBadRequest)
+		return
+	}
+
+	// Validate the address using our internal package
+	isValid := bittensor.ValidateBittensorAddress(address)
+
+	// Return the result as JSON
+	response := struct {
+		Valid bool `json:"valid"`
+	}{
+		Valid: isValid,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// handleValidateSolana validates a Solana address
+func (s *Server) handleValidateSolana(w http.ResponseWriter, r *http.Request) {
+	// Parse the form data
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to parse form: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Get the address from the form
+	address := r.FormValue("address")
+	if address == "" {
+		http.Error(w, "Address is required", http.StatusBadRequest)
+		return
+	}
+
+	// Validate the address using our internal package
+	isValid := solana.ValidateSolanaAddress(address)
+
+	// Return the result as JSON
+	response := struct {
+		Valid bool `json:"valid"`
+	}{
+		Valid: isValid,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
+		return
+	}
 }
 
 // The runTool function implementation is in tool.go
