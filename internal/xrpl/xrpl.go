@@ -78,8 +78,23 @@ type XRPLClient struct {
 
 // NewXRPLClient creates a new XRPL API client
 func NewXRPLClient(endpoint string) *XRPLClient {
+	// Make sure we have a valid HTTP(S) endpoint for JSON-RPC
+	apiEndpoint := endpoint
+	
+	// If we get a WebSocket URL, convert it to HTTPS
+	if strings.HasPrefix(endpoint, "wss://") {
+		apiEndpoint = "https://" + strings.TrimPrefix(endpoint, "wss://")
+	} else if strings.HasPrefix(endpoint, "ws://") {
+		apiEndpoint = "http://" + strings.TrimPrefix(endpoint, "ws://")
+	}
+	
+	// If no protocol is specified, assume HTTPS
+	if !strings.HasPrefix(apiEndpoint, "http://") && !strings.HasPrefix(apiEndpoint, "https://") {
+		apiEndpoint = "https://" + apiEndpoint
+	}
+	
 	return &XRPLClient{
-		Endpoint: endpoint,
+		Endpoint: apiEndpoint,
 		Client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
