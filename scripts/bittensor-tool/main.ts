@@ -226,10 +226,16 @@ async function signWithScalar(messageHex: string, privateKeyHex: string): Promis
   // Calculate public key directly from private key scalar
   const publicKey = ed.ExtendedPoint.BASE.multiply(bytesToNumberBE(privateKeyBytes)).toRawBytes();
 
-  // Note: This nonce generation differs from standard Ed25519, which uses
-  // the first half of SHA-512(private_key_seed). We're creating a deterministic
-  // nonce from the raw scalar and message instead.
-  const nonceInput = new Uint8Array([...privateKeyBytes, ...message]);
+  // Use standard Ed25519 signing process
+  // This matches the implementation in Go and other languages
+  const messageHash = await webcrypto.subtle.digest('SHA-512', privateKeyBytes);
+  const messageHashArray = new Uint8Array(messageHash);
+  
+  // First 32 bytes are used as the key for deterministic nonce generation
+  const nonceKey = messageHashArray.slice(0, 32);
+  
+  // Create the nonce input (prefix + message)
+  const nonceInput = new Uint8Array([...nonceKey, ...message]);
   const nonceArrayBuffer = await webcrypto.subtle.digest('SHA-512', nonceInput);
   const nonceArray = new Uint8Array(nonceArrayBuffer);
 

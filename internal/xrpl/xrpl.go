@@ -309,13 +309,18 @@ func serializeTransaction(tx *XRPLTransaction) ([]byte, error) {
 	txCopy.TxnSignature = "" // Remove existing signature for signing
 	
 	// Convert to JSON in canonical form
-	canonicalJSON, err := json.Marshal(txCopy)
+	// XRPL requires sorted keys for canonical JSON
+	canonicalJSON, err := json.MarshalIndent(txCopy, "", "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create canonical JSON: %v", err)
 	}
 	
+	// Remove all whitespace from the JSON
+	compactJSON := bytes.ReplaceAll(canonicalJSON, []byte("\n"), []byte(""))
+	compactJSON = bytes.ReplaceAll(compactJSON, []byte(" "), []byte(""))
+	
 	// Combine prefix and canonical JSON
-	dataToSign := append(signingPrefix, canonicalJSON...)
+	dataToSign := append(signingPrefix, compactJSON...)
 	
 	// Hash the combined data using SHA-256
 	hasher := sha256.New()
@@ -486,29 +491,15 @@ func buildAndSubmitXRPLTransaction(privateKey, publicKey []byte, destination, am
 	return nil
 }
 
+// Import our shared crypto package
+import (
+	"github.com/io-finnet/crypto-tool/internal/crypto"
+)
+
 // ed25519Sign signs a message with a scalar private key
 func ed25519Sign(privateKey, message []byte) ([]byte, error) {
-	// Note: Our privateKey is already the scalar key (post-SHA512)
-	// We'll use the edwards library to sign directly with this scalar
-	if len(privateKey) != 32 {
-		return nil, fmt.Errorf("invalid private key length: %d", len(privateKey))
-	}
-	
-	// Convert to edwards privkey
-	edwardsPrivKey, _, err := edwards.PrivKeyFromScalar(privateKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert scalar to private key: %v", err)
-	}
-	
-	// Sign the message
-	signature, err := edwardsPrivKey.Sign(message)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign message: %v", err)
-	}
-	
-	// Convert to []byte
-	signatureBytes := signature.Serialize()
-	return signatureBytes, nil
+	// Use our shared signing implementation
+	return crypto.SignWithScalar(privateKey, message)
 }
 
 // pubKeyToAddress converts a public key to an XRPL address

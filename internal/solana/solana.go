@@ -352,87 +352,118 @@ func createTransferInstruction(from, to string, lamports uint64) SolanaTransacti
 	// Combine command index and lamports
 	data := append([]byte{2, 0, 0, 0}, lamportsBytes...)
 	
-	// Encode data as a Base58 string
-	dataBase58 := base58.Encode(data)
-	
-	// Create the instruction
+	// Create the instruction - Solana expects base64 encoding for the data field
 	instruction := SolanaTransactionInstruction{
 		ProgramID: SystemProgramID,
 		Accounts: []string{from, to},
-		Data:     dataBase58,
+		Data:     base64.StdEncoding.EncodeToString(data),
 	}
 	
 	return instruction
 }
 
-// serializeTransaction serializes a transaction for signing
+// serializeTransaction serializes a transaction for signing using Solana's wire format
 func serializeTransaction(tx *SolanaTransaction) ([]byte, error) {
-	// Serialize transaction fields in canonical order
-	// This is a simplified serialization - in a full implementation,
-	// we would use proper Solana Binary Format encoding
+	// This implementation follows Solana's transaction wire format
+	// as defined in the Solana documentation and @solana/web3.js
 	
-	data := make([]byte, 0)
+	var buffer bytes.Buffer
 	
-	// Add blockhash
-	blockhashBytes := []byte(tx.RecentBlockhash)
-	data = append(data, blockhashBytes...)
+	// 1. Signatures (placeholder for signature count)
+	// For a single signature transaction, we write 1 as a compact-u16
+	buffer.WriteByte(1)
 	
-	// Add fee payer
-	feePayerBytes := []byte(tx.FeePayer)
-	data = append(data, feePayerBytes...)
+	// 2. Message header
+	// - Number of required signatures (1)
+	buffer.WriteByte(1)
+	// - Number of read-only signed accounts (0)
+	buffer.WriteByte(0)
+	// - Number of read-only unsigned accounts (0)
+	buffer.WriteByte(0)
 	
-	// Add the number of instructions
-	numInstructions := uint16(len(tx.Instructions))
-	numInstructionsBytes := make([]byte, 2)
-	binary.LittleEndian.PutUint16(numInstructionsBytes, numInstructions)
-	data = append(data, numInstructionsBytes...)
+	// 3. Account keys
+	// - Number of account keys (compact-u16)
+	// For a transfer, we have 3 accounts: fee payer, source, destination
+	buffer.WriteByte(3)
 	
-	// Add each instruction
+	// - Fee payer account
+	feePayerPubkey, err := base58.Decode(tx.FeePayer)
+	if err != nil {
+		return nil, fmt.Errorf("invalid fee payer: %v", err)
+	}
+	buffer.Write(feePayerPubkey)
+	
+	// - Source account (same as fee payer in this case)
+	sourceAccount := tx.Instructions[0].Accounts[0]
+	sourcePubkey, err := base58.Decode(sourceAccount)
+	if err != nil {
+		return nil, fmt.Errorf("invalid source account: %v", err)
+	}
+	buffer.Write(sourcePubkey)
+	
+	// - Destination account
+	destAccount := tx.Instructions[0].Accounts[1]
+	destPubkey, err := base58.Decode(destAccount)
+	if err != nil {
+		return nil, fmt.Errorf("invalid destination account: %v", err)
+	}
+	buffer.Write(destPubkey)
+	
+	// - Program ID (System Program)
+	programPubkey, err := base58.Decode(tx.Instructions[0].ProgramID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid program ID: %v", err)
+	}
+	buffer.Write(programPubkey)
+	
+	// 4. Recent blockhash
+	blockhash, err := base58.Decode(tx.RecentBlockhash)
+	if err != nil {
+		return nil, fmt.Errorf("invalid blockhash: %v", err)
+	}
+	buffer.Write(blockhash)
+	
+	// 5. Instructions
+	// - Number of instructions (compact-u16)
+	buffer.WriteByte(byte(len(tx.Instructions)))
+	
+	// - For each instruction
 	for _, instruction := range tx.Instructions {
-		// Program ID
-		programIDBytes := []byte(instruction.ProgramID)
-		data = append(data, programIDBytes...)
+		// Program ID index (u8)
+		buffer.WriteByte(3) // Index of the program ID in the account keys array
 		
-		// Number of accounts
-		numAccounts := uint16(len(instruction.Accounts))
-		numAccountsBytes := make([]byte, 2)
-		binary.LittleEndian.PutUint16(numAccountsBytes, numAccounts)
-		data = append(data, numAccountsBytes...)
+		// Account indices
+		// - Number of accounts (compact-u16)
+		buffer.WriteByte(byte(len(instruction.Accounts)))
 		
-		// Accounts
-		for _, account := range instruction.Accounts {
-			accountBytes := []byte(account)
-			data = append(data, accountBytes...)
-		}
+		// - Account indices (u8)
+		buffer.WriteByte(1) // Source account index
+		buffer.WriteByte(2) // Destination account index
 		
 		// Instruction data
-		dataBytes := []byte(instruction.Data)
-		data = append(data, dataBytes...)
+		// - Length of data (compact-u16)
+		instructionData, err := base64.StdEncoding.DecodeString(instruction.Data)
+		if err != nil {
+			return nil, fmt.Errorf("invalid instruction data: %v", err)
+		}
+		buffer.WriteByte(byte(len(instructionData)))
+		
+		// - Data bytes
+		buffer.Write(instructionData)
 	}
 	
-	return data, nil
+	return buffer.Bytes(), nil
 }
+
+// Import our shared crypto package
+import (
+	"github.com/io-finnet/crypto-tool/internal/crypto"
+)
 
 // ed25519Sign signs a message with the scalar private key
 func ed25519Sign(privateKey, message []byte) ([]byte, error) {
-	// Note: Our privateKey is already the scalar key (post-SHA512)
-	// We'll use the edwards library to sign directly with this scalar
-	
-	// Convert to edwards privkey
-	edwardsPrivKey, _, err := edwards.PrivKeyFromScalar(privateKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert scalar to private key: %v", err)
-	}
-	
-	// Sign the message
-	signature, err := edwardsPrivKey.Sign(message)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign message: %v", err)
-	}
-	
-	// Convert to []byte
-	signatureBytes := signature.Serialize()
-	return signatureBytes, nil
+	// Use our shared signing implementation
+	return crypto.SignWithScalar(privateKey, message)
 }
 
 // verifySignature verifies an Ed25519 signature on a transaction

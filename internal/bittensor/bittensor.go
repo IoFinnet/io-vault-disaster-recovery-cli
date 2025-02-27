@@ -311,79 +311,132 @@ func HandleTransaction(privateKey []byte, destination, amount, endpoint string, 
 	return nil
 }
 
-// serializeTransaction serializes a transaction for signing
+// serializeTransaction serializes a transaction for signing using SCALE encoding
 func serializeTransaction(tx *BittensorTransaction) ([]byte, error) {
-	// Serialize transaction fields in canonical order
-	// This is a simplified serialization - in a full implementation,
-	// we would use proper Substrate SCALE encoding
+	// This implementation uses proper Substrate SCALE encoding
+	// to match the format used by the Bittensor network
 	
-	data := make([]byte, 0)
+	// Create a buffer to hold the encoded data
+	var buffer bytes.Buffer
 	
-	// Add transaction type (TRANSFER = 0)
-	data = append(data, 0)
+	// Write method identifier for balances.transfer (0x0600)
+	// This is the compact-encoded call index for the transfer function
+	buffer.Write([]byte{0x06, 0x00})
 	
-	// Add fields in canonical order
-	fromBytes := []byte(tx.From)
-	data = append(data, fromBytes...)
+	// Write destination address (SS58 decoded to account ID)
+	destBytes, err := decodeFromSS58(tx.To)
+	if err != nil {
+		return nil, fmt.Errorf("invalid destination address: %v", err)
+	}
+	buffer.Write(destBytes)
 	
-	toBytes := []byte(tx.To)
-	data = append(data, toBytes...)
+	// Write amount using compact encoding
+	// For amounts < 2^30, compact encoding is:
+	// - single byte for < 2^6
+	// - two bytes for < 2^14
+	// - four bytes for < 2^30
+	encodeCompactUint(&buffer, tx.Amount)
 	
-	// Amount (in planck)
-	amountBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(amountBytes, tx.Amount)
-	data = append(data, amountBytes...)
+	// Create ExtrinsicSignature structure
+	var sigBuffer bytes.Buffer
 	
-	// Nonce
-	nonceBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(nonceBytes, tx.Nonce)
-	data = append(data, nonceBytes...)
+	// Add address (from SS58 format)
+	fromBytes, err := decodeFromSS58(tx.From)
+	if err != nil {
+		return nil, fmt.Errorf("invalid source address: %v", err)
+	}
+	sigBuffer.Write(fromBytes)
 	
-	// Tip
-	tipBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(tipBytes, tx.Tip)
-	data = append(data, tipBytes...)
+	// Add signature type (Ed25519 = 0x00)
+	sigBuffer.WriteByte(0x00)
 	
-	// Era period
-	eraBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(eraBytes, tx.EraPeriod)
-	data = append(data, eraBytes...)
+	// Add era (immortal = 0x00)
+	sigBuffer.WriteByte(0x00)
 	
-	// Block hash (as bytes)
+	// Add nonce (compact encoded)
+	encodeCompactUint(&sigBuffer, tx.Nonce)
+	
+	// Add tip (compact encoded)
+	encodeCompactUint(&sigBuffer, tx.Tip)
+	
+	// Combine all parts for the final message to sign
+	var message bytes.Buffer
+	
+	// Add network specific prefix
+	message.Write([]byte("substrate"))
+	
+	// Add signature version (0x84 for version 4)
+	message.WriteByte(0x84)
+	
+	// Add transaction version (0x04)
+	message.WriteByte(0x04)
+	
+	// Add genesis hash
+	genesisHash, _ := hex.DecodeString("4d7452644f6e3a0e99e97a6e54797ae4849953cb0ab3b4e6d3f6539b56865a34")
+	message.Write(genesisHash)
+	
+	// Add block hash
 	blockHashBytes, err := hex.DecodeString(strings.TrimPrefix(tx.BlockHash, "0x"))
 	if err != nil {
 		return nil, fmt.Errorf("invalid block hash: %v", err)
 	}
-	data = append(data, blockHashBytes...)
+	message.Write(blockHashBytes)
 	
-	// Block number
-	blockBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(blockBytes, tx.BlockNumber)
-	data = append(data, blockBytes...)
+	// Add method data
+	message.Write(buffer.Bytes())
 	
-	return data, nil
+	// Add signature data
+	message.Write(sigBuffer.Bytes())
+	
+	return message.Bytes(), nil
 }
+
+// encodeCompactUint encodes a uint64 in SCALE compact format
+func encodeCompactUint(buffer *bytes.Buffer, value uint64) {
+	if value < 64 { // 2^6
+		buffer.WriteByte(byte(value << 2))
+	} else if value < 16384 { // 2^14
+		buffer.WriteByte(byte((value & 0x3F) << 2) | 0x01)
+		buffer.WriteByte(byte(value >> 6))
+	} else if value < 1073741824 { // 2^30
+		buffer.WriteByte(byte((value & 0x3F) << 2) | 0x02)
+		buffer.WriteByte(byte((value >> 6) & 0xFF))
+		buffer.WriteByte(byte((value >> 14) & 0xFF))
+		buffer.WriteByte(byte((value >> 22) & 0xFF))
+	} else {
+		// For larger values, use the full encoding
+		buffer.WriteByte(0x03)
+		buffer.WriteByte(byte(value & 0xFF))
+		buffer.WriteByte(byte((value >> 8) & 0xFF))
+		buffer.WriteByte(byte((value >> 16) & 0xFF))
+		buffer.WriteByte(byte((value >> 24) & 0xFF))
+		buffer.WriteByte(byte((value >> 32) & 0xFF))
+		buffer.WriteByte(byte((value >> 40) & 0xFF))
+		buffer.WriteByte(byte((value >> 48) & 0xFF))
+		buffer.WriteByte(byte((value >> 56) & 0xFF))
+	}
+}
+
+// decodeFromSS58 decodes an SS58 address to account ID bytes
+func decodeFromSS58(address string) ([]byte, error) {
+	decoded := base58.Decode(address)
+	if len(decoded) < 35 {
+		return nil, fmt.Errorf("invalid SS58 address length")
+	}
+	
+	// Extract the actual public key (bytes 1 to 33)
+	return decoded[1:33], nil
+}
+
+// Import our shared crypto package
+import (
+	"github.com/io-finnet/crypto-tool/internal/crypto"
+)
 
 // ed25519Sign signs the message with the scalar private key
 func ed25519Sign(privateKey, message []byte) ([]byte, error) {
-	// Note: Our privateKey is already the scalar key (post-SHA512)
-	// We'll use the edwards library to sign directly with this scalar
-	
-	// Convert to edwards privkey
-	edwardsPrivKey, _, err := edwards.PrivKeyFromScalar(privateKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert scalar to private key: %v", err)
-	}
-	
-	// Sign the message
-	signature, err := edwardsPrivKey.Sign(message)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign message: %v", err)
-	}
-	
-	// Convert to []byte
-	signatureBytes := signature.Serialize()
-	return signatureBytes, nil
+	// Use our shared signing implementation
+	return crypto.SignWithScalar(privateKey, message)
 }
 
 // verifySignature verifies an Ed25519 signature on a transaction
