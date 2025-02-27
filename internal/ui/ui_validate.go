@@ -12,9 +12,16 @@ import (
 	errors2 "github.com/pkg/errors"
 )
 
+// The WORDS constant is defined in ui.go (24)
+
 func (v VaultsDataFile) ValidateMnemonics() error {
 	phrase := cleanMnemonicInput(v.Mnemonics)
-	words := strings.Split(phrase, " ")
+	return ValidateMnemonics(phrase)
+}
+
+// ValidateMnemonics validates that the provided mnemonic has exactly WORDS number of words
+func ValidateMnemonics(mnemonic string) error {
+	words := strings.Split(mnemonic, " ")
 	if len(words) != WORDS {
 		return errors2.Errorf("⚠ wanted %d phrase words but got %d", WORDS, len(words))
 	}
@@ -57,9 +64,15 @@ func ValidateFiles(appConfig config.AppConfig) error {
 	return nil
 }
 
-func cleanMnemonicInput(input string) string {
+// CleanMnemonicInput processes a mnemonic phrase by removing line breaks and extra whitespace
+func CleanMnemonicInput(input string) string {
 	input = strings.Replace(input, "\n", "", -1)
 	input = strings.Replace(input, "\r", "", -1)
 	input = strings.TrimSpace(input)
 	return input
+}
+
+// cleanMnemonicInput is an alias for CleanMnemonicInput for backward compatibility
+func cleanMnemonicInput(input string) string {
+	return CleanMnemonicInput(input)
 }

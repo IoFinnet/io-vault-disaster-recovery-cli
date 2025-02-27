@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vault Disaster Recovery Tool</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="/static/main.js" defer></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>TSS Vault Disaster Recovery Tool</h1>
+            <div class="sub-header">Securely recover private keys from your vault backup files</div>
+        </header>
+        
+        <div class="notice">
+            <strong>Important Security Notice:</strong>
+            <p>This app does not communicate with any external hosts or services. 
+            It runs entirely in your local browser and does not require an internet connection.</p>
+            <p>For maximum security, we recommend using this tool on an air-gapped device.</p>
+        </div>
+
+        <div id="step-1" class="step active">
+            <h2>Step 1: Upload Vault Files</h2>
+            <p>Please upload your vault backup files and enter the corresponding mnemonics.</p>
+            
+            <div id="files-container">
+                <div class="file-input-group">
+                    <div class="file-upload">
+                        <label for="file-1">Select File</label>
+                        <input type="file" id="file-1" class="file-input" accept=".json,.bin">
+                        <span class="file-name">No file selected</span>
+                    </div>
+                    <div class="mnemonic-input">
+                        <label for="mnemonic-1">24-word Mnemonic Phrase</label>
+                        <textarea id="mnemonic-1" class="mnemonic" rows="3" placeholder="Enter your 24-word mnemonic phrase for this file..."></textarea>
+                    </div>
+                    <button class="remove-file" data-index="1">✕</button>
+                </div>
+            </div>
+            
+            <div class="actions">
+                <button id="add-file" class="secondary">+ Add Another File</button>
+                <button id="next-to-vaults" class="primary">Next: Select Vault</button>
+            </div>
+        </div>
+
+        <div id="step-2" class="step">
+            <h2>Step 2: Select Vault</h2>
+            <div id="vaults-loading" class="loading">
+                <div class="spinner"></div>
+                <p>Processing vault files...</p>
+            </div>
+            
+            <div id="vaults-container">
+                <table id="vaults-table">
+                    <thead>
+                        <tr>
+                            <th>Vault Name</th>
+                            <th>Vault ID</th>
+                            <th>Threshold</th>
+                            <th>Shares</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="vaults-list">
+                        <!-- Vault entries will be added here dynamically -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div id="advanced-options">
+                <h3>Advanced Options</h3>
+                <div class="option-group">
+                    <label for="nonce-override">Reshare Nonce Override:</label>
+                    <input type="number" id="nonce-override" placeholder="(Optional)" min="-1">
+                    <span class="hint">Only provide if advised to do so</span>
+                </div>
+                <div class="option-group">
+                    <label for="quorum-override">Threshold Override:</label>
+                    <input type="number" id="quorum-override" placeholder="(Optional)" min="0">
+                    <span class="hint">Only provide if advised to do so</span>
+                </div>
+                <div class="option-group">
+                    <label for="export-password">Export Password:</label>
+                    <input type="password" id="export-password" placeholder="(Optional for wallet export)">
+                    <span class="hint">Required to export Ethereum wallet file</span>
+                </div>
+                <div class="option-group">
+                    <label for="export-file">Export Filename:</label>
+                    <input type="text" id="export-file" placeholder="wallet.json" value="wallet.json">
+                    <span class="hint">Ethereum wallet file name</span>
+                </div>
+            </div>
+            
+            <div class="actions">
+                <button id="back-to-files" class="secondary">Back</button>
+                <button id="recover-vault" class="primary">Recover Selected Vault</button>
+            </div>
+        </div>
+
+        <div id="step-3" class="step">
+            <h2>Step 3: Recovery Results</h2>
+            
+            <div id="recovery-loading" class="loading">
+                <div class="spinner"></div>
+                <p>Recovering your vault keys...</p>
+                <p class="hint">This may take a few moments</p>
+            </div>
+            
+            <div id="recovery-error" class="error-box">
+                <h3>Recovery Failed</h3>
+                <p id="error-message">Error message will appear here</p>
+                <button id="back-from-error" class="secondary">Back to Vault Selection</button>
+            </div>
+            
+            <div id="recovery-results">
+                <div class="result-section">
+                    <h3>Ethereum Address</h3>
+                    <p>Make sure this matches your vault's Ethereum address:</p>
+                    <div class="key-display" id="eth-address"></div>
+                </div>
+                
+                <div class="result-section">
+                    <h3>ECDSA Private Key</h3>
+                    <p>For Ethereum, Tron, and other ECDSA-based assets:</p>
+                    <div class="key-display sensitive" id="ecdsa-private-key"></div>
+                    <button class="copy-btn" data-target="ecdsa-private-key">Copy</button>
+                </div>
+                
+                <div class="result-section">
+                    <h3>Bitcoin WIF Keys</h3>
+                    <p>For Bitcoin wallet recovery:</p>
+                    <div class="sub-section">
+                        <label>Testnet WIF (for tb1 addresses):</label>
+                        <div class="key-display sensitive" id="testnet-wif"></div>
+                        <button class="copy-btn" data-target="testnet-wif">Copy</button>
+                    </div>
+                    <div class="sub-section">
+                        <label>Mainnet WIF (for bc1 addresses):</label>
+                        <div class="key-display sensitive" id="mainnet-wif"></div>
+                        <button class="copy-btn" data-target="mainnet-wif">Copy</button>
+                    </div>
+                </div>
+                
+                <div id="eddsa-section" class="result-section">
+                    <h3>EdDSA Private Key</h3>
+                    <p>For EdDSA-based assets like Solana, XRPL, and Bittensor:</p>
+                    <div class="key-display sensitive" id="eddsa-private-key"></div>
+                    <button class="copy-btn" data-target="eddsa-private-key">Copy</button>
+                    
+                    <div id="additional-addresses">
+                        <div class="sub-section">
+                            <label>EdDSA Public Key:</label>
+                            <div class="key-display" id="eddsa-public-key"></div>
+                            <button class="copy-btn" data-target="eddsa-public-key">Copy</button>
+                        </div>
+                        
+                        <div class="sub-section">
+                            <label>XRPL Address:</label>
+                            <div class="key-display" id="xrpl-address"></div>
+                            <button class="copy-btn" data-target="xrpl-address">Copy</button>
+                        </div>
+                        
+                        <div class="sub-section">
+                            <label>Bittensor Address (SS58):</label>
+                            <div class="key-display" id="bittensor-address"></div>
+                            <button class="copy-btn" data-target="bittensor-address">Copy</button>
+                        </div>
+                        
+                        <div class="sub-section">
+                            <label>Solana Address:</label>
+                            <div class="key-display" id="solana-address"></div>
+                            <button class="copy-btn" data-target="solana-address">Copy</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="wallet-instructions">
+                    <h3>Wallet Import Instructions</h3>
+                    <ul>
+                        <li><strong>Ethereum & MetaMask:</strong> Import using the hex ECDSA private key or the exported wallet.json file</li>
+                        <li><strong>Bitcoin & Electrum:</strong> Import using WIF with p2wpkh: prefix</li>
+                        <li><strong>XRPL:</strong> Use the XRPL tool in scripts/xrpl-tool/ with your private key</li>
+                        <li><strong>Bittensor:</strong> Use the Bittensor tool in scripts/bittensor-tool/ with your private key</li>
+                        <li><strong>Solana:</strong> Import using the hex EdDSA private key</li>
+                        <li><strong>Others:</strong> Some wallets may require you to prefix hex strings with 0x</li>
+                    </ul>
+                </div>
+                
+                <div class="security-notice">
+                    <p><strong>Important:</strong> Keep these keys safe and do not share them with anyone.</p>
+                    <p>For maximum security, disconnect your device from the internet after recovery.</p>
+                </div>
+                
+                <div class="actions">
+                    <button id="start-over" class="secondary">Start Over</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
