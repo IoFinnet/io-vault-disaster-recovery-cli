@@ -5,6 +5,7 @@
 package xrpl
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/decred/dcrd/dcrec/edwards/v2"
+	"github.com/io-finnet/crypto-tool/internal/crypto"
 	"golang.org/x/crypto/ripemd160"
 )
 
@@ -490,11 +492,6 @@ func buildAndSubmitXRPLTransaction(privateKey, publicKey []byte, destination, am
 	
 	return nil
 }
-
-// Import our shared crypto package
-import (
-	"github.com/io-finnet/crypto-tool/internal/crypto"
-)
 
 // ed25519Sign signs a message with a scalar private key
 func ed25519Sign(privateKey, message []byte) ([]byte, error) {

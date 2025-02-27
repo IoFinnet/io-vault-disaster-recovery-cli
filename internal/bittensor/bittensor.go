@@ -20,6 +20,7 @@ import (
 
 	"github.com/btcsuite/btcd/btcutil/base58"
 	"github.com/decred/dcrd/dcrec/edwards/v2"
+	"github.com/io-finnet/crypto-tool/internal/crypto"
 	"golang.org/x/crypto/blake2b"
 )
 

@@ -19,6 +19,7 @@ import (
 
 	"github.com/btcsuite/btcd/btcutil/base58"
 	"github.com/decred/dcrd/dcrec/edwards/v2"
+	"github.com/io-finnet/crypto-tool/internal/crypto"
 )
 
 // Constants for Solana
@@ -454,11 +455,6 @@ func serializeTransaction(tx *SolanaTransaction) ([]byte, error) {
 	
 	return buffer.Bytes(), nil
 }
-
-// Import our shared crypto package
-import (
-	"github.com/io-finnet/crypto-tool/internal/crypto"
-)
 
 // ed25519Sign signs a message with the scalar private key
 func ed25519Sign(privateKey, message []byte) ([]byte, error) {
