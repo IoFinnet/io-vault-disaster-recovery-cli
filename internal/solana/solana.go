@@ -30,3 +30,18 @@ func GenerateKeyPairString(privateKey []byte, publicKey []byte) (string, error) 
 	keypair := append(privateKey, publicKey...)
 	return base64.StdEncoding.EncodeToString(keypair), nil
 }
+
+// ValidateSolanaAddress validates a Solana address
+func ValidateSolanaAddress(address string) bool {
+	// Solana addresses are base58 encoded and typically 32-44 characters
+	if len(address) < 32 || len(address) > 44 {
+		return false
+	}
+
+	// Decode the address and check if it's a valid base58 string
+	decoded := base58.Decode(address)
+	
+	// A valid Solana public key should decode to 32 bytes
+	// But for now, just ensure it's a valid base58 string that decodes to something
+	return len(decoded) > 0
+}

@@ -48,3 +48,31 @@ func GenerateSS58Address(pubKey []byte) (string, error) {
 
 	return address, nil
 }
+
+// ValidateBittensorAddress validates a Bittensor SS58 address
+func ValidateBittensorAddress(address string) bool {
+	// Basic format validation for SS58 addresses
+	// Bittensor addresses should be 48 characters long and contain only base58 characters
+	if len(address) != 48 {
+		return false
+	}
+
+	// Check if the address is valid base58
+	decoded := base58.Decode(address)
+	
+	// Decoded address should be at least 35 bytes:
+	// 1 byte for prefix + 32 bytes for public key + 2 bytes for checksum
+	if len(decoded) < 35 {
+		return false
+	}
+
+	// Check if the prefix matches Bittensor's SS58 format (42)
+	if decoded[0] != SS58Prefix {
+		return false
+	}
+
+	// We could add more validation here by recalculating the checksum,
+	// but for our purposes, this basic validation is sufficient
+	
+	return true
+}

@@ -410,6 +410,161 @@ button:active {
     border-radius: 4px;
 }
 
+/* Action buttons for blockchain addresses */
+.action-buttons {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.transaction-btn {
+    background-color: var(--success-color);
+    color: white;
+    font-size: 0.9rem;
+    padding: 0.3rem 0.8rem;
+}
+
+.transaction-btn:hover {
+    opacity: 0.9;
+}
+
+/* Transaction Dialog */
+.transaction-dialog {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    overflow: auto;
+}
+
+.transaction-dialog-content {
+    background-color: white;
+    margin: 10% auto;
+    padding: 2rem;
+    border-radius: 8px;
+    max-width: 600px;
+    position: relative;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    animation: dialogFadeIn 0.3s ease-in-out;
+}
+
+@keyframes dialogFadeIn {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.close-dialog {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: var(--text-light);
+}
+
+.close-dialog:hover {
+    color: var(--dark-gray);
+}
+
+.transaction-form {
+    margin-top: 1.5rem;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.network-selection {
+    margin-bottom: 1.5rem;
+}
+
+.radio-group {
+    display: flex;
+    gap: 1.5rem;
+    margin-top: 0.5rem;
+}
+
+.radio-group label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-weight: normal;
+}
+
+.transaction-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+.transaction-status {
+    padding: 1rem;
+    border-radius: 4px;
+    margin-top: 1rem;
+    display: none;
+}
+
+.transaction-status.success {
+    background-color: #d4edda;
+    border-left: 4px solid var(--success-color);
+    color: #155724;
+    display: block;
+}
+
+.transaction-status.error {
+    background-color: #f8d7da;
+    border-left: 4px solid var(--danger-color);
+    color: #721c24;
+    display: block;
+}
+
+.transaction-status.info {
+    background-color: #e8f4fd;
+    border-left: 4px solid var(--primary-color);
+    color: #0c5460;
+    display: block;
+}
+
+.prepared-transaction {
+    margin-top: 2rem;
+    padding: 1.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: var(--light-gray);
+    display: none;
+}
+
+.tx-details {
+    font-family: monospace;
+    padding: 1rem;
+    background-color: white;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    white-space: pre-wrap;
+    overflow-x: auto;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
 @media (max-width: 768px) {
     .container {
         padding: 1rem;
@@ -432,5 +587,20 @@ button:active {
     .option-group label, .option-group input {
         width: 100%;
         margin-bottom: 0.5rem;
+    }
+    
+    .transaction-dialog-content {
+        margin: 5% auto;
+        padding: 1.5rem;
+        max-width: 95%;
+    }
+    
+    .radio-group {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    
+    .action-buttons {
+        flex-direction: column;
     }
 }
