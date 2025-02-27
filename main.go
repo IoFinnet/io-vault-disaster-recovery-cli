@@ -238,16 +238,67 @@ func main() {
 		fmt.Println("- Bittensor: Import the private key in hex format to a Bittensor wallet")
 		fmt.Println("- Solana (Phantom): Import using the Base58 private key")
 		fmt.Println("- Solana: Import private key in hex format to your wallet")
+		fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.\n")
 
-		// Add transaction instructions
+		// Ask user if they want to proceed with transactions
 		if !appConfig.XRPLMode && !appConfig.BitTensorMode && !appConfig.SolanaMode {
-			fmt.Println("\nFor Transaction Guidance:")
-			fmt.Println("- For XRPL transfers: Run with --xrpl flag")
-			fmt.Println("- For Bittensor transfers: Run with --bittensor flag")
-			fmt.Println("- For Solana transfers: Run with --solana flag")
+			fmt.Println("\nWould you like to proceed with a transaction on one of these blockchains?")
+			fmt.Println("1. XRPL Transaction")
+			fmt.Println("2. Bittensor Transaction")
+			fmt.Println("3. Solana Transaction")
+			fmt.Println("4. Exit")
+			
+			var choice string
+			fmt.Print("\nEnter your choice (1-4): ")
+			fmt.Scanln(&choice)
+			
+			switch choice {
+			case "1":
+				// Verify we can derive XRPL address (just to confirm the key is valid for XRPL)
+				_, err := xrpl.DeriveXRPLAddress(edPKC)
+				if err != nil {
+					fmt.Println(ui.ErrorBox(fmt.Errorf("invalid XRPL key: %v", err)))
+					break
+				}
+				
+				details, err := ui.PromptXRPLTransaction()
+				if err != nil {
+					fmt.Println(ui.ErrorBox(err))
+					break
+				}
+				
+				err = xrpl.HandleTransaction(edSK, details.Destination, details.Amount, details.TestNet)
+				if err != nil {
+					fmt.Println(ui.ErrorBox(err))
+				}
+			case "2":
+				details, err := ui.PromptBittensorTransaction()
+				if err != nil {
+					fmt.Println(ui.ErrorBox(err))
+				} else {
+					err := bittensor.HandleTransaction(edSK, details.Destination, details.Amount, details.Endpoint)
+					if err != nil {
+						fmt.Println(ui.ErrorBox(err))
+					}
+				}
+			case "3":
+				details, err := ui.PromptSolanaTransaction()
+				if err != nil {
+					fmt.Println(ui.ErrorBox(err))
+				} else {
+					err := solana.HandleTransaction(edSK, details.Destination, details.Amount)
+					if err != nil {
+						fmt.Println(ui.ErrorBox(err))
+					}
+				}
+			case "4":
+				fmt.Println("Exiting without transaction.")
+			default:
+				fmt.Println("Invalid choice. Exiting without transaction.")
+			}
 		}
 	} else {
 		fmt.Println("\nNo EdDSA/Ed25519 private key found for this older vault.")
+		fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.\n")
 	}
-	fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.\n")
 }
