@@ -6,12 +6,9 @@ package xrpl
 
 import (
 	"crypto/sha256"
-	"errors"
 	"fmt"
 	"math/big"
-	"strings"
 
-	"github.com/decred/dcrd/dcrec/edwards/v2"
 	"golang.org/x/crypto/ripemd160"
 )
 
@@ -20,84 +17,6 @@ const (
 	AccountIDPrefix  byte = 0x00
 	FamilySeedPrefix byte = 0x21 // 's' in XRPL's base58 encoding
 )
-
-// HandleTransaction processes an XRPL transaction
-func HandleTransaction(privateKey []byte, destination, amount string, testnet bool) error {
-	// Validate inputs
-	if err := validateInputs(destination, amount); err != nil {
-		return err
-	}
-
-	// Derive public key from private key
-	_, pubKey, err := edwards.PrivKeyFromScalar(privateKey)
-	if err != nil {
-		return fmt.Errorf("failed to derive public key: %v", err)
-	}
-
-	// Display key information
-	fmt.Println("\nXRP Ledger Transaction Information:")
-	fmt.Printf("Network: %s\n", networkName(testnet))
-
-	// Get address from public key
-	// For EdDSA keys, we need to ensure we're using the correct format
-	pubKeyBytes := pubKey.SerializeCompressed()
-
-	// Debug info about the key format
-	fmt.Printf("Debug: Public key length: %d bytes\n", len(pubKeyBytes))
-	fmt.Printf("Debug: Public key bytes: %x\n", pubKeyBytes)
-
-	address, err := DeriveXRPLAddress(pubKeyBytes)
-	if err != nil {
-		return fmt.Errorf("failed to derive XRPL address: %v", err)
-	}
-	fmt.Printf("Your XRP Address: %s\n", address)
-
-	// Transaction details
-	fmt.Printf("Destination: %s\n", destination)
-	fmt.Printf("Amount: %s XRP\n", amount)
-
-	// Instructions for manual transaction
-	fmt.Println("\nTo complete this transaction:")
-	fmt.Println("(Warning! These scripts require that you go online to perform the transaction as live data must be fetched from the chain.)")
-	fmt.Println("1. Install Node.js on your machine: https://nodejs.org")
-	fmt.Println("2. In a terminal, go to scripts/xrpl-tool/ and run `npm start`")
-	fmt.Println("3. Enter your eddsa key, the destination address and amount")
-	fmt.Println("4. Submit the transaction")
-
-	return nil
-}
-
-// validateInputs checks if the destination and amount are valid
-func validateInputs(destination, amount string) error {
-	if !isValidXRPAddress(destination) {
-		return errors.New("invalid XRP destination address format")
-	}
-
-	if !isValidXRPAmount(amount) {
-		return errors.New("invalid XRP amount (must be a positive number)")
-	}
-
-	return nil
-}
-
-// isValidXRPAddress checks if the address is a valid XRP address
-func isValidXRPAddress(address string) bool {
-	return strings.HasPrefix(address, "r") && len(address) >= 25 && len(address) <= 35
-}
-
-// isValidXRPAmount checks if the amount is a valid XRP amount
-func isValidXRPAmount(amount string) bool {
-	// Simple validation - could be more sophisticated
-	return len(amount) > 0 && amount[0] != '-'
-}
-
-// networkName returns the name of the network
-func networkName(testnet bool) string {
-	if testnet {
-		return "Testnet"
-	}
-	return "Mainnet"
-}
 
 // XRPL specific base58 alphabet that starts with 'r' instead of '1'
 const xrplBase58Alphabet = "rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz"
