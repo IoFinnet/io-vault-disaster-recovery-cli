@@ -188,13 +188,22 @@ func (c *XRPLClient) GetFee() (string, error) {
 
 // SubmitTransaction submits a signed transaction to the XRPL
 func (c *XRPLClient) SubmitTransaction(txBlob string) (string, error) {
-	// Production mode - no debug output
+	// For XRPL, we need to use tx_blob parameter for a fully signed transaction
+	// This is because many servers have signing disabled
+	// The txBlob should be a hex string
 	
-	// XRPL expects the transaction in a specific "tx_json" format
-	// Update to use tx_json param for submitting an already-built transaction
+	// Convert to hex string if it's not already
+	var txBlobHex string
+	if txBlob[0] == '{' {
+		// JSON format - convert to hex
+		txBlobHex = hex.EncodeToString([]byte(txBlob))
+	} else {
+		// Already a hex string
+		txBlobHex = txBlob
+	}
+	
 	params := map[string]interface{}{
-		"tx_json": json.RawMessage(txBlob),
-		"fail_hard": false,
+		"tx_blob": txBlobHex,
 	}
 	
 	resp, err := c.Request("submit", params)
