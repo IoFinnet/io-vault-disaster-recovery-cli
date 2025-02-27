@@ -1,3 +1,32 @@
+// Polyfill Buffer for browser environments if not available
+if (typeof Buffer === 'undefined') {
+    window.Buffer = {
+        from: function(data, encoding) {
+            if (encoding === 'hex') {
+                // Convert hex string to Uint8Array
+                const hexString = data.toString();
+                const result = new Uint8Array(hexString.length / 2);
+                for (let i = 0; i < hexString.length; i += 2) {
+                    result[i / 2] = parseInt(hexString.substring(i, i + 2), 16);
+                }
+                return result;
+            } else {
+                // Default behavior for other encodings
+                return new TextEncoder().encode(data.toString());
+            }
+        },
+        toString: function(buffer, encoding) {
+            if (encoding === 'hex') {
+                return Array.from(buffer)
+                    .map(b => b.toString(16).padStart(2, '0'))
+                    .join('');
+            } else {
+                return new TextDecoder().decode(buffer);
+            }
+        }
+    };
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Element references
     const addFileBtn = document.getElementById('add-file');
@@ -1262,25 +1291,40 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function createSolanaKeypair(privateKeyHex) {
-        // Calculate public key directly from private key scalar using the same method as in the Solana tool
-        const privateKeyBytes = Buffer.from(privateKeyHex, 'hex');
-        
-        // Validate private key length (32 bytes for Ed25519)
-        if (privateKeyBytes.length !== 32) {
-            throw new Error('Private key must be 32 bytes');
+        try {
+            // Calculate public key directly from private key scalar using the same method as in the Solana tool
+            // Convert hex string to Uint8Array directly if Buffer is causing issues
+            let privateKeyBytes;
+            if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
+                privateKeyBytes = Buffer.from(privateKeyHex, 'hex');
+            } else {
+                // Manual hex string to Uint8Array conversion
+                privateKeyBytes = new Uint8Array(privateKeyHex.length / 2);
+                for (let i = 0; i < privateKeyHex.length; i += 2) {
+                    privateKeyBytes[i / 2] = parseInt(privateKeyHex.substring(i, i + 2), 16);
+                }
+            }
+            
+            // Validate private key length (32 bytes for Ed25519)
+            if (privateKeyBytes.length !== 32) {
+                throw new Error('Private key must be 32 bytes');
+            }
+            
+            // Calculate public key directly from private key scalar using BASE point multiplication
+            const publicKeyBytes = window.nobleEd25519.getPublicKey(privateKeyBytes);
+            
+            // Create a public key object directly using the Uint8Array
+            const publicKey = new solanaWeb3.PublicKey(publicKeyBytes);
+            
+            // Return object with the public key and secretKey for Solana transaction signing
+            return {
+                publicKey: publicKey,
+                secretKey: privateKeyBytes
+            };
+        } catch (error) {
+            console.error('Error creating Solana keypair:', error);
+            throw error;
         }
-        
-        // Calculate public key directly from private key scalar using BASE point multiplication
-        const publicKeyBytes = window.nobleEd25519.getPublicKey(privateKeyBytes);
-        
-        // Create a public key object directly
-        const publicKey = new solanaWeb3.PublicKey(Buffer.from(publicKeyBytes));
-        
-        // Return object with the public key and secretKey for Solana transaction signing
-        return {
-            publicKey: publicKey,
-            secretKey: privateKeyBytes
-        };
     }
 
     // ==================
@@ -1306,23 +1350,28 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // Convert hex message to Uint8Array
+        // Convert hex message to Uint8Array using our helper function
         const message = hexToBytes(messageHex);
 
         // Convert hex private key scalar to Uint8Array
         const privateKeyBytes = hexToBytes(privateKeyHex);
 
-        // Calculate public key directly from private key scalar
-        const publicKey = await window.nobleEd25519.getPublicKey(privateKeyBytes);
+        try {
+            // Calculate public key directly from private key scalar
+            const publicKey = await window.nobleEd25519.getPublicKey(privateKeyBytes);
 
-        // Sign the message
-        const signature = await window.nobleEd25519.sign(message, privateKeyBytes);
+            // Sign the message
+            const signature = await window.nobleEd25519.sign(message, privateKeyBytes);
 
-        // Convert outputs to hex strings
-        return {
-            signature: bytesToHex(signature),
-            publicKey: bytesToHex(publicKey)
-        };
+            // Convert outputs to hex strings
+            return {
+                signature: bytesToHex(signature),
+                publicKey: bytesToHex(publicKey)
+            };
+        } catch (error) {
+            console.error('Error in signWithScalar:', error);
+            throw error;
+        }
     }
 
     // Helper function to convert hex string to Uint8Array
