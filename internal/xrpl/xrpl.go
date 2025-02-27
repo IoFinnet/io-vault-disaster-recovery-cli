@@ -482,26 +482,29 @@ func buildAndSubmitXRPLTransaction(privateKey, publicKey []byte, destination, am
 	return nil
 }
 
-// ed25519Sign signs a message with an Ed25519 private key
+// ed25519Sign signs a message with a scalar private key
 func ed25519Sign(privateKey, message []byte) ([]byte, error) {
-	// Convert our raw private key to the format expected by crypto/ed25519
-	// First check if our privateKey is the right length for Ed25519
+	// Note: Our privateKey is already the scalar key (post-SHA512)
+	// We'll use the edwards library to sign directly with this scalar
 	if len(privateKey) != 32 {
 		return nil, fmt.Errorf("invalid private key length: %d", len(privateKey))
 	}
 	
-	// Ed25519 expects a 64-byte private key that contains both private and public components
-	_, pub, err := edwards.PrivKeyFromScalar(privateKey)
+	// Convert to edwards privkey
+	edwardsPrivKey, _, err := edwards.PrivKeyFromScalar(privateKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to derive Ed25519 key: %v", err)
+		return nil, fmt.Errorf("failed to convert scalar to private key: %v", err)
 	}
 	
-	pubBytes := pub.Serialize()
-	fullPrivKey := append(privateKey, pubBytes...)
-	
 	// Sign the message
-	signature := ed25519.Sign(fullPrivKey, message)
-	return signature, nil
+	signature, err := edwardsPrivKey.Sign(message)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign message: %v", err)
+	}
+	
+	// Convert to []byte
+	signatureBytes := signature.Serialize()
+	return signatureBytes, nil
 }
 
 // pubKeyToAddress converts a public key to an XRPL address
