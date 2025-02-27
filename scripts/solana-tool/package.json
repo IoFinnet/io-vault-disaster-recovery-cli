@@ -4,8 +4,7 @@
   "description": "Solana recovery tool for io.finnet",
   "main": "main.js",
   "scripts": {
-    "build": "tsc",
-    "start": "npm run build && node main.js"
+    "start": "tsx main.ts"
   },
   "dependencies": {
     "@noble/curves": "^1.2.0",
