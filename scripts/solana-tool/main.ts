@@ -1,8 +1,8 @@
-import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, sendAndConfirmTransaction, SystemProgram, Transaction } from '@solana/web3.js';
+import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
 import readlineSync from 'readline-sync';
 import { webcrypto } from 'crypto';
 import * as ed from '@noble/ed25519';
-import { bytesToNumberBE } from '@noble/curves/abstract/utils';
+import { bytesToNumberBE, bytesToNumberLE, numberToBytesLE } from '@noble/curves/abstract/utils';
 import { sha512 } from '@noble/hashes/sha512';
 
 // Polyfill for Node.js
@@ -71,51 +71,110 @@ function createKeypairFromPrivateKey(privateKeyHex: string): { publicKey: Public
   // Create a public key object directly
   const publicKey = new PublicKey(Buffer.from(publicKeyBytes));
   
-  // Instead of trying to create a Keypair object (which requires a specific format),
-  // we'll return a simpler object with just the public key and address
+  // Return object with the public key and address
   return {
     publicKey: publicKey,
     address: publicKey.toBase58()
   };
 }
 
+
 /**
  * Transfers SOL on the Solana network.
- * @param keypair - The sender's keypair.
+ * @param privateKeyHex - The sender's private key in hex format.
  * @param destination - The destination address.
  * @param amount - The amount to transfer in SOL.
  * @param connection - The Solana connection.
  */
 async function transferSOL(
-  keypair: Keypair,
+  privateKeyHex: string,
   destination: string,
   amount: number,
   connection: Connection
 ): Promise<string> {
-  const destinationPubkey = new PublicKey(destination);
-  const lamports = amount * LAMPORTS_PER_SOL;
+  try {
+    // Get wallet from private key using our helper function - this gives us the correct public key
+    const wallet = createKeypairFromPrivateKey(privateKeyHex);
+    console.log(`Using wallet address: ${wallet.address}`);
+    
+    // For signing, we'll use the noble-ed25519 library directly
+    const privateKeyBytes = Buffer.from(privateKeyHex, 'hex');
+    
+    const destinationPubkey = new PublicKey(destination);
+    const lamports = amount * LAMPORTS_PER_SOL;
 
-  const transaction = new Transaction().add(
-    SystemProgram.transfer({
-      fromPubkey: keypair.publicKey,
-      toPubkey: destinationPubkey,
-      lamports,
-    })
-  );
+    // Create a new transaction
+    const transaction = new Transaction();
+    
+    // Get recent blockhash and explicitly set it on the transaction
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+    transaction.recentBlockhash = blockhash;
+    transaction.lastValidBlockHeight = lastValidBlockHeight;
+    
+    // Set the fee payer to the correct public key
+    transaction.feePayer = wallet.publicKey;
+    
+    // Add the transfer instruction using the correct public key
+    transaction.add(
+      SystemProgram.transfer({
+        fromPubkey: wallet.publicKey,
+        toPubkey: destinationPubkey,
+        lamports,
+      })
+    );
+    
+    // Manually sign the transaction
+    // 1. Get the message to sign
+    const messageBytes = transaction.serializeMessage();
+    console.log('Transaction message length:', messageBytes.length);
+    
+    // 2. Sign the message with our private key using the same method that works in XRPL
+    const { signature } = await signWithScalar(Buffer.from(messageBytes).toString('hex'), privateKeyHex);
+    console.log('Signature length:', Buffer.from(signature, 'hex').length);
+    
+    // 3. Add the signature to the transaction
+    transaction.addSignature(wallet.publicKey, Buffer.from(signature, 'hex'));
+    
+    // Verify the signature
+    const isValid = transaction.verifySignatures();
+    console.log('Signature verification result:', isValid);
+    
+    if (!isValid) {
+      throw new Error('Transaction signature verification failed');
+    }
+    
+    console.log('Transaction signatures verified successfully');
+    
+    // Serialize and send the transaction
+    const rawTransaction = transaction.serialize();
+    console.log('Transaction serialized successfully, length:', rawTransaction.length);
+    
+    // Send transaction to the network
+    console.log('Sending transaction to network...');
+    const txid = await connection.sendRawTransaction(rawTransaction, {
+      skipPreflight: false,
+      preflightCommitment: 'confirmed',
+    });
+    console.log('Transaction sent, ID:', txid);
 
-  // Get the latest blockhash
-  const { blockhash } = await connection.getLatestBlockhash();
-  transaction.recentBlockhash = blockhash;
-  transaction.feePayer = keypair.publicKey;
-
-  // Sign and send the transaction
-  const signature = await sendAndConfirmTransaction(
-    connection,
-    transaction,
-    [keypair]
-  );
-
-  return signature;
+    // Wait for confirmation
+    console.log('Waiting for confirmation...');
+    const confirmation = await connection.confirmTransaction({
+      blockhash,
+      lastValidBlockHeight,
+      signature: txid
+    }, 'confirmed');
+    
+    if (confirmation.value.err) {
+      throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+    }
+    
+    console.log('Transaction confirmed successfully');
+    return txid;
+  } catch (error) {
+    console.error('Error during transaction:', error);
+    throw error;
+  }
 }
 
 async function main() {
@@ -218,17 +277,29 @@ async function main() {
       console.log('Transaction cancelled.');
       return;
     }
-
-    // Since we can't directly use the keypair for signing with our approach,
-    // we should inform the user
-    console.log('\nNote: Due to technical limitations with how Solana uses Ed25519 keys,');
-    console.log('this tool can display your address but cannot sign transactions.');
-    console.log('You can use other Solana tools like the Solana CLI or web wallet to send funds from this address.');
-    console.log(`\nYour Solana Address: ${wallet.address}`);
-    console.log('Your private key (keep it safe):', privateKey);
     
-    // Return early instead of attempting to send the transaction
-    return;
+    // Broadcast transaction confirmation
+    const wantToBroadcast = readlineSync.keyInYNStrict('\nWould you like to broadcast this transaction now?');
+    if (wantToBroadcast) {
+      console.log('\nSigning and broadcasting transaction...');
+      try {
+        const signature = await transferSOL(privateKey, destination, Number(amount), connection);
+        console.log('\nTransaction successful!');
+        console.log(`Transaction signature: ${signature}`);
+        
+        // Create explorer URL based on network
+        const network = networkOptions[networkIndex].toLowerCase();
+        const explorerUrl = network === 'mainnet' 
+          ? `https://explorer.solana.com/tx/${signature}` 
+          : `https://explorer.solana.com/tx/${signature}?cluster=${network}`;
+          
+        console.log(`Transaction URL: ${explorerUrl}`);
+      } catch (error: any) {
+        console.error('\nTransaction failed:', error.message);
+      }
+    } else {
+      console.log('\nTransaction not broadcast. You can use the Solana CLI or web wallet to send it later.');
+    }
   } catch (error: any) {
     console.error('Error:', error.message);
     process.exit(1);
@@ -248,5 +319,86 @@ process.on('SIGINT', () => {
   console.log('\nProcess terminated by user (CTRL+C)');
   process.exit(0);
 });
+
+/**
+ * Signs a message with a private key scalar using Ed25519.
+ * Using the exact same implementation as in XRPL tool.
+ * @param messageHex - The message to sign in hex format.
+ * @param privateKeyHex - The private key in hex format.
+ * @returns An object containing the signature and public key in hex format.
+ */
+async function signWithScalar(messageHex: string, privateKeyHex: string): Promise<{ signature: string, publicKey: string }> {
+  // Remove '0x' prefix if present from inputs
+  messageHex = messageHex.replace(/^0x/, '');
+  privateKeyHex = privateKeyHex.replace(/^0x/, '');
+
+  // Convert hex message to Uint8Array
+  const message = Buffer.from(messageHex, 'hex');
+
+  // Convert hex private key scalar to Uint8Array
+  const privateKeyBytes = Buffer.from(privateKeyHex, 'hex');
+  const scalar = bytesToNumberBE(privateKeyBytes);
+  if (scalar >= ed.CURVE.n) {
+    throw new Error('Private key scalar must be less than curve order');
+  }
+
+  // Validate private key length (32 bytes for Ed25519)
+  if (privateKeyBytes.length !== 32) {
+    throw new Error('Private key must be 32 bytes');
+  }
+
+  // Calculate public key directly from private key scalar
+  const publicKey = ed.ExtendedPoint.BASE.multiply(bytesToNumberBE(privateKeyBytes)).toRawBytes();
+
+  // Note: This nonce generation differs from standard Ed25519, which uses
+  // the first half of SHA-512(private_key_seed). We're creating a deterministic
+  // nonce from the raw scalar and message instead.
+  const nonceInput = new Uint8Array([...privateKeyBytes, ...message]);
+  const nonceArrayBuffer = await webcrypto.subtle.digest('SHA-512', nonceInput);
+  const nonceArray = new Uint8Array(nonceArrayBuffer);
+
+  // Reduce nonce modulo L (Ed25519 curve order)
+  const reducedNonce = bytesToNumberLE(nonceArray) % ed.CURVE.n;
+
+  // Calculate R = k * G
+  const R = ed.ExtendedPoint.BASE.multiply(reducedNonce);
+
+  // Calculate S = (r + H(R,A,m) * s) mod L
+  const hramInput = new Uint8Array([
+    ...R.toRawBytes(),
+    ...publicKey,
+    ...message
+  ]);
+
+  const hArrayBuffer = await webcrypto.subtle.digest('SHA-512', hramInput);
+  const h = new Uint8Array(hArrayBuffer);
+  const hnum = bytesToNumberLE(h) % ed.CURVE.n;
+
+  const s = bytesToNumberBE(privateKeyBytes);
+  const S = (reducedNonce + (hnum * s)) % ed.CURVE.n;
+
+  // Combine R and S to form signature
+  const signature = new Uint8Array([
+    ...R.toRawBytes(),
+    ...numberToBytesLE(S, 32)
+  ]);
+
+  // Convert outputs to hex strings
+  return {
+    signature: bytesToHex(signature),
+    publicKey: bytesToHex(publicKey)
+  };
+}
+
+/**
+ * Converts a Uint8Array to a hex string.
+ * @param bytes - The Uint8Array to convert.
+ * @returns The hex string representation.
+ */
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
 
 main().catch(console.error);
