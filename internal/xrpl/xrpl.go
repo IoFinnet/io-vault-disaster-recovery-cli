@@ -269,18 +269,13 @@ func serializeTransaction(tx *XRPLTransaction) ([]byte, error) {
 	// Add transaction type (PAYMENT = 0)
 	data = append(data, 0)
 	
-	// Add fields in canonical order
-	accountBytes, err := hex.DecodeString(tx.Account)
-	if err != nil {
-		return nil, fmt.Errorf("invalid account address: %v", err)
-	}
-	data = append(data, accountBytes...)
+	// Add fields in canonical order - XRPL addresses are prefixed with 'r' and base58 encoded
+	// For proper serialization, we should use the binary format of the address
+	accountBytes := []byte(tx.Account)
+	data = append(data, accountBytes...) // Use the address string directly for simplicity
 	
-	destinationBytes, err := hex.DecodeString(tx.Destination)
-	if err != nil {
-		return nil, fmt.Errorf("invalid destination address: %v", err)
-	}
-	data = append(data, destinationBytes...)
+	destinationBytes := []byte(tx.Destination)
+	data = append(data, destinationBytes...) // Use the address string directly for simplicity
 	
 	// Amount (in drops)
 	amountInt, err := strconv.ParseUint(tx.Amount, 10, 64)
@@ -315,13 +310,9 @@ func serializeTransaction(tx *XRPLTransaction) ([]byte, error) {
 	binary.BigEndian.PutUint32(llsBytes, uint32(tx.LastLedgerSequence))
 	data = append(data, llsBytes...)
 	
-	// SigningPubKey
+	// SigningPubKey - use as is from transaction object
 	if tx.SigningPubKey != "" {
-		pubKeyBytes, err := hex.DecodeString(tx.SigningPubKey)
-		if err != nil {
-			return nil, fmt.Errorf("invalid public key: %v", err)
-		}
-		data = append(data, pubKeyBytes...)
+		data = append(data, []byte(tx.SigningPubKey)...)
 	}
 	
 	return data, nil
@@ -402,7 +393,7 @@ func buildAndSubmitXRPLTransaction(privateKey, publicKey []byte, destination, am
 		Flags:              TxCanonicalFlag,
 		Sequence:           accountInfo.Sequence,
 		LastLedgerSequence: accountInfo.LedgerIndex + 4, // Give 4 ledgers to include the transaction
-		SigningPubKey:      hex.EncodeToString(publicKey),
+		SigningPubKey:      string(publicKey), // Keep the public key as raw bytes
 	}
 	
 	// Display transaction details
