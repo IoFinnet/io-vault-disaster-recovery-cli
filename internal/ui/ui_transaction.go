@@ -27,8 +27,55 @@ func PromptXRPLTransaction() (TransactionDetails, error) {
 		"testnet": "wss://testnet.xrpl-labs.com",
 	}
 
-	// First form for address and amount
-	form1 := huh.NewForm(
+	// First, select the network
+	networkForm := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Network").
+				Description("Select a network or choose custom endpoint").
+				Options(
+					huh.NewOption("Mainnet (wss://s1.ripple.com)", "mainnet"),
+					huh.NewOption("Testnet (wss://testnet.xrpl-labs.com)", "testnet"),
+					huh.NewOption("Custom Endpoint", "custom"),
+				).
+				Value(&network),
+		),
+	)
+
+	err := networkForm.Run()
+	if err != nil {
+		return details, err
+	}
+
+	// If custom endpoint is selected, prompt for it
+	if network == "custom" {
+		customForm := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Custom Endpoint").
+					Description("Enter the WebSocket endpoint URL").
+					Placeholder("wss://your-custom-endpoint.com").
+					Value(&details.Endpoint),
+				huh.NewConfirm().
+					Title("Is this a testnet?").
+					Value(&details.TestNet),
+			),
+		)
+
+		err = customForm.Run()
+		if err != nil {
+			return details, err
+		}
+		
+		details.CustomEndpoint = true
+	} else {
+		// Use selected network's endpoint
+		details.Endpoint = endpoints[network]
+		details.TestNet = (network == "testnet")
+	}
+
+	// Finally, prompt for transaction details
+	transactionForm := huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
 				Title("Destination Address").
@@ -43,55 +90,9 @@ func PromptXRPLTransaction() (TransactionDetails, error) {
 		),
 	)
 
-	err := form1.Run()
+	err = transactionForm.Run()
 	if err != nil {
 		return details, err
-	}
-
-	// Second form for network selection
-	form2 := huh.NewForm(
-		huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("Network").
-				Description("Select a network or choose custom endpoint").
-				Options(
-					huh.NewOption("Mainnet (wss://s1.ripple.com)", "mainnet"),
-					huh.NewOption("Testnet (wss://testnet.xrpl-labs.com)", "testnet"),
-					huh.NewOption("Custom Endpoint", "custom"),
-				).
-				Value(&network),
-		),
-	)
-
-	err = form2.Run()
-	if err != nil {
-		return details, err
-	}
-
-	// If custom endpoint is selected, prompt for it
-	if network == "custom" {
-		details.CustomEndpoint = true
-		form3 := huh.NewForm(
-			huh.NewGroup(
-				huh.NewInput().
-					Title("Custom Endpoint").
-					Description("Enter the WebSocket endpoint URL").
-					Placeholder("wss://your-custom-endpoint.com").
-					Value(&details.Endpoint),
-				huh.NewConfirm().
-					Title("Is this a testnet?").
-					Value(&details.TestNet),
-			),
-		)
-
-		err = form3.Run()
-		if err != nil {
-			return details, err
-		}
-	} else {
-		// Use selected network's endpoint
-		details.Endpoint = endpoints[network]
-		details.TestNet = (network == "testnet")
 	}
 
 	return details, nil
@@ -107,9 +108,56 @@ func PromptBittensorTransaction() (TransactionDetails, error) {
 		"mainnet": "wss://entrypoint-finney.opentensor.ai:443",
 		"testnet": "wss://test.finney.opentensor.ai:443",
 	}
-	
-	// First form for address and amount
-	form1 := huh.NewForm(
+
+	// First, select the network
+	networkForm := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Network").
+				Description("Select a network or choose custom endpoint").
+				Options(
+					huh.NewOption("Mainnet (wss://entrypoint-finney.opentensor.ai:443)", "mainnet"),
+					huh.NewOption("Testnet (wss://test.finney.opentensor.ai:443)", "testnet"),
+					huh.NewOption("Custom Endpoint", "custom"),
+				).
+				Value(&network),
+		),
+	)
+
+	err := networkForm.Run()
+	if err != nil {
+		return details, err
+	}
+
+	// If custom endpoint is selected, prompt for it
+	if network == "custom" {
+		customForm := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Custom Endpoint").
+					Description("Enter the WebSocket endpoint URL").
+					Placeholder("wss://your-custom-endpoint.com").
+					Value(&details.Endpoint),
+				huh.NewConfirm().
+					Title("Is this a testnet?").
+					Value(&details.TestNet),
+			),
+		)
+
+		err = customForm.Run()
+		if err != nil {
+			return details, err
+		}
+		
+		details.CustomEndpoint = true
+	} else {
+		// Use selected network's endpoint
+		details.Endpoint = endpoints[network]
+		details.TestNet = (network == "testnet")
+	}
+
+	// Finally, prompt for transaction details
+	transactionForm := huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
 				Title("Destination Address").
@@ -124,55 +172,9 @@ func PromptBittensorTransaction() (TransactionDetails, error) {
 		),
 	)
 
-	err := form1.Run()
+	err = transactionForm.Run()
 	if err != nil {
 		return details, err
-	}
-
-	// Second form for network selection
-	form2 := huh.NewForm(
-		huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("Network").
-				Description("Select a network or choose custom endpoint").
-				Options(
-					huh.NewOption("Mainnet (wss://entrypoint-finney.opentensor.ai:443)", "mainnet"),
-					huh.NewOption("Testnet (wss://test.finney.opentensor.ai:443)", "testnet"),
-					huh.NewOption("Custom Endpoint", "custom"),
-				).
-				Value(&network),
-		),
-	)
-
-	err = form2.Run()
-	if err != nil {
-		return details, err
-	}
-
-	// If custom endpoint is selected, prompt for it
-	if network == "custom" {
-		details.CustomEndpoint = true
-		form3 := huh.NewForm(
-			huh.NewGroup(
-				huh.NewInput().
-					Title("Custom Endpoint").
-					Description("Enter the WebSocket endpoint URL").
-					Placeholder("wss://your-custom-endpoint.com").
-					Value(&details.Endpoint),
-				huh.NewConfirm().
-					Title("Is this a testnet?").
-					Value(&details.TestNet),
-			),
-		)
-
-		err = form3.Run()
-		if err != nil {
-			return details, err
-		}
-	} else {
-		// Use selected network's endpoint
-		details.Endpoint = endpoints[network]
-		details.TestNet = (network == "testnet")
 	}
 
 	return details, nil
@@ -189,30 +191,9 @@ func PromptSolanaTransaction() (TransactionDetails, error) {
 		"testnet": "https://api.testnet.solana.com",
 		"devnet":  "https://api.devnet.solana.com",
 	}
-	
-	// First form for address and amount
-	form1 := huh.NewForm(
-		huh.NewGroup(
-			huh.NewInput().
-				Title("Destination Address").
-				Description("Enter the Solana destination address").
-				Placeholder("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX").
-				Value(&details.Destination),
-			huh.NewInput().
-				Title("Amount").
-				Description("Enter the amount of SOL to send").
-				Placeholder("1.0").
-				Value(&details.Amount),
-		),
-	)
 
-	err := form1.Run()
-	if err != nil {
-		return details, err
-	}
-
-	// Second form for network selection
-	form2 := huh.NewForm(
+	// First, select the network
+	networkForm := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Network").
@@ -227,15 +208,14 @@ func PromptSolanaTransaction() (TransactionDetails, error) {
 		),
 	)
 
-	err = form2.Run()
+	err := networkForm.Run()
 	if err != nil {
 		return details, err
 	}
 
 	// If custom endpoint is selected, prompt for it
 	if network == "custom" {
-		details.CustomEndpoint = true
-		form3 := huh.NewForm(
+		customForm := huh.NewForm(
 			huh.NewGroup(
 				huh.NewInput().
 					Title("Custom Endpoint").
@@ -248,14 +228,37 @@ func PromptSolanaTransaction() (TransactionDetails, error) {
 			),
 		)
 
-		err = form3.Run()
+		err = customForm.Run()
 		if err != nil {
 			return details, err
 		}
+		
+		details.CustomEndpoint = true
 	} else {
 		// Use selected network's endpoint
 		details.Endpoint = endpoints[network]
 		details.TestNet = (network == "testnet" || network == "devnet")
+	}
+
+	// Finally, prompt for transaction details
+	transactionForm := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Destination Address").
+				Description("Enter the Solana destination address").
+				Placeholder("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX").
+				Value(&details.Destination),
+			huh.NewInput().
+				Title("Amount").
+				Description("Enter the amount of SOL to send").
+				Placeholder("1.0").
+				Value(&details.Amount),
+		),
+	)
+
+	err = transactionForm.Run()
+	if err != nil {
+		return details, err
 	}
 
 	return details, nil
