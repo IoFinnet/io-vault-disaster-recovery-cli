@@ -96,17 +96,26 @@ After syncing up the chain (may take a while), Electrum should show your balance
 
 Please use [TronLink](https://www.tronlink.org) to recover Tron and Tron assets. [Follow this guide](https://support.tronlink.org/hc/en-us/articles/5982285631769-How-to-Import-Your-Account-in-TronLink-Wallet-Extension) and import your vault's private key output by the tool.
 
-### XRP Ledger Recovery
+### XRP Ledger, Bittensor, and Solana Recovery
 
-We use a different key format than XRPL usually uses, so there is a separate script that we must use after running the DR tool. Head to [scripts/xrpl-tool](./scripts/xrpl-tool) and run `npm start` in that directory to start running the interactive tool.
+The recovery tool now includes integrated support for XRP Ledger, Bittensor (TAO), and Solana transactions directly within the Go tool. You can use these built-in features by adding specific flags when running the recovery tool:
 
-### TAO Recovery
+```
+# For XRP Ledger transactions
+$ ./bin/recovery-tool --xrpl sandbox/file1.json sandbox/file2.json
 
-Similar to the XRPL recovery procedure above, use the [scripts/bittensor-tool](./scripts/bittensor-tool) and run `npm start` in that directory to start running the interactive tool. Please use the [Bittensor Wallet](https://bittensor.com/wallet) on mobile to recover TAO assets, or you can use the Bittensor CLI in offline mode.
+# For Bittensor (TAO) transactions
+$ ./bin/recovery-tool --bittensor sandbox/file1.json sandbox/file2.json
 
-### Solana Recovery
+# For Solana transactions
+$ ./bin/recovery-tool --solana sandbox/file1.json sandbox/file2.json
+```
 
-For Solana (SOL) recovery, use the [scripts/solana-tool](./scripts/solana-tool) and run `npm start` in that directory to start running the interactive tool. This tool will help you recover and transfer SOL using your EdDSA private key.
+These commands will guide you through the recovery process and then help you build and submit transactions directly from the tool. No separate scripts or Node.js installations are required.
+
+#### Older Script-Based Methods (Legacy)
+
+The previous Node.js-based scripts are still available in the repository under the `scripts/` directory, but they are no longer the recommended method for transaction building.
 
 ### Others (TON, ATOM, etc.)
 

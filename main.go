@@ -32,9 +32,9 @@ func main() {
 	exportKSFile := flag.String("export", "wallet.json", "(Optional) Filename to export a Ethereum wallet v3 JSON to; use with -password.")
 
 	// Transaction mode flags
-	xrplMode := flag.Bool("xrpl", false, "Enable XRPL guided mode")
-	bitTensorMode := flag.Bool("bittensor", false, "Enable Bittensor guided mode")
-	solanaMode := flag.Bool("solana", false, "Enable Solana guided mode")
+	xrplMode := flag.Bool("xrpl", false, "Enable XRPL transaction builder mode")
+	bitTensorMode := flag.Bool("bittensor", false, "Enable Bittensor transaction builder mode")
+	solanaMode := flag.Bool("solana", false, "Enable Solana transaction builder mode")
 
 	flag.Parse()
 	files := flag.Args()
@@ -234,17 +234,17 @@ func main() {
 
 		// Add wallet import instructions
 		fmt.Println("\nWallet Import Instructions:")
-		fmt.Println("- XRPL: Use the XRPL tool in scripts/xrpl-tool/ with your private key")
-		fmt.Println("- Bittensor: Use the Bittensor tool in scripts/bittensor-tool/ with your private key")
+		fmt.Println("- XRPL: Import the private key in hex format to an XRPL wallet")
+		fmt.Println("- Bittensor: Import the private key in hex format to a Bittensor wallet")
 		fmt.Println("- Solana (Phantom): Import using the Base58 private key")
 		fmt.Println("- Solana: Import private key in hex format to your wallet")
 
 		// Add transaction instructions
 		if !appConfig.XRPLMode && !appConfig.BitTensorMode && !appConfig.SolanaMode {
-			fmt.Println("\nFor Extra Guidance:")
-			fmt.Println("- For XRPL: Run with --xrpl flag")
-			fmt.Println("- For Bittensor: Run with --bittensor flag")
-			fmt.Println("- For Solana: Run with --solana flag")
+			fmt.Println("\nFor Transaction Guidance:")
+			fmt.Println("- For XRPL transfers: Run with --xrpl flag")
+			fmt.Println("- For Bittensor transfers: Run with --bittensor flag")
+			fmt.Println("- For Solana transfers: Run with --solana flag")
 		}
 	} else {
 		fmt.Println("\nNo EdDSA/Ed25519 private key found for this older vault.")
