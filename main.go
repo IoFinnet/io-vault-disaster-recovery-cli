@@ -36,9 +36,10 @@ func main() {
 
 	// Note: Transaction modes have been removed - use scripts in scripts/ directory instead
 	
-	// Web mode flag
+	// Web mode flags
 	webMode := flag.Bool("web", false, "Launch in web interface mode")
 	webPort := flag.Int("port", 8080, "Port to use for web interface (default: 8080)")
+	noBrowser := flag.Bool("nobrowser", false, "Start web server without launching browser")
 
 	flag.Parse()
 	files := flag.Args()
@@ -71,7 +72,7 @@ func main() {
 	
 	// Launch web interface if selected
 	if *webMode {
-		launchWebInterface(*webPort)
+		launchWebInterface(*webPort, *noBrowser)
 		return
 	}
 	
@@ -237,8 +238,8 @@ func main() {
 	fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.\n")
 }
 
-// launchWebInterface starts the web server and opens the browser
-func launchWebInterface(port int) {
+// launchWebInterface starts the web server and optionally opens the browser
+func launchWebInterface(port int, noBrowser bool) {
 	fmt.Println("Starting web interface mode...")
 	
 	// Create and start the web server
@@ -260,11 +261,15 @@ func launchWebInterface(port int) {
 	}
 	
 	fmt.Printf("Web interface started at: %s\n", url)
-	fmt.Println("Opening browser...")
 	
-	// Open the browser
-	if err := web.OpenBrowser(url); err != nil {
-		fmt.Printf("Could not open browser automatically. Please open %s in your browser.\n", url)
+	// Open the browser unless nobrowser flag is set
+	if !noBrowser {
+		fmt.Println("Opening browser...")
+		if err := web.OpenBrowser(url); err != nil {
+			fmt.Printf("Could not open browser automatically. Please open %s in your browser.\n", url)
+		}
+	} else {
+		fmt.Printf("Browser not launched (--nobrowser flag set). Please open %s in your browser.\n", url)
 	}
 	
 	fmt.Println("Web interface is running. Press Ctrl+C to stop.")
