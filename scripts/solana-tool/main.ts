@@ -12,6 +12,8 @@ ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
 const MAINNET_URL = 'https://api.mainnet-beta.solana.com';
 const TESTNET_URL = 'https://api.testnet.solana.com';
 const DEVNET_URL = 'https://api.devnet.solana.com';
+const EXIT_KEYWORD = '.exit';
+const EXIT_MESSAGE = `Type '${EXIT_KEYWORD}' at any prompt to exit the program`;
 
 /**
  * Validates if the input string is a valid hex string of the given byte length.
@@ -220,20 +222,6 @@ async function main() {
   }
 }
 
-main().catch(console.error);
-// Handle CTRL+C gracefully
-process.on('SIGINT', () => {
-  console.log('\nProcess terminated by user (CTRL+C)');
-  process.exit(0);
-});
-import readlineSync from 'readline-sync';
-
-// Handle CTRL+C gracefully
-process.on('SIGINT', () => {
-  console.log('\nProcess terminated by user (CTRL+C)');
-  process.exit(0);
-});
-
 // Override readlineSync to handle CTRL+C
 const originalQuestion = readlineSync.question;
 readlineSync.question = function(...args) {
@@ -241,6 +229,11 @@ readlineSync.question = function(...args) {
   const result = originalQuestion.apply(this, args);
   return result;
 };
-// Constants
-const EXIT_KEYWORD = '.exit';
-const EXIT_MESSAGE = `Type '${EXIT_KEYWORD}' at any prompt to exit the program`;
+
+// Handle CTRL+C gracefully
+process.on('SIGINT', () => {
+  console.log('\nProcess terminated by user (CTRL+C)');
+  process.exit(0);
+});
+
+main().catch(console.error);
