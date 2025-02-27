@@ -7,7 +7,6 @@ package solana
 import (
 	"bytes"
 	"crypto/ed25519"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -578,17 +577,16 @@ func buildAndSubmitSolanaTransaction(privateKey, publicKey []byte, destination, 
 	
 	// Submit transaction
 	fmt.Println("Submitting transaction...")
-	var transactionSignature string
-	transactionSignature, err = client.SendTransaction(txBase64)
+	transactionSignature, err := client.SendTransaction(txBase64)
 	if err != nil {
-		// For demo purposes, continue with a simulated signature if submission fails
-		fmt.Printf("Warning: Transaction submission failed: %v\n", err)
-		transactionSignature = fmt.Sprintf("%x", sha256.Sum256(txJSON))
-	} else {
-		fmt.Println("Transaction submitted successfully!")
+		fmt.Printf("\n❌ ERROR: Transaction submission failed: %v\n", err)
+		fmt.Println("\nThe transaction could not be submitted to the Solana network.")
+		fmt.Println("This could be due to network connectivity issues, invalid credentials,")
+		fmt.Println("or problems with the Solana server.")
+		return fmt.Errorf("transaction submission failed: %w", err)
 	}
 	
-	fmt.Println("\nTransaction submitted!")
+	fmt.Println("\n✅ Transaction submitted successfully!")
 	fmt.Printf("Transaction signature: %s\n", transactionSignature)
 	fmt.Printf("View on Solana Explorer: https://explorer.solana.com/tx/%s?cluster=%s\n", 
 		transactionSignature, network)

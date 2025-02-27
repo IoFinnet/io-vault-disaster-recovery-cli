@@ -7,7 +7,6 @@ package bittensor
 import (
 	"bytes"
 	"crypto/ed25519"
-	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -527,14 +526,13 @@ func buildAndSubmitBittensorTransaction(privateKey, publicKey []byte, destinatio
 	
 	// Submit transaction
 	fmt.Println("Submitting transaction...")
-	var txHash string
-	txHash, err = client.SubmitTransaction(txHex)
+	txHash, err := client.SubmitTransaction(txHex)
 	if err != nil {
-		// For demo purposes, continue with a simulated hash if submission fails
-		fmt.Printf("Warning: Transaction submission failed: %v\n", err)
-		txHash = fmt.Sprintf("0x%x", sha256.Sum256(txJSON))
-	} else {
-		fmt.Println("Transaction submitted successfully!")
+		fmt.Printf("\n❌ ERROR: Transaction submission failed: %v\n", err)
+		fmt.Println("\nThe transaction could not be submitted to the Bittensor network.")
+		fmt.Println("This could be due to network connectivity issues, invalid credentials,")
+		fmt.Println("or problems with the Bittensor server.")
+		return fmt.Errorf("transaction submission failed: %w", err)
 	}
 	
 	// Ensure txHash has 0x prefix
@@ -542,7 +540,7 @@ func buildAndSubmitBittensorTransaction(privateKey, publicKey []byte, destinatio
 		txHash = "0x" + txHash
 	}
 	
-	fmt.Println("\nTransaction submitted!")
+	fmt.Println("\n✅ Transaction submitted successfully!")
 	fmt.Printf("Transaction hash: %s\n", txHash)
 	fmt.Println("View on Bittensor Explorer: https://taostats.io/transactions/" + txHash)
 	

@@ -188,9 +188,7 @@ func (c *XRPLClient) GetFee() (string, error) {
 
 // SubmitTransaction submits a signed transaction to the XRPL
 func (c *XRPLClient) SubmitTransaction(txBlob string) (string, error) {
-	// Debug the input
-	fmt.Println("DEBUG: Submitting transaction blob:")
-	fmt.Println(txBlob)
+	// Production mode - no debug output
 	
 	// XRPL expects the transaction in a specific "tx_json" format
 	// Update to use tx_json param for submitting an already-built transaction
@@ -204,10 +202,7 @@ func (c *XRPLClient) SubmitTransaction(txBlob string) (string, error) {
 		return "", err
 	}
 	
-	// Print full response for debugging
-	fmt.Println("DEBUG: XRPL API Response:")
-	responseJSON, _ := json.MarshalIndent(resp, "", "  ")
-	fmt.Println(string(responseJSON))
+	// We're in production mode, so no need for detailed debugging output
 	
 	// Use a more flexible approach to extract relevant data
 	var result struct {
@@ -243,8 +238,8 @@ func (c *XRPLClient) SubmitTransaction(txBlob string) (string, error) {
 		return txHashObj.Hash, nil
 	}
 	
-	// If we couldn't get a hash but the transaction was successful, generate one
-	return fmt.Sprintf("simulated-%x", sha256.Sum256([]byte(time.Now().String()))), nil
+	// In production mode, we need a real transaction hash
+	return "", fmt.Errorf("transaction was processed but no hash was returned from the server")
 }
 
 // HandleTransaction processes an XRPL transaction
@@ -489,50 +484,28 @@ func buildAndSubmitXRPLTransaction(privateKey, publicKey []byte, destination, am
 		return fmt.Errorf("failed to serialize transaction: %v", err)
 	}
 	
-	// For debugging purposes
-	fmt.Println("DEBUG: Transaction JSON:")
-	fmt.Println(string(txJSON))
+	// Production mode - no debug output
 	
 	// XRPL's submit method expects the JSON to be passed directly, not hex-encoded
 	txBlob := string(txJSON)
 	
 	// Submit transaction
 	fmt.Println("Submitting transaction...")
-	var txHash string
-	txHash, err = client.SubmitTransaction(txBlob)
+	txHash, err := client.SubmitTransaction(txBlob)
 	if err != nil {
-		// For test/dev scenarios, we offer the option to proceed with a simulation
 		fmt.Printf("\n❌ ERROR: Transaction submission failed: %v\n", err)
 		fmt.Println("\nThe transaction could not be submitted to the XRPL network.")
 		fmt.Println("This could be due to network connectivity issues, invalid credentials,")
 		fmt.Println("or problems with the XRPL server.")
-		
-		// Ask if they want to see a simulated result
-		var simulate string
-		fmt.Print("\nWould you like to see a simulated transaction result? (y/n): ")
-		fmt.Scanln(&simulate)
-		
-		if simulate != "y" && simulate != "Y" {
-			return fmt.Errorf("transaction submission failed")
-		}
-		
-		fmt.Println("\nSIMULATION MODE: The following is NOT a real transaction.")
-		fmt.Println("This is only a simulation for demonstration purposes.")
-		
-		// Generate a deterministic hash for demonstration
-		txHash = fmt.Sprintf("%x", sha256.Sum256([]byte(sourceAddress+destination+amount)))
-	} else {
-		fmt.Println("\n✅ Transaction submitted successfully!")
+		return fmt.Errorf("transaction submission failed: %w", err)
 	}
 	
-	// Display transaction details (real or simulated)
-	if txHash != "" {
-		fmt.Printf("Transaction hash: %s\n", txHash)
-		if testnet {
-			fmt.Printf("View on XRPL Testnet Explorer: https://testnet.xrpl.org/transactions/%s\n", txHash)
-		} else {
-			fmt.Printf("View on XRPL Explorer: https://livenet.xrpl.org/transactions/%s\n", txHash)
-		}
+	fmt.Println("\n✅ Transaction submitted successfully!")
+	fmt.Printf("Transaction hash: %s\n", txHash)
+	if testnet {
+		fmt.Printf("View on XRPL Testnet Explorer: https://testnet.xrpl.org/transactions/%s\n", txHash)
+	} else {
+		fmt.Printf("View on XRPL Explorer: https://livenet.xrpl.org/transactions/%s\n", txHash)
 	}
 	
 	return nil
