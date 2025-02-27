@@ -102,3 +102,40 @@ func PromptSolanaTransaction() (TransactionDetails, error) {
 
 	return details, form.Run()
 }
+
+// BlockchainChoice represents the user's choice of blockchain
+type BlockchainChoice string
+
+const (
+	XRPL      BlockchainChoice = "XRPL"
+	Bittensor BlockchainChoice = "Bittensor"
+	Solana    BlockchainChoice = "Solana"
+	Exit      BlockchainChoice = "Exit"
+)
+
+// PromptBlockchainSelection prompts the user to select a blockchain for transaction
+func PromptBlockchainSelection() (BlockchainChoice, error) {
+	var choice string
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Blockchain Selection").
+				Description("Would you like to proceed with a transaction on one of these blockchains?").
+				Options(
+					huh.NewOption("XRPL Transaction", string(XRPL)),
+					huh.NewOption("Bittensor Transaction", string(Bittensor)),
+					huh.NewOption("Solana Transaction", string(Solana)),
+					huh.NewOption("Exit without transaction", string(Exit)),
+				).
+				Value(&choice),
+		),
+	)
+
+	err := form.Run()
+	if err != nil {
+		return "", err
+	}
+
+	return BlockchainChoice(choice), nil
+}

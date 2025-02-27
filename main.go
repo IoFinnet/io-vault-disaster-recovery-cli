@@ -237,18 +237,15 @@ func main() {
 
 		// Ask user if they want to proceed with transactions
 		if !appConfig.XRPLMode && !appConfig.BitTensorMode && !appConfig.SolanaMode {
-			fmt.Println("\nWould you like to proceed with a transaction on one of these blockchains?")
-			fmt.Println("1. XRPL Transaction")
-			fmt.Println("2. Bittensor Transaction")
-			fmt.Println("3. Solana Transaction")
-			fmt.Println("4. Exit")
-			
-			var choice string
-			fmt.Print("\nEnter your choice (1-4): ")
-			fmt.Scanln(&choice)
+			// Use the huh library for blockchain selection
+			choice, err := ui.PromptBlockchainSelection()
+			if err != nil {
+				fmt.Println(ui.ErrorBox(err))
+				return
+			}
 			
 			switch choice {
-			case "1":
+			case ui.XRPL:
 				// Verify we can derive XRPL address (just to confirm the key is valid for XRPL)
 				_, err := xrpl.DeriveXRPLAddress(edPKC)
 				if err != nil {
@@ -266,7 +263,7 @@ func main() {
 				if err != nil {
 					fmt.Println(ui.ErrorBox(err))
 				}
-			case "2":
+			case ui.Bittensor:
 				details, err := ui.PromptBittensorTransaction()
 				if err != nil {
 					fmt.Println(ui.ErrorBox(err))
@@ -276,7 +273,7 @@ func main() {
 						fmt.Println(ui.ErrorBox(err))
 					}
 				}
-			case "3":
+			case ui.Solana:
 				details, err := ui.PromptSolanaTransaction()
 				if err != nil {
 					fmt.Println(ui.ErrorBox(err))
@@ -286,10 +283,8 @@ func main() {
 						fmt.Println(ui.ErrorBox(err))
 					}
 				}
-			case "4":
+			case ui.Exit:
 				fmt.Println("Exiting without transaction.")
-			default:
-				fmt.Println("Invalid choice. Exiting without transaction.")
 			}
 		}
 	} else {
