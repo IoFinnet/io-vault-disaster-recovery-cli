@@ -155,8 +155,8 @@ func main() {
 		wif.ToBitcoinWIF(ecSK, false, true), ui.AnsiCodes["reset"])
 
 	if edSK != nil {
-		fmt.Printf("\nHere is your private key for EDDSA based assets. Keep safe and do not share.\n")
-		fmt.Printf("Recovered EdDSA/Ed25519 private key: %s%s%s\n",
+		fmt.Printf("\nHere is your private key for EdDSA based assets. Keep safe and do not share.\n")
+		fmt.Printf("Recovered EdDSA private key: %s%s%s\n",
 			ui.AnsiCodes["bold"], hex.EncodeToString(edSK), ui.AnsiCodes["reset"])
 
 		// load the eddsa private key in edSK and output the public key
@@ -164,11 +164,12 @@ func main() {
 		if err2 != nil {
 			panic("ed25519: internal error: setting scalar failed")
 		}
-		fmt.Printf("Recovered EdDSA/Ed25519 public key: %s%s%s\n",
-			ui.AnsiCodes["bold"], hex.EncodeToString(edPK.SerializeCompressed()), ui.AnsiCodes["reset"])
+		edPKC := edPK.SerializeCompressed()
+		fmt.Printf("Recovered EdDSA public key: %s%s%s\n",
+			ui.AnsiCodes["bold"], hex.EncodeToString(edPKC), ui.AnsiCodes["reset"])
 
 		// Generate XRPL-specific formats
-		xrplAddress, err := xrpl.DeriveXRPLAddress(edPK.SerializeCompressed())
+		xrplAddress, err := xrpl.DeriveXRPLAddress(edPKC)
 		if err == nil {
 			fmt.Printf("\nXRP Ledger (XRPL) Information:\n")
 			fmt.Printf("XRP Address: %s%s%s\n",
@@ -176,7 +177,7 @@ func main() {
 		}
 
 		// Generate Bittensor-specific formats
-		bittensorAddress, err := bittensor.GenerateSS58Address(edPK.SerializeCompressed())
+		bittensorAddress, err := bittensor.GenerateSS58Address(edPKC)
 		if err == nil {
 			fmt.Printf("\nBittensor Information:\n")
 			fmt.Printf("Bittensor Address (SS58): %s%s%s\n",
@@ -184,18 +185,11 @@ func main() {
 		}
 
 		// Generate Solana-specific formats
-		solanaAddress, err := solana.DeriveSolanaAddress(edPK.SerializeCompressed())
+		solanaAddress, err := solana.DeriveSolanaAddress(edPKC)
 		if err == nil {
 			fmt.Printf("\nSolana Information:\n")
 			fmt.Printf("Solana Address: %s%s%s\n",
 				ui.AnsiCodes["bold"], solanaAddress, ui.AnsiCodes["reset"])
-
-			// Generate Base58 encoded private key (used by Phantom Wallet)
-			base58PrivKey, err := solana.GetBase58EncodedPrivateKey(edSK)
-			if err == nil {
-				fmt.Printf("Solana Private Key (for Phantom Wallet): %s%s%s\n",
-					ui.AnsiCodes["bold"], base58PrivKey, ui.AnsiCodes["reset"])
-			}
 		}
 
 		// Add transaction mode handling
