@@ -5,13 +5,20 @@
 package xrpl
 
 import (
+	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
+	"crypto/sha512"
 	"errors"
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/decred/dcrd/dcrec/edwards/v2"
+	"github.com/rubblelabs/ripple/data"
+	"github.com/rubblelabs/ripple/websockets"
 	"golang.org/x/crypto/ripemd160"
 )
 
@@ -39,13 +46,7 @@ func HandleTransaction(privateKey []byte, destination, amount string, testnet bo
 	fmt.Printf("Network: %s\n", networkName(testnet))
 
 	// Get address from public key
-	// For EdDSA keys, we need to ensure we're using the correct format
 	pubKeyBytes := pubKey.SerializeCompressed()
-
-	// Debug info about the key format
-	fmt.Printf("Debug: Public key length: %d bytes\n", len(pubKeyBytes))
-	fmt.Printf("Debug: Public key bytes: %x\n", pubKeyBytes)
-
 	address, err := DeriveXRPLAddress(pubKeyBytes)
 	if err != nil {
 		return fmt.Errorf("failed to derive XRPL address: %v", err)
@@ -56,15 +57,198 @@ func HandleTransaction(privateKey []byte, destination, amount string, testnet bo
 	fmt.Printf("Destination: %s\n", destination)
 	fmt.Printf("Amount: %s XRP\n", amount)
 
-	// Instructions for manual transaction
-	fmt.Println("\nTo complete this transaction:")
-	fmt.Println("(Warning! These scripts require that you go online to perform the transaction as live data must be fetched from the chain.)")
-	fmt.Println("1. Install Node.js on your machine: https://nodejs.org")
-	fmt.Println("2. In a terminal, go to scripts/xrpl-tool/ and run `npm start`")
-	fmt.Println("3. Enter your eddsa key, the destination address and amount")
-	fmt.Println("4. Submit the transaction")
+	// Process online vs offline modes
+	fmt.Println("\nXRPL transactions require online access to fetch account information and network fees.")
+	fmt.Println("Would you like to proceed with the transaction now (online mode)?")
+	fmt.Println("If you choose 'No', we'll provide instructions for later use.")
+
+	// Ask user if they want to proceed with online transaction
+	var proceed string
+	fmt.Print("Proceed with online transaction? (y/n): ")
+	fmt.Scanln(&proceed)
+
+	if proceed == "y" || proceed == "Y" {
+		return buildAndSubmitXRPLTransaction(privateKey, pubKeyBytes, destination, amount, testnet)
+	}
+
+	// Offline mode instructions
+	fmt.Println("\nTo complete this transaction later:")
+	fmt.Println("1. Run this tool again with the --xrpl flag when you're ready to connect to the network")
+	fmt.Println("2. Use the same private key, destination address, and amount")
+	fmt.Println("3. Choose 'Yes' at the online transaction prompt")
 
 	return nil
+}
+
+// buildAndSubmitXRPLTransaction builds and submits an XRPL transaction
+func buildAndSubmitXRPLTransaction(privateKey, publicKey []byte, destination, amount string, testnet bool) error {
+	fmt.Println("\nPreparing transaction...")
+
+	// Use XRPL libraries for transaction building
+
+	// Connect to XRPL network
+	var endpoint string
+	if testnet {
+		endpoint = "wss://s.altnet.rippletest.net:51233"
+		fmt.Println("Connecting to XRPL testnet...")
+	} else {
+		endpoint = "wss://s1.ripple.com:51233"
+		fmt.Println("Connecting to XRPL mainnet...")
+	}
+
+	// Derive the source address from the public key
+	sourceAddress := pubKeyToAddress(publicKey)
+	fmt.Printf("Source address: %s\n", sourceAddress)
+
+	// Connect to the XRP Ledger WebSocket API
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	r, err := websockets.NewRemote(ctx, endpoint)
+	if err != nil {
+		return fmt.Errorf("failed to connect to XRPL: %v", err)
+	}
+	defer r.Close()
+
+	fmt.Println("Fetching account information...")
+
+	// Get account info for sequence number
+	accountInfo, err := r.AccountInfo(ctx, sourceAddress)
+	if err != nil {
+		return fmt.Errorf("failed to get account info: %v", err)
+	}
+
+	// Get fee information
+	fees, err := r.Fee(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get fee info: %v", err)
+	}
+	feeCost := fees.Drops.OpenLedgerFee
+	fmt.Printf("Current transaction fee: %s drops\n", feeCost)
+
+	// Parse amount
+	amountFloat, err := strconv.ParseFloat(amount, 64)
+	if err != nil {
+		return fmt.Errorf("invalid amount: %v", err)
+	}
+	
+	// Convert to drops (1 XRP = 1,000,000 drops)
+	dropsAmount := uint64(amountFloat * 1000000)
+	
+	// Build payment transaction
+	payment := &data.Payment{
+		Destination: data.Account(destination),
+		Amount:      data.Amount{Value: data.Native(dropsAmount)},
+	}
+
+	base := data.TxBase{
+		TransactionType: data.PAYMENT,
+		Account:         data.Account(sourceAddress),
+		Fee:             data.Amount{Value: *feeCost},
+		Sequence:        *accountInfo.AccountData.Sequence,
+		LastLedgerSequence: data.UInt32(accountInfo.LedgerSequence + 4),
+	}
+	payment.TxBase = base
+
+	// Display transaction details
+	fmt.Println("\nTransaction Details:")
+	fmt.Printf("From: %s\n", sourceAddress)
+	fmt.Printf("To: %s\n", destination)
+	fmt.Printf("Amount: %s XRP\n", amount)
+	fmt.Printf("Fee: %s drops\n", feeCost)
+	fmt.Printf("Network: %s\n", networkName(testnet))
+	
+	// Ask for confirmation
+	var confirm string
+	fmt.Print("\nConfirm transaction? (y/n): ")
+	fmt.Scanln(&confirm)
+	
+	if confirm != "y" && confirm != "Y" {
+		fmt.Println("Transaction cancelled.")
+		return nil
+	}
+	
+	// Sign the transaction
+	fmt.Println("Signing transaction...")
+	
+	// The following code is specialized for Ed25519 signing:
+	txJson, err := payment.MarshalJSON()
+	if err != nil {
+		return fmt.Errorf("failed to serialize transaction: %v", err)
+	}
+	
+	// Create a sha512 hash of the transaction
+	txHash := sha512.Sum512(txJson)
+	
+	// Generate signature
+	signature, err := ed25519Sign(privateKey, txHash[:])
+	if err != nil {
+		return fmt.Errorf("failed to sign transaction: %v", err)
+	}
+	
+	// Set the signature and public key in the transaction
+	payment.SigningPubKey = data.VariableLength(publicKey)
+	payment.TxnSignature = data.VariableLength(signature)
+	
+	// Submit transaction
+	fmt.Println("Submitting transaction...")
+	submitResponse, err := r.Submit(ctx, payment)
+	if err != nil {
+		return fmt.Errorf("failed to submit transaction: %v", err)
+	}
+	
+	// Process the response
+	if submitResponse.EngineResult != "tesSUCCESS" {
+		return fmt.Errorf("transaction submission failed: %s - %s", 
+			submitResponse.EngineResult, submitResponse.EngineResultMessage)
+	}
+	
+	// Get the transaction hash
+	txHash, err := payment.Hash()
+	if err != nil {
+		return fmt.Errorf("failed to get transaction hash: %v", err)
+	}
+	transactionHash := txHash.String()
+	
+	fmt.Println("\nTransaction successful!")
+	fmt.Printf("Transaction hash: %s\n", transactionHash)
+	if testnet {
+		fmt.Printf("View on XRPL Testnet Explorer: https://testnet.xrpl.org/transactions/%s\n", transactionHash)
+	} else {
+		fmt.Printf("View on XRPL Explorer: https://livenet.xrpl.org/transactions/%s\n", transactionHash)
+	}
+	
+	return nil
+}
+
+// ed25519Sign signs a message with an Ed25519 private key
+func ed25519Sign(privateKey, message []byte) ([]byte, error) {
+	// Convert our raw private key to the format expected by crypto/ed25519
+	// First check if our privateKey is the right length for Ed25519
+	if len(privateKey) != 32 {
+		return nil, fmt.Errorf("invalid private key length: %d", len(privateKey))
+	}
+	
+	// Ed25519 expects a 64-byte private key that contains both private and public components
+	pubKey, _, err := edwards.PrivKeyFromScalar(privateKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive Ed25519 key: %v", err)
+	}
+	
+	fullPrivKey := append(privateKey, pubKey.SerializeCompressed()...)
+	
+	// Sign the message
+	signature := ed25519.Sign(fullPrivKey, message)
+	return signature, nil
+}
+
+// pubKeyToAddress converts a public key to an XRPL address
+func pubKeyToAddress(publicKey []byte) string {
+	address, err := DeriveXRPLAddress(publicKey)
+	if err != nil {
+		return "Unknown"
+	}
+	return address
 }
 
 // validateInputs checks if the destination and amount are valid
