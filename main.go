@@ -232,12 +232,7 @@ func main() {
 			}
 		}
 
-		// Add wallet import instructions
-		fmt.Println("\nWallet Import Instructions:")
-		fmt.Println("- XRPL: Import the private key in hex format to an XRPL wallet")
-		fmt.Println("- Bittensor: Import the private key in hex format to a Bittensor wallet")
-		fmt.Println("- Solana (Phantom): Import using the Base58 private key")
-		fmt.Println("- Solana: Import private key in hex format to your wallet")
+		// Note about key usage
 		fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.\n")
 
 		// Ask user if they want to proceed with transactions
