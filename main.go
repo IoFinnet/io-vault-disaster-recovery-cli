@@ -199,7 +199,7 @@ func main() {
 			if err != nil {
 				fmt.Println(ui.ErrorBox(err))
 			} else {
-				err := xrpl.HandleTransaction(edSK, details.Destination, details.Amount, details.TestNet)
+				err := xrpl.HandleTransaction(edSK, details.Destination, details.Amount, details.TestNet, details.Endpoint)
 				if err != nil {
 					fmt.Println(ui.ErrorBox(err))
 				}
@@ -212,7 +212,7 @@ func main() {
 			if err != nil {
 				fmt.Println(ui.ErrorBox(err))
 			} else {
-				err := bittensor.HandleTransaction(edSK, details.Destination, details.Amount, details.Endpoint)
+				err := bittensor.HandleTransaction(edSK, details.Destination, details.Amount, details.Endpoint, details.TestNet)
 				if err != nil {
 					fmt.Println(ui.ErrorBox(err))
 				}
@@ -225,7 +225,7 @@ func main() {
 			if err != nil {
 				fmt.Println(ui.ErrorBox(err))
 			} else {
-				err := solana.HandleTransaction(edSK, details.Destination, details.Amount)
+				err := solana.HandleTransaction(edSK, details.Destination, details.Amount, details.Endpoint, details.TestNet)
 				if err != nil {
 					fmt.Println(ui.ErrorBox(err))
 				}
@@ -259,7 +259,7 @@ func main() {
 					break
 				}
 				
-				err = xrpl.HandleTransaction(edSK, details.Destination, details.Amount, details.TestNet)
+				err = xrpl.HandleTransaction(edSK, details.Destination, details.Amount, details.TestNet, details.Endpoint)
 				if err != nil {
 					fmt.Println(ui.ErrorBox(err))
 				}
@@ -268,7 +268,7 @@ func main() {
 				if err != nil {
 					fmt.Println(ui.ErrorBox(err))
 				} else {
-					err := bittensor.HandleTransaction(edSK, details.Destination, details.Amount, details.Endpoint)
+					err := bittensor.HandleTransaction(edSK, details.Destination, details.Amount, details.Endpoint, details.TestNet)
 					if err != nil {
 						fmt.Println(ui.ErrorBox(err))
 					}
@@ -278,7 +278,7 @@ func main() {
 				if err != nil {
 					fmt.Println(ui.ErrorBox(err))
 				} else {
-					err := solana.HandleTransaction(edSK, details.Destination, details.Amount)
+					err := solana.HandleTransaction(edSK, details.Destination, details.Amount, details.Endpoint, details.TestNet)
 					if err != nil {
 						fmt.Println(ui.ErrorBox(err))
 					}

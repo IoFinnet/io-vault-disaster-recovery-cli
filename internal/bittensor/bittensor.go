@@ -22,7 +22,7 @@ const (
 )
 
 // HandleTransaction processes a Bittensor transaction
-func HandleTransaction(privateKey []byte, destination, amount, endpoint string) error {
+func HandleTransaction(privateKey []byte, destination, amount, endpoint string, testnet bool) error {
 	// Validate inputs
 	if err := validateInputs(destination, amount, endpoint); err != nil {
 		return err
@@ -36,6 +36,12 @@ func HandleTransaction(privateKey []byte, destination, amount, endpoint string) 
 
 	// Display key information
 	fmt.Println("\nBittensor Transaction Information:")
+	networkType := "mainnet"
+	if testnet {
+		networkType = "testnet"
+	}
+	fmt.Printf("Network: %s\n", networkType)
+	fmt.Printf("Endpoint: %s\n", endpoint)
 
 	// Get SS58 address from public key
 	pubKeyBytes := pubKey.SerializeCompressed()

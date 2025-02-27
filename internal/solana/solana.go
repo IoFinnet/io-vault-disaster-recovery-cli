@@ -21,7 +21,7 @@ const (
 )
 
 // HandleTransaction processes a Solana transaction
-func HandleTransaction(privateKey []byte, destination, amount string) error {
+func HandleTransaction(privateKey []byte, destination, amount string, endpoint string, testnet bool) error {
 	// Validate inputs
 	if err := validateInputs(destination, amount); err != nil {
 		return err
@@ -35,6 +35,14 @@ func HandleTransaction(privateKey []byte, destination, amount string) error {
 
 	// Display key information
 	fmt.Println("\nSolana Transaction Information:")
+	networkType := "mainnet"
+	if testnet {
+		networkType = "testnet/devnet"
+	}
+	fmt.Printf("Network: %s\n", networkType)
+	if endpoint != "" {
+		fmt.Printf("Endpoint: %s\n", endpoint)
+	}
 
 	// Get Solana address from public key
 	pubKeyBytes := pubKey.SerializeCompressed()

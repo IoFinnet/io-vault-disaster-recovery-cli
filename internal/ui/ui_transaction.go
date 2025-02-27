@@ -9,18 +9,26 @@ import (
 )
 
 type TransactionDetails struct {
-	Destination string
-	Amount      string
-	Endpoint    string // For Bittensor
-	TestNet     bool   // For chains that support testnet
+	Destination  string
+	Amount       string
+	Endpoint     string // Network endpoint
+	TestNet      bool   // For chains that support testnet
+	CustomEndpoint bool // Whether user selected a custom endpoint
 }
 
 // PromptXRPLTransaction prompts the user for XRPL transaction details
 func PromptXRPLTransaction() (TransactionDetails, error) {
 	var details TransactionDetails
-	var testnet string
+	var network string
 
-	form := huh.NewForm(
+	// Default endpoints
+	endpoints := map[string]string{
+		"mainnet": "wss://s1.ripple.com",
+		"testnet": "wss://testnet.xrpl-labs.com",
+	}
+
+	// First form for address and amount
+	form1 := huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
 				Title("Destination Address").
@@ -32,33 +40,76 @@ func PromptXRPLTransaction() (TransactionDetails, error) {
 				Description("Enter the amount of XRP to send").
 				Placeholder("10.0").
 				Value(&details.Amount),
-			huh.NewSelect[string]().
-				Title("Network").
-				Options(
-					huh.NewOption("Mainnet", "mainnet"),
-					huh.NewOption("Testnet", "testnet"),
-				).
-				Value(&testnet),
 		),
 	)
 
-	err := form.Run()
+	err := form1.Run()
 	if err != nil {
 		return details, err
 	}
 
-	details.TestNet = (testnet == "testnet")
+	// Second form for network selection
+	form2 := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Network").
+				Description("Select a network or choose custom endpoint").
+				Options(
+					huh.NewOption("Mainnet (wss://s1.ripple.com)", "mainnet"),
+					huh.NewOption("Testnet (wss://testnet.xrpl-labs.com)", "testnet"),
+					huh.NewOption("Custom Endpoint", "custom"),
+				).
+				Value(&network),
+		),
+	)
+
+	err = form2.Run()
+	if err != nil {
+		return details, err
+	}
+
+	// If custom endpoint is selected, prompt for it
+	if network == "custom" {
+		details.CustomEndpoint = true
+		form3 := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Custom Endpoint").
+					Description("Enter the WebSocket endpoint URL").
+					Placeholder("wss://your-custom-endpoint.com").
+					Value(&details.Endpoint),
+				huh.NewConfirm().
+					Title("Is this a testnet?").
+					Value(&details.TestNet),
+			),
+		)
+
+		err = form3.Run()
+		if err != nil {
+			return details, err
+		}
+	} else {
+		// Use selected network's endpoint
+		details.Endpoint = endpoints[network]
+		details.TestNet = (network == "testnet")
+	}
+
 	return details, nil
 }
 
 // PromptBittensorTransaction prompts the user for Bittensor transaction details
 func PromptBittensorTransaction() (TransactionDetails, error) {
 	var details TransactionDetails
-	
-	// Set default endpoint
-	details.Endpoint = "wss://entrypoint-finney.opentensor.ai:443"
+	var network string
 
-	form := huh.NewForm(
+	// Default endpoints
+	endpoints := map[string]string{
+		"mainnet": "wss://entrypoint-finney.opentensor.ai:443",
+		"testnet": "wss://test.finney.opentensor.ai:443",
+	}
+	
+	// First form for address and amount
+	form1 := huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
 				Title("Destination Address").
@@ -70,22 +121,77 @@ func PromptBittensorTransaction() (TransactionDetails, error) {
 				Description("Enter the amount of TAO to send").
 				Placeholder("1.0").
 				Value(&details.Amount),
-			huh.NewInput().
-				Title("Endpoint").
-				Description("Enter the Bittensor network endpoint").
-				Placeholder(details.Endpoint).
-				Value(&details.Endpoint),
 		),
 	)
 
-	return details, form.Run()
+	err := form1.Run()
+	if err != nil {
+		return details, err
+	}
+
+	// Second form for network selection
+	form2 := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Network").
+				Description("Select a network or choose custom endpoint").
+				Options(
+					huh.NewOption("Mainnet (wss://entrypoint-finney.opentensor.ai:443)", "mainnet"),
+					huh.NewOption("Testnet (wss://test.finney.opentensor.ai:443)", "testnet"),
+					huh.NewOption("Custom Endpoint", "custom"),
+				).
+				Value(&network),
+		),
+	)
+
+	err = form2.Run()
+	if err != nil {
+		return details, err
+	}
+
+	// If custom endpoint is selected, prompt for it
+	if network == "custom" {
+		details.CustomEndpoint = true
+		form3 := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Custom Endpoint").
+					Description("Enter the WebSocket endpoint URL").
+					Placeholder("wss://your-custom-endpoint.com").
+					Value(&details.Endpoint),
+				huh.NewConfirm().
+					Title("Is this a testnet?").
+					Value(&details.TestNet),
+			),
+		)
+
+		err = form3.Run()
+		if err != nil {
+			return details, err
+		}
+	} else {
+		// Use selected network's endpoint
+		details.Endpoint = endpoints[network]
+		details.TestNet = (network == "testnet")
+	}
+
+	return details, nil
 }
 
 // PromptSolanaTransaction prompts the user for Solana transaction details
 func PromptSolanaTransaction() (TransactionDetails, error) {
 	var details TransactionDetails
+	var network string
 
-	form := huh.NewForm(
+	// Default endpoints
+	endpoints := map[string]string{
+		"mainnet": "https://api.mainnet-beta.solana.com",
+		"testnet": "https://api.testnet.solana.com",
+		"devnet":  "https://api.devnet.solana.com",
+	}
+	
+	// First form for address and amount
+	form1 := huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
 				Title("Destination Address").
@@ -100,7 +206,59 @@ func PromptSolanaTransaction() (TransactionDetails, error) {
 		),
 	)
 
-	return details, form.Run()
+	err := form1.Run()
+	if err != nil {
+		return details, err
+	}
+
+	// Second form for network selection
+	form2 := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Network").
+				Description("Select a network or choose custom endpoint").
+				Options(
+					huh.NewOption("Mainnet (https://api.mainnet-beta.solana.com)", "mainnet"),
+					huh.NewOption("Testnet (https://api.testnet.solana.com)", "testnet"),
+					huh.NewOption("Devnet (https://api.devnet.solana.com)", "devnet"),
+					huh.NewOption("Custom Endpoint", "custom"),
+				).
+				Value(&network),
+		),
+	)
+
+	err = form2.Run()
+	if err != nil {
+		return details, err
+	}
+
+	// If custom endpoint is selected, prompt for it
+	if network == "custom" {
+		details.CustomEndpoint = true
+		form3 := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Custom Endpoint").
+					Description("Enter the Solana RPC endpoint URL").
+					Placeholder("https://your-custom-endpoint.com").
+					Value(&details.Endpoint),
+				huh.NewConfirm().
+					Title("Is this a testnet?").
+					Value(&details.TestNet),
+			),
+		)
+
+		err = form3.Run()
+		if err != nil {
+			return details, err
+		}
+	} else {
+		// Use selected network's endpoint
+		details.Endpoint = endpoints[network]
+		details.TestNet = (network == "testnet" || network == "devnet")
+	}
+
+	return details, nil
 }
 
 // BlockchainChoice represents the user's choice of blockchain

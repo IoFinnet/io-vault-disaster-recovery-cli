@@ -24,7 +24,7 @@ const (
 )
 
 // HandleTransaction processes an XRPL transaction
-func HandleTransaction(privateKey []byte, destination, amount string, testnet bool) error {
+func HandleTransaction(privateKey []byte, destination, amount string, testnet bool, endpoint string) error {
 	// Validate inputs
 	if err := validateInputs(destination, amount); err != nil {
 		return err
@@ -39,6 +39,9 @@ func HandleTransaction(privateKey []byte, destination, amount string, testnet bo
 	// Display key information
 	fmt.Println("\nXRP Ledger Transaction Information:")
 	fmt.Printf("Network: %s\n", networkName(testnet))
+	if endpoint != "" {
+		fmt.Printf("Endpoint: %s\n", endpoint)
+	}
 
 	// Get address from public key
 	pubKeyBytes := pubKey.SerializeCompressed()
