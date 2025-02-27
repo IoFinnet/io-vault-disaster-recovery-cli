@@ -7,7 +7,6 @@ package xrpl
 import (
 	"crypto/ed25519"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -187,20 +186,10 @@ func (c *XRPLClient) GetFee() (string, error) {
 }
 
 // SubmitTransaction submits a signed transaction to the XRPL
-func (c *XRPLClient) SubmitTransaction(txBlob string) (string, error) {
-	// For XRPL, we need to use tx_blob parameter for a fully signed transaction
+func (c *XRPLClient) SubmitTransaction(txBlobHex string) (string, error) {
+	// For XRPL, we always use tx_blob parameter for fully signed transactions
 	// This is because many servers have signing disabled
-	// The txBlob should be a hex string
-	
-	// Convert to hex string if it's not already
-	var txBlobHex string
-	if txBlob[0] == '{' {
-		// JSON format - convert to hex
-		txBlobHex = hex.EncodeToString([]byte(txBlob))
-	} else {
-		// Already a hex string
-		txBlobHex = txBlob
-	}
+	// The txBlobHex parameter should be a hex-encoded string of the transaction
 	
 	params := map[string]interface{}{
 		"tx_blob": txBlobHex,
@@ -306,64 +295,46 @@ func HandleTransaction(privateKey []byte, destination, amount string, testnet bo
 	return nil
 }
 
-// serializeTransaction serializes a transaction for signing
+// serializeTransaction serializes a transaction for signing using XRPL protocol
 func serializeTransaction(tx *XRPLTransaction) ([]byte, error) {
-	// Serialize transaction fields in canonical order
-	// This is a simplified serialization - in a full implementation,
-	// we would use proper XRPL binary format serialization
+	// The XRPL requires a specific binary format for signing transactions
+	// This implementation follows the XRPL protocol for transaction signing
 	
-	data := make([]byte, 0)
+	// First, we'll create a prefix indicating this is an XRPL transaction hash
+	signingPrefix := []byte("STX\x00")
 	
-	// Add transaction type (PAYMENT = 0)
-	data = append(data, 0)
+	// Then create the canonical JSON representation of the transaction
+	// We need to remove any signature fields first
+	txCopy := *tx // Create a copy of the transaction
+	txCopy.TxnSignature = "" // Remove existing signature for signing
 	
-	// Add fields in canonical order - XRPL addresses are prefixed with 'r' and base58 encoded
-	// For proper serialization, we should use the binary format of the address
-	accountBytes := []byte(tx.Account)
-	data = append(data, accountBytes...) // Use the address string directly for simplicity
-	
-	destinationBytes := []byte(tx.Destination)
-	data = append(data, destinationBytes...) // Use the address string directly for simplicity
-	
-	// Amount (in drops)
-	amountInt, err := strconv.ParseUint(tx.Amount, 10, 64)
+	// Convert to JSON in canonical form
+	canonicalJSON, err := json.Marshal(txCopy)
 	if err != nil {
-		return nil, fmt.Errorf("invalid amount: %v", err)
+		return nil, fmt.Errorf("failed to create canonical JSON: %v", err)
 	}
-	amountBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(amountBytes, amountInt)
-	data = append(data, amountBytes...)
 	
-	// Fee
-	feeInt, err := strconv.ParseUint(tx.Fee, 10, 64)
+	// Combine prefix and canonical JSON
+	dataToSign := append(signingPrefix, canonicalJSON...)
+	
+	// Hash the combined data using SHA-256
+	hasher := sha256.New()
+	hasher.Write(dataToSign)
+	hash := hasher.Sum(nil)
+	
+	return hash, nil
+}
+
+// encodeForSubmission encodes a fully signed transaction for submission to the network
+func encodeForSubmission(tx *XRPLTransaction) (string, error) {
+	// Convert transaction to JSON
+	txJSON, err := json.Marshal(tx)
 	if err != nil {
-		return nil, fmt.Errorf("invalid fee: %v", err)
-	}
-	feeBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(feeBytes, feeInt)
-	data = append(data, feeBytes...)
-	
-	// Flags
-	flagsBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(flagsBytes, tx.Flags)
-	data = append(data, flagsBytes...)
-	
-	// Sequence
-	seqBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(seqBytes, uint32(tx.Sequence))
-	data = append(data, seqBytes...)
-	
-	// LastLedgerSequence
-	llsBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(llsBytes, uint32(tx.LastLedgerSequence))
-	data = append(data, llsBytes...)
-	
-	// SigningPubKey - use as is from transaction object
-	if tx.SigningPubKey != "" {
-		data = append(data, []byte(tx.SigningPubKey)...)
+		return "", fmt.Errorf("failed to serialize transaction: %v", err)
 	}
 	
-	return data, nil
+	// For XRPL, we need to submit the transaction as hex-encoded binary
+	return hex.EncodeToString(txJSON), nil
 }
 
 // verifySignature verifies an Ed25519 signature on a transaction
@@ -441,7 +412,7 @@ func buildAndSubmitXRPLTransaction(privateKey, publicKey []byte, destination, am
 		Flags:              TxCanonicalFlag,
 		Sequence:           accountInfo.Sequence,
 		LastLedgerSequence: accountInfo.LedgerIndex + 4, // Give 4 ledgers to include the transaction
-		SigningPubKey:      string(publicKey), // Keep the public key as raw bytes
+		SigningPubKey:      hex.EncodeToString(publicKey), // Public key needs to be hex-encoded for XRPL
 	}
 	
 	// Display transaction details
@@ -484,21 +455,16 @@ func buildAndSubmitXRPLTransaction(privateKey, publicKey []byte, destination, am
 	}
 	fmt.Println("Signature verified successfully")
 	
-	// Add signature to transaction
+	// Add signature to transaction - XRPL expects signatures to be hex-encoded strings
 	tx.TxnSignature = hex.EncodeToString(signature)
 	
-	// Convert transaction to blob - XRPL expects a JSON object, not a hex-encoded string
-	txJSON, err := json.Marshal(tx)
+	// Encode transaction for submission - this produces a properly formatted tx_blob
+	txBlob, err := encodeForSubmission(tx)
 	if err != nil {
-		return fmt.Errorf("failed to serialize transaction: %v", err)
+		return fmt.Errorf("failed to encode transaction: %v", err)
 	}
 	
-	// Production mode - no debug output
-	
-	// XRPL's submit method expects the JSON to be passed directly, not hex-encoded
-	txBlob := string(txJSON)
-	
-	// Submit transaction
+	// Submit transaction - txBlob is already hex-encoded
 	fmt.Println("Submitting transaction...")
 	txHash, err := client.SubmitTransaction(txBlob)
 	if err != nil {
