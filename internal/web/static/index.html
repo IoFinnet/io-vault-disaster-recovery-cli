@@ -6,6 +6,16 @@
     <title>Vault Disaster Recovery Tool</title>
     <link rel="stylesheet" href="/static/styles.css">
     <script src="https://cdn.jsdelivr.net/npm/@noble/ed25519@2/index.min.js"></script>
+    <script>
+        // Ensure the noble-ed25519 library is correctly exposed
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof window.nobleEd25519 === 'undefined') {
+                // If not exposed as expected, try to get it from the noble_ed25519 or globalThis.ed25519 namespaces
+                window.nobleEd25519 = window.noble_ed25519 || window.ed25519 || globalThis.ed25519;
+                console.log("Noble ed25519 library initialized:", window.nobleEd25519 ? "success" : "failed");
+            }
+        });
+    </script>
     <script src="/static/main.js" defer></script>
 </head>
 <body>

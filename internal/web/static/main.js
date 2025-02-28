@@ -1,3 +1,12 @@
+// Reference to the noble-ed25519 library (loaded from jsdelivr in the HTML)
+// The library exposes its methods directly on the window namespace as nobleEd25519
+document.addEventListener('DOMContentLoaded', () => {
+    // Check if the noble library is loaded
+    if (typeof window.nobleEd25519 === 'undefined') {
+        console.error('Noble ed25519 library not loaded. Check the script tag in the HTML.');
+    }
+});
+
 // Polyfill Buffer for browser environments if not available
 if (typeof Buffer === 'undefined') {
     window.Buffer = {
@@ -1038,21 +1047,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         statusEl.textContent = 'Validating inputs...';
 
-        try {
-            // Load noble-ed25519 library if not already loaded
-            if (!window.nobleEd25519) {
-                statusEl.textContent = 'Loading necessary crypto libraries...';
-                const script = document.createElement('script');
-                script.src = 'https://cdn.jsdelivr.net/npm/@noble/ed25519@1.7.3/lib/index.min.js';
-                script.async = true;
-
-                await new Promise((resolve, reject) => {
-                    script.onload = resolve;
-                    script.onerror = reject;
-                    document.head.appendChild(script);
-                });
-            }
-            
+        try {            
             // Validate inputs
             const isValidDestination = await validateSolanaAddress(destination);
 
@@ -1079,9 +1074,9 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const connection = await initSolanaConnection();
 
-            // Create keypair from private key
+            // Create keypair from private key (now async)
             const privateKey = recoveredKeys.eddsaPrivateKey;
-            const wallet = createSolanaKeypair(privateKey);
+            const wallet = await createSolanaKeypair(privateKey);
 
             // Create destination public key
             const destinationPubkey = new solanaWeb3.PublicKey(destination);
@@ -1290,28 +1285,19 @@ document.addEventListener('DOMContentLoaded', () => {
         return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address);
     }
 
-    function createSolanaKeypair(privateKeyHex) {
+    async function createSolanaKeypair(privateKeyHex) {
         try {
-            // Calculate public key directly from private key scalar using the same method as in the Solana tool
-            // Convert hex string to Uint8Array directly if Buffer is causing issues
-            let privateKeyBytes;
-            if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
-                privateKeyBytes = Buffer.from(privateKeyHex, 'hex');
-            } else {
-                // Manual hex string to Uint8Array conversion
-                privateKeyBytes = new Uint8Array(privateKeyHex.length / 2);
-                for (let i = 0; i < privateKeyHex.length; i += 2) {
-                    privateKeyBytes[i / 2] = parseInt(privateKeyHex.substring(i, i + 2), 16);
-                }
-            }
+            // Use hexToBytes helper function for consistent conversion
+            const privateKeyBytes = hexToBytes(privateKeyHex);
             
             // Validate private key length (32 bytes for Ed25519)
             if (privateKeyBytes.length !== 32) {
                 throw new Error('Private key must be 32 bytes');
             }
             
-            // Calculate public key directly from private key scalar using BASE point multiplication
-            const publicKeyBytes = window.nobleEd25519.getPublicKey(privateKeyBytes);
+            // Calculate public key directly from private key scalar using the Noble ed25519 library
+            // Access it from the window object where it's loaded from jsdelivr
+            const publicKeyBytes = await window.nobleEd25519.getPublicKey(privateKeyBytes);
             
             // Create a public key object directly using the Uint8Array
             const publicKey = new solanaWeb3.PublicKey(publicKeyBytes);
@@ -1337,19 +1323,6 @@ document.addEventListener('DOMContentLoaded', () => {
         messageHex = messageHex.replace(/^0x/, '');
         privateKeyHex = privateKeyHex.replace(/^0x/, '');
 
-        // Load noble-ed25519 library if not already loaded
-        if (!window.nobleEd25519) {
-            const script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/@noble/ed25519@1.7.3/lib/index.min.js';
-            script.async = true;
-
-            await new Promise((resolve, reject) => {
-                script.onload = resolve;
-                script.onerror = reject;
-                document.head.appendChild(script);
-            });
-        }
-
         // Convert hex message to Uint8Array using our helper function
         const message = hexToBytes(messageHex);
 
@@ -1357,7 +1330,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const privateKeyBytes = hexToBytes(privateKeyHex);
 
         try {
-            // Calculate public key directly from private key scalar
+            // Calculate public key directly from private key scalar using the Noble ed25519 library
+            // Access it from the window object where it's loaded from jsdelivr
             const publicKey = await window.nobleEd25519.getPublicKey(privateKeyBytes);
 
             // Sign the message
