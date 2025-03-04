@@ -98,11 +98,11 @@ Please use [TronLink](https://www.tronlink.org) to recover Tron and Tron assets.
 
 ### XRP Ledger Recovery
 
-We use a different key format than XRPL usually uses, so there is a separate script that we must use after running the DR tool. Head to [scripts/xrpl-tool](./scripts/xrpl-tool) and run `npm start` in that directory to start running the interactive tool.
+We use a different key format than XRPL usually uses, so there is a separate script that we must use after running the DR tool. Head to [scripts/xrpl-tool](./scripts/xrpl-tool); run `npm i` and `npm start` in that directory to start running the interactive tool.
 
 ### TAO Recovery
 
-Similar to the XRPL recovery procedure above, use the [scripts/bittensor-tool](./scripts/bittensor-tool) and run `npm start` in that directory to start running the interactive tool. Please use the [Bittensor Wallet](https://bittensor.com/wallet) on mobile to recover TAO assets, or you can use the Bittensor CLI in offline mode.
+Similar to the XRPL recovery procedure above, use the [scripts/bittensor-tool](./scripts/bittensor-tool); run `npm i` and `npm start` in that directory to start running the interactive tool.
 
 ### Others (SOL, TON, ATOM, etc.)
 
