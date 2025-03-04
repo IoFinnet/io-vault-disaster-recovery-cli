@@ -73,7 +73,8 @@ A WIF looks like: L1CujRNEhNfZgTS9b6e3hytTDu7gpUv1kiLx4ETEEhEc8nJcx4QA
 
 You may download Electrum wallet, and follow these steps to import a WIF:
 
-> **IMPORTANT:** If you intend to recover a **testnet** key (address with `tb1` prefix), you must run Electrum with the `--testnet` flag from your Terminal:
+> [!IMPORTANT]
+> If you intend to recover a **testnet** key (address with `tb1` prefix), you must run Electrum with the `--testnet` flag from your Terminal:
 > On a Mac, this is done as follows:
 > `open -n /Applications/Electrum.app --args --testnet`
 
