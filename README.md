@@ -8,10 +8,9 @@ It exports a WIF for Bitcoin key import to Electrum Wallet. It will also create 
 For other coins and wallets, please see the specific recovery information below or on our [guides page](https://docs.iofinnet.com/docs/disaster-recovery).
 You may be required to run another script contained in the [scripts](./scripts) area of this repository.
 
-> ### **Important Notice**
->
+> [!IMPORTANT]
 > This app does not do ANY communication with any external host or service. It does not need an Internet connection at all.
->
+> 
 > It is recommended that you run it on a non internet connected ("air gapped") device such as a laptop not connected to any network.
 
 ## Build from Source
