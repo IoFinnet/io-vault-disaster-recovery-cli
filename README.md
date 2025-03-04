@@ -1,4 +1,4 @@
-# TSS Recovery Tools
+# io.finnet Key Recovery Tool for io.vault
 ![Screenshot](https://github.com/user-attachments/assets/d1ab307a-6059-44d1-828a-be27d0fb9944)
 
 This terminal app recovers the private keys of vaults by combining the shares of each TSS app backup file.
