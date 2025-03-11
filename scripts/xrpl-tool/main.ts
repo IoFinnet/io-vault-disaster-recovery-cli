@@ -39,7 +39,8 @@ const commandLineArgs = {
   amount: '',
   network: '',
   checkBalance: false,
-  broadcast: false
+  broadcast: false,
+  confirm: false
 };
 
 for (let i = 0; i < args.length; i++) {
@@ -72,6 +73,10 @@ for (let i = 0; i < args.length; i++) {
     case '-b':
       commandLineArgs.broadcast = true;
       break;
+    case '--confirm':
+    case '-y':
+      commandLineArgs.confirm = true;
+      break;
     case '--help':
     case '-h':
       console.log(`
@@ -85,6 +90,7 @@ Options:
   -n, --network <network>     Network to use (mainnet, testnet)
   -c, --check-balance         Check wallet balance before transfer
   -b, --broadcast             Broadcast the transaction
+  -y, --confirm               Auto-confirm transaction without prompting
   -h, --help                  Show this help message
       
 If any required parameter is not provided, you will be prompted for it interactively.
@@ -293,8 +299,8 @@ async function main() {
   console.log(`Amount: ${amount} XRP`);
   console.log(`Network: ${useMainNet ? 'mainnet' : 'testnet'}`);
   
-  // Confirm transaction if not auto-broadcasting
-  if (!commandLineArgs.broadcast) {
+  // Confirm transaction if not auto-broadcasting and not auto-confirming
+  if (!commandLineArgs.broadcast && !commandLineArgs.confirm) {
     const confirmTransaction = readlineSync.keyInYNStrict('\nConfirm transaction?');
     if (!confirmTransaction) {
       console.log('Transaction cancelled.');
@@ -335,8 +341,8 @@ async function main() {
 
     if (!verifySignature(encodedTxHex, tx.SigningPubKey)) throw new Error('Signature verification failed');
 
-    // Broadcast transaction if requested
-    const wantToBroadcast = commandLineArgs.broadcast || readlineSync.keyInYNStrict('\nWould you like to broadcast this transaction now?');
+    // Broadcast transaction if requested or if --confirm flag is set
+    const wantToBroadcast = commandLineArgs.broadcast || commandLineArgs.confirm || readlineSync.keyInYNStrict('\nWould you like to broadcast this transaction now?');
 
     if (wantToBroadcast) {
       console.log('\nBroadcasting transaction...');

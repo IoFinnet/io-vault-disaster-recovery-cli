@@ -41,7 +41,8 @@ const commandLineArgs = {
   privateKey: '',
   destination: '',
   amount: '',
-  endpoint: DEFAULT_ENDPOINT
+  endpoint: DEFAULT_ENDPOINT,
+  confirm: false
 };
 
 for (let i = 0; i < args.length; i++) {
@@ -62,6 +63,10 @@ for (let i = 0; i < args.length; i++) {
     case '-e':
       commandLineArgs.endpoint = args[++i];
       break;
+    case '--confirm':
+    case '-y':
+      commandLineArgs.confirm = true;
+      break;
     case '--help':
     case '-h':
       console.log(`
@@ -72,6 +77,7 @@ Options:
   -d, --destination <address> Destination address
   -a, --amount <amount>       Amount to transfer
   -e, --endpoint <url>        Endpoint URL (default: ${DEFAULT_ENDPOINT})
+  -y, --confirm               Auto-confirm transaction without prompting
   -h, --help                  Show this help message
       
 If any required parameter is not provided, you will be prompted for it interactively.
@@ -116,10 +122,13 @@ async function transferFunds(privateKeyHex: string, destination: string, amount:
 
   console.log("Derived Address (SS58):", keyPair.address);
 
-  const wantToTransfer = readlineSync.keyInYNStrict('\nWould you like to proceed with the transaction?');
-  if (!wantToTransfer) {
-    console.log('Exiting...');
-    process.exit(0);
+  // Only prompt if --confirm flag isn't set
+  if (!commandLineArgs.confirm) {
+    const wantToTransfer = readlineSync.keyInYNStrict('\nWould you like to proceed with the transaction?');
+    if (!wantToTransfer) {
+      console.log('Exiting...');
+      process.exit(0);
+    }
   }
 
   console.log("Creating transfer transaction...");
@@ -234,8 +243,8 @@ async function main() {
     }
   }
 
-  // If all parameters are provided via command line, ask for confirmation
-  if (commandLineArgs.privateKey && commandLineArgs.destination && commandLineArgs.amount) {
+  // If all parameters are provided via command line, ask for confirmation (unless --confirm flag is used)
+  if (commandLineArgs.privateKey && commandLineArgs.destination && commandLineArgs.amount && !commandLineArgs.confirm) {
     console.log('\nTransaction Details:');
     console.log(`Destination: ${destination}`);
     console.log(`Amount: ${amount}`);
