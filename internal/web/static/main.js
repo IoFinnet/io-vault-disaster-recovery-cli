@@ -248,13 +248,33 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.remove-file').forEach(btn => {
             btn.addEventListener('click', removeFileInput);
         });
+        
+        // Clear error message when a file is selected or mnemonic is entered
+        const errorContainer = document.getElementById('files-error');
+        
+        document.querySelectorAll('.file-input, .mnemonic').forEach(input => {
+            input.addEventListener('change', () => {
+                errorContainer.style.display = 'none';
+            });
+        });
+        
+        document.querySelectorAll('.mnemonic').forEach(textarea => {
+            textarea.addEventListener('input', () => {
+                errorContainer.style.display = 'none';
+            });
+        });
     }
 
     // Validate files and mnemonics before proceeding
     function validateFilesAndMnemonics() {
         const fileInputs = document.querySelectorAll('.file-input');
         const mnemonicInputs = document.querySelectorAll('.mnemonic');
+        const errorContainer = document.getElementById('files-error');
+        const errorMessage = document.getElementById('files-error-message');
 
+        // Hide previous error messages
+        errorContainer.style.display = 'none';
+        
         // Check if at least one file is selected
         let hasFile = false;
         fileInputs.forEach(input => {
@@ -264,7 +284,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         if (!hasFile) {
-            alert('Please select at least one vault file');
+            errorMessage.textContent = 'Please select at least one vault file';
+            errorContainer.style.display = 'flex';
             return false;
         }
 
@@ -274,15 +295,19 @@ document.addEventListener('DOMContentLoaded', () => {
             if (input.files.length > 0) {
                 const mnemonic = mnemonicInputs[index].value.trim();
                 if (!mnemonic) {
-                    alert(`Please enter the mnemonic phrase for ${input.files[0].name}`);
+                    errorMessage.textContent = `Please enter the mnemonic phrase for ${input.files[0].name}`;
+                    errorContainer.style.display = 'flex';
                     valid = false;
+                    return;
                 }
 
                 // Basic validation for mnemonic (24 words)
                 const words = mnemonic.split(/\s+/);
                 if (words.length !== 24) {
-                    alert(`The mnemonic phrase for ${input.files[0].name} should contain 24 words (found ${words.length})`);
+                    errorMessage.textContent = `The mnemonic phrase for ${input.files[0].name} should contain 24 words (found ${words.length})`;
+                    errorContainer.style.display = 'flex';
                     valid = false;
+                    return;
                 }
             }
         });
@@ -292,6 +317,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Load vaults from the selected files
     function loadVaults() {
+        // Get error container references
+        const errorContainer = document.getElementById('files-error');
+        const errorMessage = document.getElementById('files-error-message');
+        
+        // Hide any previous error messages
+        errorContainer.style.display = 'none';
+        
+        // Show loading indicator
         vaultsLoading.style.display = 'block';
         vaultsContainer.style.display = 'none';
 
@@ -325,8 +358,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 vaultsContainer.style.display = 'block';
             })
             .catch(error => {
+                // Hide loading indicator
                 vaultsLoading.style.display = 'none';
-                alert(`Error loading vaults: ${error.message}`);
+                
+                // Show inline error message and go back to step 1
+                errorMessage.textContent = `Error loading vaults: ${error.message}`;
+                errorContainer.style.display = 'flex';
+                showStep('files');
             });
     }
 
@@ -335,7 +373,13 @@ document.addEventListener('DOMContentLoaded', () => {
         vaultsList.innerHTML = '';
 
         if (!vaults || vaults.length === 0) {
-            vaultsList.innerHTML = '<tr><td colspan="5">No vaults found in the provided files</td></tr>';
+            // Go back to step 1 and show an error message
+            const errorContainer = document.getElementById('files-error');
+            const errorMessage = document.getElementById('files-error-message');
+            
+            errorMessage.textContent = 'No vaults found in the provided files. Please check your files and mnemonics.';
+            errorContainer.style.display = 'flex';
+            showStep('files');
             return;
         }
 
@@ -479,6 +523,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Reset the application state
     function resetState() {
+        // Hide error message
+        document.getElementById('files-error').style.display = 'none';
+        
         // Clear files
         filesContainer.innerHTML = `
             <div class="file-input-group" data-index="1">

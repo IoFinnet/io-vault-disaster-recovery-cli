@@ -351,7 +351,7 @@ button:active {
     100% { transform: rotate(360deg); }
 }
 
-/* Error box */
+/* Error styling */
 .error-box {
     display: none;
     background-color: #fdf0f0;
@@ -364,6 +364,36 @@ button:active {
 .error-box h3 {
     color: var(--danger-color);
     margin-top: 0;
+}
+
+.error-message {
+    display: flex;
+    background-color: #fdf0f0;
+    border: 1px solid rgba(220, 53, 69, 0.3);
+    border-left: 4px solid var(--danger-color);
+    padding: 1rem;
+    margin: 1rem 0 1.5rem;
+    border-radius: 4px;
+    align-items: flex-start;
+}
+
+.error-icon {
+    font-size: 1.5rem;
+    color: var(--danger-color);
+    margin-right: 1rem;
+}
+
+.error-content {
+    flex: 1;
+}
+
+.error-content h4 {
+    margin: 0 0 0.5rem;
+    color: var(--danger-color);
+}
+
+.error-content p {
+    margin: 0;
 }
 
 /* Recovery results */
