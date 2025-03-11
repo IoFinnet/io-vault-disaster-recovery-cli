@@ -157,21 +157,17 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // XRPL transaction buttons
+    // Connect terminal buttons
     document.getElementById('xrpl-check-balance').addEventListener('click', checkXRPLBalance);
-    document.getElementById('xrpl-prepare-tx').addEventListener('click', prepareXRPLTransaction);
-    document.getElementById('xrpl-sign-tx').addEventListener('click', signXRPLTransaction);
-    document.getElementById('xrpl-broadcast-tx').addEventListener('click', broadcastXRPLTransaction);
-
-    // Bittensor transaction buttons
-    document.getElementById('bittensor-prepare-tx').addEventListener('click', prepareBittensorTransaction);
-    document.getElementById('bittensor-broadcast-tx').addEventListener('click', broadcastBittensorTransaction);
-
-    // Solana transaction buttons
+    document.getElementById('xrpl-create-tx').addEventListener('click', () => createTerminalTransaction('xrpl'));
+    document.getElementById('xrpl-terminal-close').addEventListener('click', () => closeTerminal('xrpl'));
+    
+    document.getElementById('bittensor-create-tx').addEventListener('click', () => createTerminalTransaction('bittensor'));
+    document.getElementById('bittensor-terminal-close').addEventListener('click', () => closeTerminal('bittensor'));
+    
     document.getElementById('solana-check-balance').addEventListener('click', checkSolanaBalance);
-    document.getElementById('solana-prepare-tx').addEventListener('click', prepareSolanaTransaction);
-    document.getElementById('solana-sign-tx').addEventListener('click', signSolanaTransaction);
-    document.getElementById('solana-broadcast-tx').addEventListener('click', broadcastSolanaTransaction);
+    document.getElementById('solana-create-tx').addEventListener('click', () => createTerminalTransaction('solana'));
+    document.getElementById('solana-terminal-close').addEventListener('click', () => closeTerminal('solana'));
 
     // ==================
     // Functions
@@ -617,19 +613,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 input.value = '';
             }
         });
-
-        // Reset status and prepared transaction sections
-        dialog.querySelector('.transaction-status').textContent = '';
-        dialog.querySelector('.transaction-status').className = 'transaction-status';
-        dialog.querySelector('.tx-details').textContent = '';
-        dialog.querySelector('.prepared-transaction').style.display = 'none';
+        
+        // Hide the terminal container if visible
+        const terminalContainer = document.getElementById(`${blockchain}-terminal-container`);
+        if (terminalContainer) {
+            terminalContainer.style.display = 'none';
+        }
+        
+        // Reset status if it exists (for balance check)
+        const statusEl = document.getElementById(`${blockchain}-status`);
+        if (statusEl) {
+            statusEl.textContent = '';
+            statusEl.className = 'transaction-status';
+            statusEl.style.display = 'none';
+        }
     }
 
     // ==================
-    // XRPL Transaction Functions
+    // Balance Check Functions
     // ==================
     let xrplClient = null;
-    let xrplPreparedTx = null;
+    let solanaConnection = null;
 
     async function initXRPLClient() {
         // This function would initialize the XRPL client using a library like xrpl.js
@@ -659,9 +663,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function checkXRPLBalance() {
-        const statusEl = document.getElementById('xrpl-status');
+        // Create status element if it doesn't exist
+        let statusEl = document.getElementById('xrpl-status');
+        if (!statusEl) {
+            statusEl = document.createElement('div');
+            statusEl.id = 'xrpl-status';
+            statusEl.className = 'transaction-status';
+            document.querySelector('#xrpl-transaction-dialog .transaction-actions').after(statusEl);
+        }
+        
         statusEl.textContent = 'Connecting to XRPL network...';
         statusEl.className = 'transaction-status info';
+        statusEl.style.display = 'block';
 
         try {
             const client = await initXRPLClient();
@@ -692,180 +705,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 statusEl.textContent = 'Account not found. This account may not be activated yet or may not exist on this network.';
             }
         } finally {
-            if (xrplClient) {
-                await xrplClient.disconnect();
-                xrplClient = null;
-            }
-        }
-    }
-
-    async function prepareXRPLTransaction() {
-        const statusEl = document.getElementById('xrpl-status');
-        statusEl.textContent = 'Preparing transaction...';
-        statusEl.className = 'transaction-status info';
-
-        const destination = document.getElementById('xrpl-destination').value;
-        const amount = document.getElementById('xrpl-amount').value;
-
-        // Validate inputs
-        const isValidDestination = await validateXRPLDestination(destination);
-        if (!isValidDestination) {
-            statusEl.textContent = 'Invalid destination address format. Must be a valid XRPL address starting with "r".';
-            statusEl.className = 'transaction-status error';
-            return;
-        }
-
-        if (!validateXRPAmount(amount)) {
-            statusEl.textContent = 'Invalid amount. Must be a positive number less than 100 billion XRP.';
-            statusEl.className = 'transaction-status error';
-            return;
-        }
-
-        try {
-            const client = await initXRPLClient();
-
-            // Create wallet from the private key
-            const privateKey = recoveredKeys.eddsaPrivateKey;
-            const publicKey = recoveredKeys.eddsaPublicKey;
-            const wallet = new xrpl.Wallet('ed' + publicKey, 'ed' + privateKey);
-
-            // Prepare transaction
-            const tx = await client.autofill({
-                TransactionType: 'Payment',
-                Account: wallet.address,
-                Destination: destination,
-                Amount: xrpl.xrpToDrops(amount),
-            });
-
-            tx.SigningPubKey = wallet.publicKey;
-            if (tx.LastLedgerSequence) {
-                // Adds 15 minutes worth of ledgers (assuming 4 ledgers per second) to the existing LastLedgerSequence value
-                tx.LastLedgerSequence = tx.LastLedgerSequence + 15 * 60 * 4;
-            }
-
-            // Store prepared transaction
-            xrplPreparedTx = tx;
-
-            // Display transaction details
-            document.getElementById('xrpl-tx-details').textContent = JSON.stringify(tx, null, 2);
-            document.getElementById('xrpl-prepared-tx').style.display = 'block';
-
-            statusEl.textContent = 'Transaction prepared successfully. Review the details and proceed to sign.';
-            statusEl.className = 'transaction-status success';
-
-        } catch (error) {
-            statusEl.textContent = `Error: ${error.message}`;
-            statusEl.className = 'transaction-status error';
-        } finally {
-            if (xrplClient) {
-                await xrplClient.disconnect();
-                xrplClient = null;
-            }
-        }
-    }
-
-    async function signXRPLTransaction() {
-        const statusEl = document.getElementById('xrpl-status');
-
-        if (!xrplPreparedTx) {
-            statusEl.textContent = 'No transaction prepared. Please prepare a transaction first.';
-            statusEl.className = 'transaction-status error';
-            return;
-        }
-
-        statusEl.textContent = 'Signing transaction...';
-        statusEl.className = 'transaction-status info';
-
-        try {
-            // Create wallet from the private key for signature verification
-            const privateKey = recoveredKeys.eddsaPrivateKey;
-            const publicKey = recoveredKeys.eddsaPublicKey;
-
-            // Use signWithScalar for XRPL transactions (we'll implement this later)
-            const preImageHex = xrpl.encodeForSigning(xrplPreparedTx);
-
-            // Sign the transaction
-            const { signature } = await signWithScalar(preImageHex, privateKey);
-            xrplPreparedTx.TxnSignature = signature;
-
-            // Encode the signed transaction
-            const encodedTxHex = xrpl.encode(xrplPreparedTx);
-            xrplPreparedTx.encodedTx = encodedTxHex;
-
-            // Update the transaction details
-            document.getElementById('xrpl-tx-details').textContent = JSON.stringify({
-                ...xrplPreparedTx,
-                signedTxBlob: encodedTxHex
-            }, null, 2);
-
-            statusEl.textContent = 'Transaction signed successfully. You can now broadcast it to the network.';
-            statusEl.className = 'transaction-status success';
-
-        } catch (error) {
-            statusEl.textContent = `Error signing transaction: ${error.message}`;
-            statusEl.className = 'transaction-status error';
-        }
-    }
-
-    async function broadcastXRPLTransaction() {
-        const statusEl = document.getElementById('xrpl-status');
-
-        if (!xrplPreparedTx || !xrplPreparedTx.encodedTx) {
-            statusEl.textContent = 'No signed transaction available. Please prepare and sign a transaction first.';
-            statusEl.className = 'transaction-status error';
-            return;
-        }
-
-        statusEl.textContent = 'Broadcasting transaction...';
-        statusEl.className = 'transaction-status info';
-
-        try {
-            const client = await initXRPLClient();
-
-            // Submit the signed transaction
-            const submit = await client.submit(xrplPreparedTx.encodedTx);
-
-            if (submit.result.engine_result.includes('SUCCESS')) {
-                const txHash = submit.result.tx_json.hash;
-
-                statusEl.innerHTML = `Transaction submitted successfully with hash: <strong>${txHash}</strong>
-                                     <br><br>Initial status: ${submit.result.engine_result_message}`;
-                statusEl.className = 'transaction-status success';
-
-                // Wait for validation (optional)
-                statusEl.innerHTML += '<br><br>Waiting for validation...';
-
-                // Poll for transaction outcome
-                setTimeout(async () => {
-                    try {
-                        const txResponse = await client.request({
-                            command: 'tx',
-                            transaction: txHash
-                        });
-
-                        if (txResponse.result.validated) {
-                            statusEl.innerHTML += '<br><br>Transaction validated!';
-                        } else {
-                            statusEl.innerHTML += '<br><br>Transaction not yet validated. It may take a few seconds to be included in a ledger.';
-                        }
-                    } catch (error) {
-                        // Transaction may not be in the ledger yet
-                        statusEl.innerHTML += '<br><br>Transaction pending validation...';
-                    } finally {
-                        await client.disconnect();
-                    }
-                }, 5000);
-
-            } else {
-                statusEl.textContent = `Transaction failed: ${submit.result.engine_result_message}`;
-                statusEl.className = 'transaction-status error';
-                await client.disconnect();
-            }
-
-        } catch (error) {
-            statusEl.textContent = `Error broadcasting transaction: ${error.message}`;
-            statusEl.className = 'transaction-status error';
-
             if (xrplClient) {
                 await xrplClient.disconnect();
                 xrplClient = null;
@@ -918,83 +757,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return !isNaN(num) && num > 0 && num <= 100000000000;
     }
 
-    // ==================
-    // Bittensor Transaction Functions
-    // ==================
-    let bittensorPreparedTx = null;
-
-    async function prepareBittensorTransaction() {
-        const statusEl = document.getElementById('bittensor-status');
-        statusEl.textContent = 'Preparing transaction...';
-        statusEl.className = 'transaction-status info';
-
-        const endpoint = document.getElementById('bittensor-endpoint').value;
-        const destination = document.getElementById('bittensor-destination').value;
-        const amount = document.getElementById('bittensor-amount').value;
-
-        // Validate inputs
-        const isValidDestination = await validateBittensorAddress(destination);
-        if (!isValidDestination) {
-            statusEl.textContent = 'Invalid destination address format. Must be a valid Bittensor SS58 address.';
-            statusEl.className = 'transaction-status error';
-            return;
-        }
-
-        if (!validateAmount(amount)) {
-            statusEl.textContent = 'Invalid amount. Must be a positive number.';
-            statusEl.className = 'transaction-status error';
-            return;
-        }
-
-        // In a full implementation, we would load the Polkadot.js API here
-        // Since we can't fully implement this in the browser without adding dependencies,
-        // we'll create a transaction preview
-
-        // Format transaction details for display
-        const fromAddress = document.getElementById('bittensor-address').textContent;
-        const amountInPlanck = Number(amount) * 1000000000; // 9 decimals
-
-        bittensorPreparedTx = {
-            from: fromAddress,
-            to: destination,
-            amount: amount,
-            amountInPlanck: amountInPlanck.toString(),
-            endpoint: endpoint
-        };
-
-        // Display transaction details
-        document.getElementById('bittensor-tx-details').textContent = JSON.stringify(bittensorPreparedTx, null, 2);
-        document.getElementById('bittensor-prepared-tx').style.display = 'block';
-
-        statusEl.innerHTML = `Transaction prepared for preview.
-                            <br><br>Note: Full Bittensor transaction functionality requires the Polkadot.js API which is not fully supported in the browser.
-                            <br><br>In a production environment, this transaction would send ${amount} TAO from ${fromAddress} to ${destination}.`;
-        statusEl.className = 'transaction-status info';
-    }
-
-    async function broadcastBittensorTransaction() {
-        const statusEl = document.getElementById('bittensor-status');
-
-        if (!bittensorPreparedTx) {
-            statusEl.textContent = 'No transaction prepared. Please prepare a transaction first.';
-            statusEl.className = 'transaction-status error';
-            return;
-        }
-
-        statusEl.innerHTML = `<strong>Bittensor Transaction Notice</strong>
-                           <br><br>Due to technical limitations, Bittensor transactions cannot be broadcast directly from the browser. The Substrate/Polkadot.js libraries used for Bittensor transactions are not fully compatible with browser environments.
-                           <br><br>To complete this transaction, please:
-                           <br><br>1. Ensure Node.js is installed on your computer
-                           <br><br>2. Open a terminal and navigate to the Bittensor tool directory:
-                           <br><code>cd scripts/bittensor-tool</code>
-                           <br><br>3. Install dependencies and run the tool:
-                           <br><code>npm i</code>
-                           <br><code>npm start</code>
-                           <br><br>4. Enter your private key and transaction details when prompted
-                           <br><br>The Node.js script uses the exact same transaction building and signing code, but includes all required libraries to complete the transaction.`;
-        statusEl.className = 'transaction-status info';
-    }
-
     // Bittensor validation functions
     async function validateBittensorAddress(address) {
         try {
@@ -1039,7 +801,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==================
     // Solana Transaction Functions
     // ==================
-    let solanaConnection = null;
+    // Note: solanaConnection is already declared above
     let solanaPreparedTx = null;
 
     async function initSolanaConnection() {
@@ -1080,9 +842,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function checkSolanaBalance() {
-        const statusEl = document.getElementById('solana-status');
+        // Create status element if it doesn't exist
+        let statusEl = document.getElementById('solana-status');
+        if (!statusEl) {
+            statusEl = document.createElement('div');
+            statusEl.id = 'solana-status';
+            statusEl.className = 'transaction-status';
+            document.querySelector('#solana-transaction-dialog .transaction-actions').after(statusEl);
+        }
+        
         statusEl.textContent = 'Connecting to Solana network...';
         statusEl.className = 'transaction-status info';
+        statusEl.style.display = 'block';
 
         try {
             const connection = await initSolanaConnection();
@@ -1106,214 +877,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (error.message.includes('Account not found')) {
                 statusEl.textContent = 'Account not found. This account may not be activated yet or may not exist on this network.';
             }
-        }
-    }
-
-    async function prepareSolanaTransaction() {
-        const statusEl = document.getElementById('solana-status');
-        statusEl.textContent = 'Preparing transaction...';
-        statusEl.className = 'transaction-status info';
-
-        const destination = document.getElementById('solana-destination').value;
-        const amount = document.getElementById('solana-amount').value;
-
-        statusEl.textContent = 'Validating inputs...';
-
-        try {            
-            // Validate inputs
-            const isValidDestination = await validateSolanaAddress(destination);
-
-            if (!isValidDestination) {
-                statusEl.textContent = `Invalid destination address format: ${destination}`;
-                statusEl.className = 'transaction-status error';
-                return;
-            }
-
-            if (!validateAmount(amount)) {
-                statusEl.textContent = 'Invalid amount. Must be a positive number.';
-                statusEl.className = 'transaction-status error';
-                return;
-            }
-
-            statusEl.textContent = 'Inputs validated, preparing transaction...';
-        } catch (error) {
-            console.error('Error in validation:', error);
-            statusEl.textContent = `Validation error: ${error.message}`;
-            statusEl.className = 'transaction-status error';
-            return;
-        }
-
-        try {
-            const connection = await initSolanaConnection();
-
-            // Create keypair from private key (now async)
-            const privateKey = recoveredKeys.eddsaPrivateKey;
-            const wallet = await createSolanaKeypair(privateKey);
-
-            // Create destination public key
-            const destinationPubkey = new solanaWeb3.PublicKey(destination);
-            const lamports = Math.floor(parseFloat(amount) * solanaWeb3.LAMPORTS_PER_SOL);
-
-            // Create a new transaction
-            const transaction = new solanaWeb3.Transaction();
-
-            // Get recent blockhash
-            const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-            transaction.recentBlockhash = blockhash;
-            transaction.lastValidBlockHeight = lastValidBlockHeight;
-
-            // Set fee payer
-            transaction.feePayer = wallet.publicKey;
-
-            // Add transfer instruction
-            transaction.add(
-                solanaWeb3.SystemProgram.transfer({
-                    fromPubkey: wallet.publicKey,
-                    toPubkey: destinationPubkey,
-                    lamports: lamports,
-                })
-            );
-
-            // Store prepared transaction
-            solanaPreparedTx = {
-                transaction: transaction,
-                blockhash: blockhash,
-                lastValidBlockHeight: lastValidBlockHeight,
-                networkName: document.querySelector('input[name="solana-network"]:checked').value
-            };
-
-            // Display transaction details
-            const txDetails = {
-                from: wallet.publicKey.toString(),
-                to: destination,
-                amount: `${amount} SOL (${lamports} lamports)`,
-                network: document.querySelector('input[name="solana-network"]:checked').value,
-                recentBlockhash: blockhash,
-                instructions: transaction.instructions.map(inst => ({
-                    programId: inst.programId.toString(),
-                    data: `[${inst.data.length} bytes]`
-                }))
-            };
-
-            document.getElementById('solana-tx-details').textContent = JSON.stringify(txDetails, null, 2);
-            document.getElementById('solana-prepared-tx').style.display = 'block';
-
-            statusEl.textContent = 'Transaction prepared successfully. Review the details and proceed to sign.';
-            statusEl.className = 'transaction-status success';
-
-        } catch (error) {
-            statusEl.textContent = `Error: ${error.message}`;
-            statusEl.className = 'transaction-status error';
-        }
-    }
-
-    async function signSolanaTransaction() {
-        const statusEl = document.getElementById('solana-status');
-
-        if (!solanaPreparedTx) {
-            statusEl.textContent = 'No transaction prepared. Please prepare a transaction first.';
-            statusEl.className = 'transaction-status error';
-            return;
-        }
-
-        statusEl.textContent = 'Signing transaction...';
-        statusEl.className = 'transaction-status info';
-
-        try {
-            // Get private key
-            const privateKey = recoveredKeys.eddsaPrivateKey;
-
-            // Get transaction message to sign
-            const transaction = solanaPreparedTx.transaction;
-            const messageBytes = transaction.serializeMessage();
-
-            // Sign message with our private key
-            const { signature } = await signWithScalar(Buffer.from(messageBytes).toString('hex'), privateKey);
-
-            // Add signature to transaction
-            transaction.addSignature(
-                new solanaWeb3.PublicKey(document.getElementById('solana-address').textContent),
-                Buffer.from(signature, 'hex')
-            );
-
-            // Update stored transaction
-            solanaPreparedTx.transaction = transaction;
-            solanaPreparedTx.signedTransaction = transaction.serialize();
-
-            // Update the transaction details display
-            const txDetails = JSON.parse(document.getElementById('solana-tx-details').textContent);
-            txDetails.signatures = transaction.signatures.map(sig => ({
-                publicKey: sig.publicKey.toString(),
-                signature: sig.signature ? `[${sig.signature.length} bytes]` : null
-            }));
-            txDetails.signed = true;
-
-            document.getElementById('solana-tx-details').textContent = JSON.stringify(txDetails, null, 2);
-
-            statusEl.textContent = 'Transaction signed successfully. You can now broadcast it to the network.';
-            statusEl.className = 'transaction-status success';
-
-        } catch (error) {
-            statusEl.textContent = `Error signing transaction: ${error.message}`;
-            statusEl.className = 'transaction-status error';
-        }
-    }
-
-    async function broadcastSolanaTransaction() {
-        const statusEl = document.getElementById('solana-status');
-
-        if (!solanaPreparedTx || !solanaPreparedTx.signedTransaction) {
-            statusEl.textContent = 'No signed transaction available. Please prepare and sign a transaction first.';
-            statusEl.className = 'transaction-status error';
-            return;
-        }
-
-        statusEl.textContent = 'Broadcasting transaction...';
-        statusEl.className = 'transaction-status info';
-
-        try {
-            const connection = await initSolanaConnection();
-
-            // Send transaction
-            const signature = await connection.sendRawTransaction(
-                solanaPreparedTx.signedTransaction,
-                { skipPreflight: false, preflightCommitment: 'confirmed' }
-            );
-
-            statusEl.textContent = `Transaction sent! Signature: ${signature}`;
-            statusEl.className = 'transaction-status success';
-
-            // Wait for confirmation
-            statusEl.textContent += '\n\nWaiting for confirmation...';
-
-            // Create explorer URL based on network
-            const network = solanaPreparedTx.networkName;
-            const explorerUrl = network === 'mainnet'
-                ? `https://explorer.solana.com/tx/${signature}`
-                : `https://explorer.solana.com/tx/${signature}?cluster=${network}`;
-
-            // Poll for confirmation (optional)
-            setTimeout(async () => {
-                try {
-                    const confirmation = await connection.confirmTransaction({
-                        blockhash: solanaPreparedTx.blockhash,
-                        lastValidBlockHeight: solanaPreparedTx.lastValidBlockHeight,
-                        signature: signature
-                    }, 'confirmed');
-
-                    if (confirmation.value.err) {
-                        statusEl.innerHTML += `<br><br>Transaction failed: ${JSON.stringify(confirmation.value.err)}`;
-                    } else {
-                        statusEl.innerHTML += `<br><br>Transaction confirmed! <a href="${explorerUrl}" target="_blank">View on Explorer</a>`;
-                    }
-                } catch (error) {
-                    statusEl.innerHTML += `<br><br>Error checking confirmation: ${error.message}`;
-                }
-            }, 5000);
-
-        } catch (error) {
-            statusEl.textContent = `Error broadcasting transaction: ${error.message}`;
-            statusEl.className = 'transaction-status error';
         }
     }
 
@@ -1357,33 +920,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address);
     }
 
-    async function createSolanaKeypair(privateKeyHex) {
-        try {
-            // Use hexToBytes helper function for consistent conversion
-            const privateKeyBytes = hexToBytes(privateKeyHex);
-            
-            // Validate private key length (32 bytes for Ed25519)
-            if (privateKeyBytes.length !== 32) {
-                throw new Error('Private key must be 32 bytes');
-            }
-            
-            // Calculate public key directly from private key scalar using the Noble ed25519 library
-            // Access it from the window object where it's loaded from jsdelivr
-            const publicKeyBytes = await window.nobleEd25519.getPublicKey(privateKeyBytes);
-            
-            // Create a public key object directly using the Uint8Array
-            const publicKey = new solanaWeb3.PublicKey(publicKeyBytes);
-            
-            // Return object with the public key and secretKey for Solana transaction signing
-            return {
-                publicKey: publicKey,
-                secretKey: privateKeyBytes
-            };
-        } catch (error) {
-            console.error('Error creating Solana keypair:', error);
-            throw error;
-        }
-    }
 
     // ==================
     // Crypto Utility Functions
@@ -1438,4 +974,181 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize file input event listeners
     initializeFileInputs();
+    
+    // ==================
+    // Terminal WebSocket Functions
+    // ==================
+    
+    // WebSocket connection
+    let terminalSocket = null;
+    let activeTerminal = null;
+    let waitingForTerminal = false;
+    
+    // Create or reconnect WebSocket
+    function connectWebSocket() {
+        // Close existing connection if any
+        if (terminalSocket) {
+            terminalSocket.close();
+        }
+        
+        // Create WebSocket URL based on the current page URL
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/api/terminal`;
+        
+        // Create new WebSocket connection
+        terminalSocket = new WebSocket(wsUrl);
+        
+        // Set up event handlers
+        terminalSocket.onopen = (event) => {
+            console.log('Terminal WebSocket connection established');
+            // If we were waiting to start a terminal, send the command now
+            if (waitingForTerminal && activeTerminal) {
+                setTimeout(() => sendTerminalCommand(activeTerminal), 500);
+            }
+        };
+        
+        terminalSocket.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            handleTerminalMessage(message);
+        };
+        
+        terminalSocket.onclose = (event) => {
+            console.log('Terminal WebSocket connection closed');
+            // Try to reconnect after a delay if we're still using a terminal
+            if (activeTerminal) {
+                setTimeout(connectWebSocket, 2000);
+            }
+        };
+        
+        terminalSocket.onerror = (event) => {
+            console.error('Terminal WebSocket error:', event);
+        };
+    }
+    
+    // Handle terminal messages
+    function handleTerminalMessage(message) {
+        if (!activeTerminal) return;
+        
+        const terminal = document.getElementById(`${activeTerminal}-terminal`);
+        
+        switch (message.type) {
+            case 'output':
+                appendToTerminal(terminal, message.data);
+                break;
+                
+            case 'error':
+                appendToTerminal(terminal, message.data, 'error');
+                break;
+                
+            case 'exit':
+                appendToTerminal(terminal, `\nProcess exited with code ${message.exitCode}`, 
+                    message.exitCode === 0 ? 'success' : 'error');
+                break;
+                
+            default:
+                console.warn('Unknown message type:', message.type);
+        }
+        
+        // Scroll to bottom
+        terminal.scrollTop = terminal.scrollHeight;
+    }
+    
+    // Append text to the terminal with optional class
+    function appendToTerminal(terminal, text, className = 'output') {
+        const line = document.createElement('div');
+        line.className = `terminal-line terminal-${className}`;
+        line.textContent = text;
+        terminal.appendChild(line);
+    }
+    
+    // Create transaction in terminal
+    function createTerminalTransaction(chain) {
+        // Set active terminal
+        activeTerminal = chain;
+        
+        // Get terminal element and container
+        const terminal = document.getElementById(`${chain}-terminal`);
+        const terminalContainer = document.getElementById(`${chain}-terminal-container`);
+        
+        // Clear terminal
+        terminal.innerHTML = '';
+        
+        // Show terminal
+        terminalContainer.style.display = 'block';
+        
+        // Connect WebSocket if not already connected
+        if (!terminalSocket || terminalSocket.readyState !== WebSocket.OPEN) {
+            connectWebSocket();
+            waitingForTerminal = true;
+        } else {
+            // Send the command
+            sendTerminalCommand(chain);
+        }
+    }
+    
+    // Send command to start chain script
+    function sendTerminalCommand(chain) {
+        waitingForTerminal = false;
+        
+        // Prepare arguments based on chain
+        const args = {};
+        
+        // Common arguments for all chains: private key and confirm
+        args.privateKey = recoveredKeys.eddsaPrivateKey;
+        args.confirm = "true"; // Auto-confirm transactions
+        
+        switch (chain) {
+            case 'xrpl':
+                args.publicKey = recoveredKeys.eddsaPublicKey;
+                args.destination = document.getElementById('xrpl-destination').value;
+                args.amount = document.getElementById('xrpl-amount').value;
+                args.network = document.querySelector('input[name="xrpl-network"]:checked').value;
+                break;
+                
+            case 'bittensor':
+                args.destination = document.getElementById('bittensor-destination').value;
+                args.amount = document.getElementById('bittensor-amount').value;
+                args.endpoint = document.getElementById('bittensor-endpoint').value;
+                break;
+                
+            case 'solana':
+                args.destination = document.getElementById('solana-destination').value;
+                args.amount = document.getElementById('solana-amount').value;
+                args.network = document.querySelector('input[name="solana-network"]:checked').value;
+                break;
+                
+            default:
+                console.error('Unknown chain:', chain);
+                return;
+        }
+        
+        // Send command to server
+        const message = {
+            type: 'command',
+            chain: chain,
+            arguments: args
+        };
+        
+        terminalSocket.send(JSON.stringify(message));
+        
+        // Add command line to terminal
+        const terminal = document.getElementById(`${chain}-terminal`);
+        appendToTerminal(terminal, `> Starting ${chain} transaction process...`, 'command');
+    }
+    
+    // Close terminal
+    function closeTerminal(chain) {
+        if (terminalSocket && terminalSocket.readyState === WebSocket.OPEN) {
+            // Send exit command
+            terminalSocket.send(JSON.stringify({ type: 'exit' }));
+        }
+        
+        // Hide terminal container
+        document.getElementById(`${chain}-terminal-container`).style.display = 'none';
+        
+        // Clear active terminal if it's the one we're closing
+        if (activeTerminal === chain) {
+            activeTerminal = null;
+        }
+    }
 });

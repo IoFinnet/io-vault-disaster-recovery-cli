@@ -264,23 +264,22 @@
                         <input type="number" id="xrpl-amount" placeholder="Enter amount to send">
                     </div>
 
-                    <div class="transaction-status" id="xrpl-status"></div>
-
                     <div class="transaction-actions">
                         <button id="xrpl-check-balance" class="secondary">Check Balance</button>
-                        <button id="xrpl-prepare-tx" class="primary">Prepare Transaction</button>
+                        <button id="xrpl-create-tx" class="primary">Create Transaction</button>
                     </div>
-
-                    <div id="xrpl-prepared-tx" class="prepared-transaction">
-                        <h4>Prepared Transaction</h4>
-                        <div class="form-group">
-                            <label>Transaction Details:</label>
-                            <div class="tx-details" id="xrpl-tx-details"></div>
+                    
+                    <!-- Terminal for transaction execution -->
+                    <div id="xrpl-terminal-container" class="terminal-container" style="display: none;">
+                        <div class="terminal-header">
+                            <div class="terminal-controls">
+                                <div class="terminal-control terminal-close" id="xrpl-terminal-close"></div>
+                                <div class="terminal-control terminal-minimize"></div>
+                                <div class="terminal-control terminal-maximize"></div>
+                            </div>
+                            <div class="terminal-title">XRPL Transaction Terminal</div>
                         </div>
-                        <div class="transaction-actions">
-                            <button id="xrpl-sign-tx" class="secondary">Sign Transaction</button>
-                            <button id="xrpl-broadcast-tx" class="primary">Broadcast Transaction</button>
-                        </div>
+                        <div id="xrpl-terminal" class="terminal"></div>
                     </div>
                 </div>
             </div>
@@ -307,21 +306,21 @@
                         <input type="number" id="bittensor-amount" placeholder="Enter amount to send">
                     </div>
 
-                    <div class="transaction-status" id="bittensor-status"></div>
-
                     <div class="transaction-actions">
-                        <button id="bittensor-prepare-tx" class="primary">Prepare Transaction</button>
+                        <button id="bittensor-create-tx" class="primary">Create Transaction</button>
                     </div>
-
-                    <div id="bittensor-prepared-tx" class="prepared-transaction">
-                        <h4>Prepared Transaction</h4>
-                        <div class="form-group">
-                            <label>Transaction Details:</label>
-                            <div class="tx-details" id="bittensor-tx-details"></div>
+                    
+                    <!-- Terminal for transaction execution -->
+                    <div id="bittensor-terminal-container" class="terminal-container" style="display: none;">
+                        <div class="terminal-header">
+                            <div class="terminal-controls">
+                                <div class="terminal-control terminal-close" id="bittensor-terminal-close"></div>
+                                <div class="terminal-control terminal-minimize"></div>
+                                <div class="terminal-control terminal-maximize"></div>
+                            </div>
+                            <div class="terminal-title">Bittensor Transaction Terminal</div>
                         </div>
-                        <div class="transaction-actions">
-                            <button id="bittensor-broadcast-tx" class="primary">Broadcast Transaction</button>
-                        </div>
+                        <div id="bittensor-terminal" class="terminal"></div>
                     </div>
                 </div>
             </div>
@@ -361,23 +360,22 @@
                         <input type="number" id="solana-amount" placeholder="Enter amount to send">
                     </div>
 
-                    <div class="transaction-status" id="solana-status"></div>
-
                     <div class="transaction-actions">
                         <button id="solana-check-balance" class="secondary">Check Balance</button>
-                        <button id="solana-prepare-tx" class="primary">Prepare Transaction</button>
+                        <button id="solana-create-tx" class="primary">Create Transaction</button>
                     </div>
-
-                    <div id="solana-prepared-tx" class="prepared-transaction">
-                        <h4>Prepared Transaction</h4>
-                        <div class="form-group">
-                            <label>Transaction Details:</label>
-                            <div class="tx-details" id="solana-tx-details"></div>
+                    
+                    <!-- Terminal for transaction execution -->
+                    <div id="solana-terminal-container" class="terminal-container" style="display: none;">
+                        <div class="terminal-header">
+                            <div class="terminal-controls">
+                                <div class="terminal-control terminal-close" id="solana-terminal-close"></div>
+                                <div class="terminal-control terminal-minimize"></div>
+                                <div class="terminal-control terminal-maximize"></div>
+                            </div>
+                            <div class="terminal-title">Solana Transaction Terminal</div>
                         </div>
-                        <div class="transaction-actions">
-                            <button id="solana-sign-tx" class="secondary">Sign Transaction</button>
-                            <button id="solana-broadcast-tx" class="primary">Broadcast Transaction</button>
-                        </div>
+                        <div id="solana-terminal" class="terminal"></div>
                     </div>
                 </div>
             </div>

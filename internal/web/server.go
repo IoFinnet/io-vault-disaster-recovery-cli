@@ -5,6 +5,7 @@
 package web
 
 import (
+	"bufio"
 	"embed"
 	"encoding/hex"
 	"encoding/json"
@@ -19,6 +20,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/bittensor"
@@ -27,6 +29,7 @@ import (
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/wif"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/xrpl"
 	"github.com/decred/dcrd/dcrec/edwards/v2"
+	"github.com/gorilla/websocket"
 )
 
 //go:embed static
@@ -34,7 +37,27 @@ var staticFiles embed.FS
 
 const (
 	tempDirPrefix = "vault-recovery-web-"
+	
+	// Terminal message types
+	msgTypeCommand    = "command"
+	msgTypeOutput     = "output"
+	msgTypeError      = "error"
+	msgTypeExit       = "exit"
+	
+	// Chain script types
+	chainXRPL         = "xrpl"
+	chainBittensor    = "bittensor"
+	chainSolana       = "solana"
 )
+
+// Configure websocket upgrader
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		return true // Allow all origins for development purposes
+	},
+}
 
 // ServerConfig holds the configuration for the web server
 type ServerConfig struct {
@@ -54,6 +77,25 @@ type RecoveryResult struct {
 	XRPLAddress      string `json:"xrplAddress,omitempty"`
 	BittensorAddress string `json:"bittensorAddress,omitempty"`
 	SolanaAddress    string `json:"solanaAddress,omitempty"`
+}
+
+// TerminalMessage represents messages sent between client and server for terminal communication
+type TerminalMessage struct {
+	Type      string            `json:"type"`
+	Chain     string            `json:"chain,omitempty"`
+	Command   string            `json:"command,omitempty"`
+	Arguments map[string]string `json:"arguments,omitempty"`
+	Data      string            `json:"data,omitempty"`
+	ExitCode  int               `json:"exitCode,omitempty"`
+}
+
+// ScriptProcess represents a running script process
+type ScriptProcess struct {
+	Cmd       *exec.Cmd
+	StdoutPipe io.ReadCloser
+	StdinPipe  io.WriteCloser
+	Mutex     sync.Mutex
+	Done      chan struct{}
 }
 
 // Server represents the web server for the disaster recovery tool
@@ -132,6 +174,9 @@ func (s *Server) Start() (string, error) {
 	mux.HandleFunc("POST /api/validate/xrpl", s.handleValidateXRPL)
 	mux.HandleFunc("POST /api/validate/bittensor", s.handleValidateBittensor)
 	mux.HandleFunc("POST /api/validate/solana", s.handleValidateSolana)
+	
+	// Websocket endpoint for terminal connection
+	mux.HandleFunc("GET /api/terminal", s.handleTerminalWebsocket)
 
 	// Find an available port
 	port := s.config.Port
@@ -334,6 +379,10 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 					result.SolanaAddress = solanaAddress
 				}
 			}
+
+			// Clear sensitive data
+			clear(ecSK)
+			clear(edSK)
 		}
 
 		// Clear sensitive data
@@ -559,6 +608,260 @@ func (s *Server) handleValidateSolana(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
 		return
+	}
+}
+
+// handleTerminalWebsocket manages websocket connections for the terminal
+func (s *Server) handleTerminalWebsocket(w http.ResponseWriter, r *http.Request) {
+	// Upgrade the HTTP connection to a WebSocket connection
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("Failed to upgrade to websocket: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	// Create a channel for exit notification
+	done := make(chan struct{})
+	var process *ScriptProcess
+	
+	// Read messages from the WebSocket
+	for {
+		// Read message from browser
+		_, msgBytes, err := conn.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Printf("WebSocket error: %v", err)
+			}
+			break
+		}
+
+		// Parse the message
+		var msg TerminalMessage
+		if err := json.Unmarshal(msgBytes, &msg); err != nil {
+			log.Printf("Error parsing message: %v", err)
+			sendTerminalError(conn, "Invalid message format")
+			continue
+		}
+
+		// Handle message based on type
+		switch msg.Type {
+		case msgTypeCommand:
+			// Start the appropriate script process
+			process, err = s.startChainScript(msg.Chain, msg.Arguments)
+			if err != nil {
+				log.Printf("Error starting process: %v", err)
+				sendTerminalError(conn, fmt.Sprintf("Failed to start process: %v", err))
+				continue
+			}
+
+			// Start goroutines to handle process I/O
+			go s.handleProcessOutput(conn, process, done)
+			
+		case msgTypeExit:
+			// Kill the process if it's running
+			if process != nil && process.Cmd != nil && process.Cmd.Process != nil {
+				process.Mutex.Lock()
+				_ = process.Cmd.Process.Kill()
+				process.Mutex.Unlock()
+				
+				// Close pipes
+				_ = process.StdoutPipe.Close()
+				_ = process.StdinPipe.Close()
+				
+				// Wait for the process to finish
+				select {
+				case <-process.Done:
+					// Process has ended
+				case <-time.After(2 * time.Second):
+					// Timeout waiting for process to end
+				}
+			}
+			return
+			
+		default:
+			sendTerminalError(conn, fmt.Sprintf("Unknown message type: %s", msg.Type))
+		}
+	}
+}
+
+// startChainScript starts the appropriate script for the given chain
+func (s *Server) startChainScript(chain string, args map[string]string) (*ScriptProcess, error) {
+	var scriptPath string
+	var cmdArgs []string
+	
+	// Determine the script directory based on the chain
+	switch chain {
+	case chainXRPL:
+		scriptPath = filepath.Join("scripts", "xrpl-tool")
+		
+		// Build arguments specific to XRPL
+		if args["publicKey"] != "" {
+			cmdArgs = append(cmdArgs, "--public-key", args["publicKey"])
+		}
+		if args["privateKey"] != "" {
+			cmdArgs = append(cmdArgs, "--private-key", args["privateKey"])
+		}
+		if args["destination"] != "" {
+			cmdArgs = append(cmdArgs, "--destination", args["destination"])
+		}
+		if args["amount"] != "" {
+			cmdArgs = append(cmdArgs, "--amount", args["amount"])
+		}
+		if args["network"] != "" {
+			cmdArgs = append(cmdArgs, "--network", args["network"])
+		}
+		if args["checkBalance"] == "true" {
+			cmdArgs = append(cmdArgs, "--check-balance")
+		}
+		if args["broadcast"] == "true" {
+			cmdArgs = append(cmdArgs, "--broadcast")
+		}
+		
+	case chainBittensor:
+		scriptPath = filepath.Join("scripts", "bittensor-tool")
+		
+		// Build arguments specific to Bittensor
+		if args["privateKey"] != "" {
+			cmdArgs = append(cmdArgs, "--private-key", args["privateKey"])
+		}
+		if args["destination"] != "" {
+			cmdArgs = append(cmdArgs, "--destination", args["destination"])
+		}
+		if args["amount"] != "" {
+			cmdArgs = append(cmdArgs, "--amount", args["amount"])
+		}
+		if args["endpoint"] != "" {
+			cmdArgs = append(cmdArgs, "--endpoint", args["endpoint"])
+		}
+		
+	case chainSolana:
+		scriptPath = filepath.Join("scripts", "solana-tool")
+		
+		// Build arguments specific to Solana
+		if args["privateKey"] != "" {
+			cmdArgs = append(cmdArgs, "--private-key", args["privateKey"])
+		}
+		if args["destination"] != "" {
+			cmdArgs = append(cmdArgs, "--destination", args["destination"])
+		}
+		if args["amount"] != "" {
+			cmdArgs = append(cmdArgs, "--amount", args["amount"])
+		}
+		if args["network"] != "" {
+			cmdArgs = append(cmdArgs, "--network", args["network"])
+		}
+		if args["checkBalance"] == "true" {
+			cmdArgs = append(cmdArgs, "--check-balance")
+		}
+		if args["broadcast"] == "true" {
+			cmdArgs = append(cmdArgs, "--broadcast")
+		}
+		
+	default:
+		return nil, fmt.Errorf("unsupported chain: %s", chain)
+	}
+	
+	// Add confirm flag for all chains to automate confirmation
+	if args["confirm"] == "true" {
+		cmdArgs = append(cmdArgs, "--confirm")
+	}
+	
+	// Get absolute path for script directory
+	absScriptPath, err := filepath.Abs(scriptPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get absolute path: %w", err)
+	}
+	
+	// Create command to run npm start from the script directory
+	cmd := exec.Command("npm", append([]string{"start", "--"}, cmdArgs...)...)
+	cmd.Dir = absScriptPath
+	
+	// Create pipes for stdin and stdout
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stdout pipe: %w", err)
+	}
+	
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stdin pipe: %w", err)
+	}
+	
+	// Connect stderr to stdout for simplicity
+	cmd.Stderr = cmd.Stdout
+	
+	// Create the process object
+	process := &ScriptProcess{
+		Cmd:        cmd,
+		StdoutPipe: stdout,
+		StdinPipe:  stdin,
+		Done:       make(chan struct{}),
+	}
+	
+	// Start the command
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start command: %w", err)
+	}
+	
+	return process, nil
+}
+
+// handleProcessOutput reads from process stdout and sends to websocket
+func (s *Server) handleProcessOutput(conn *websocket.Conn, process *ScriptProcess, done chan struct{}) {
+	defer close(process.Done)
+	
+	scanner := bufio.NewScanner(process.StdoutPipe)
+	
+	// Read output line by line
+	for scanner.Scan() {
+		line := scanner.Text()
+		
+		// Send the line to the websocket
+		msg := TerminalMessage{
+			Type: msgTypeOutput,
+			Data: line,
+		}
+		
+		if err := conn.WriteJSON(msg); err != nil {
+			log.Printf("Error writing to websocket: %v", err)
+			break
+		}
+	}
+	
+	if err := scanner.Err(); err != nil {
+		log.Printf("Error reading from process: %v", err)
+		sendTerminalError(conn, fmt.Sprintf("Error reading from process: %v", err))
+	}
+	
+	// Wait for the process to finish
+	exitCode := 0
+	if err := process.Cmd.Wait(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		}
+	}
+	
+	// Send exit message with the exit code
+	msg := TerminalMessage{
+		Type:     msgTypeExit,
+		ExitCode: exitCode,
+	}
+	
+	if err := conn.WriteJSON(msg); err != nil {
+		log.Printf("Error sending exit message: %v", err)
+	}
+}
+
+// sendTerminalError sends an error message to the websocket
+func sendTerminalError(conn *websocket.Conn, errMsg string) {
+	msg := TerminalMessage{
+		Type: msgTypeError,
+		Data: errMsg,
+	}
+	
+	if err := conn.WriteJSON(msg); err != nil {
+		log.Printf("Error sending error message: %v", err)
 	}
 }
 

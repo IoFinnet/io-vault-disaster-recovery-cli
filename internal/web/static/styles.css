@@ -513,10 +513,94 @@ button:active {
     margin: 10% auto;
     padding: 2rem;
     border-radius: 8px;
-    max-width: 600px;
+    max-width: 800px;
     position: relative;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     animation: dialogFadeIn 0.3s ease-in-out;
+}
+
+/* Terminal styling */
+.terminal-container {
+    margin-top: 1.5rem;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.terminal-header {
+    background-color: #333;
+    color: white;
+    padding: 0.5rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.terminal-title {
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+.terminal-controls {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.terminal-control {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.terminal-close {
+    background-color: #ff5f56;
+}
+
+.terminal-minimize {
+    background-color: #ffbd2e;
+}
+
+.terminal-maximize {
+    background-color: #27c93f;
+}
+
+.terminal {
+    background-color: #1e1e1e;
+    color: #f0f0f0;
+    padding: 1rem;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    height: 400px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.terminal-line {
+    margin: 0;
+    padding: 0;
+}
+
+.terminal-prompt {
+    color: #5af78e;
+}
+
+.terminal-command {
+    color: #f0f0f0;
+}
+
+.terminal-output {
+    color: #f0f0f0;
+}
+
+.terminal-error {
+    color: #ff5555;
+}
+
+.terminal-success {
+    color: #5af78e;
 }
 
 @keyframes dialogFadeIn {
