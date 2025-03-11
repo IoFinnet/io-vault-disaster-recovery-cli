@@ -357,11 +357,18 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.addEventListener('click', () => {
                 selectedVaultId = btn.dataset.id;
 
-                // Highlight the selected row
+                // Highlight the selected row and button
                 document.querySelectorAll('#vaults-list tr').forEach(row => {
                     row.classList.remove('selected');
                 });
+                document.querySelectorAll('.select-vault-btn').forEach(button => {
+                    button.classList.remove('selected');
+                    button.textContent = 'Select';
+                });
+                
                 btn.closest('tr').classList.add('selected');
+                btn.classList.add('selected');
+                btn.textContent = 'Selected';
             });
         });
     }
@@ -486,6 +493,15 @@ document.addEventListener('DOMContentLoaded', () => {
         // Reset selected vault
         selectedVaultId = null;
         recoveredKeys = null;
+        
+        // Clear any selected vault UI elements
+        document.querySelectorAll('#vaults-list tr').forEach(row => {
+            row.classList.remove('selected');
+        });
+        document.querySelectorAll('.select-vault-btn').forEach(button => {
+            button.classList.remove('selected');
+            button.textContent = 'Select';
+        });
 
         // Clear advanced options
         document.getElementById('nonce-override').value = '';

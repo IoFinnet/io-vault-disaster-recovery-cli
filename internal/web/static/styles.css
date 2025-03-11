@@ -267,6 +267,10 @@ button:active {
     background-color: rgba(0, 0, 0, 0.02);
 }
 
+#vaults-table tbody tr.selected {
+    background-color: rgba(40, 167, 69, 0.1);
+}
+
 .select-vault-btn {
     background-color: var(--success-color);
     color: white;
@@ -279,6 +283,16 @@ button:active {
 
 .select-vault-btn:hover {
     opacity: 0.9;
+}
+
+.select-vault-btn.selected {
+    background-color: var(--dark-gray);
+    position: relative;
+}
+
+.select-vault-btn.selected::after {
+    content: "✓";
+    margin-left: 5px;
 }
 
 /* Advanced options */
