@@ -228,10 +228,7 @@ func main() {
 
 		// Add wallet import instructions
 		fmt.Println("\nWallet Import Instructions:")
-		fmt.Println("- XRPL: Use the XRPL tool in scripts/xrpl-tool/ with your private key")
-		fmt.Println("- Bittensor: Use the Bittensor tool in scripts/bittensor-tool/ with your private key")
-		fmt.Println("- Solana (Phantom): Import using the Base58 private key")
-		fmt.Println("- Solana: Import private key in hex format to your wallet")
+		fmt.Println("- XRPL, TAO, SOL: Start this tool with the -web flag to enter the web-based UI recovery")
 	} else {
 		fmt.Println("\nNo EdDSA/Ed25519 private key found for this older vault.")
 	}
