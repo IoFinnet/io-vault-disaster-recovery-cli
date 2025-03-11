@@ -30,9 +30,56 @@ readlineSync.question = function(...args) {
 const DECIMALS = 9;
 const PLANCK = new BN(10).pow(new BN(DECIMALS)); // 1 unit = 10^9 Planck
 const SS58_FORMAT = 42; // SS58 address format for the Bittensor network
+const DEFAULT_ENDPOINT = 'wss://entrypoint-finney.opentensor.ai:443';
 
 // Assign SHA512 hash function for noble-ed25519 compatibility
 ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
+
+// Parse command line arguments
+const args = process.argv.slice(2);
+const commandLineArgs = {
+  privateKey: '',
+  destination: '',
+  amount: '',
+  endpoint: DEFAULT_ENDPOINT
+};
+
+for (let i = 0; i < args.length; i++) {
+  switch (args[i]) {
+    case '--private-key':
+    case '-p':
+      commandLineArgs.privateKey = args[++i];
+      break;
+    case '--destination':
+    case '-d':
+      commandLineArgs.destination = args[++i];
+      break;
+    case '--amount':
+    case '-a':
+      commandLineArgs.amount = args[++i];
+      break;
+    case '--endpoint':
+    case '-e':
+      commandLineArgs.endpoint = args[++i];
+      break;
+    case '--help':
+    case '-h':
+      console.log(`
+Usage: node main.js [options]
+
+Options:
+  -p, --private-key <key>     Private key (64 hex chars)
+  -d, --destination <address> Destination address
+  -a, --amount <amount>       Amount to transfer
+  -e, --endpoint <url>        Endpoint URL (default: ${DEFAULT_ENDPOINT})
+  -h, --help                  Show this help message
+      
+If any required parameter is not provided, you will be prompted for it interactively.
+`);
+      process.exit(0);
+      break;
+  }
+}
 
 /**
  * Transfers funds on the Bittensor network.
@@ -117,51 +164,88 @@ function validateAmount(amount: string): boolean {
 
 async function main() {
   console.log('Bittensor Transfer Tool\n');
-  console.log(EXIT_MESSAGE);
+  
+  let privateKey = commandLineArgs.privateKey;
+  let destination = commandLineArgs.destination;
+  let amount = commandLineArgs.amount;
+  let endpoint = commandLineArgs.endpoint;
+  
+  // If not provided via command line, prompt for private key
+  if (!privateKey) {
+    console.log(EXIT_MESSAGE);
+    do {
+      privateKey = readlineSync.question('Private Key (64 hex chars): ', { hideEchoBack: true });
+      if (privateKey === EXIT_KEYWORD) {
+        console.log('Exiting program...');
+        process.exit(0);
+      }
+      if (!validateHex(privateKey, 32)) {
+        console.log('Invalid private key format. Must be 64 hexadecimal characters.');
+      }
+    } while (!validateHex(privateKey, 32));
+  } else if (!validateHex(privateKey, 32)) {
+    console.error('Invalid private key format. Must be 64 hexadecimal characters.');
+    process.exit(1);
+  }
 
-  let privateKey;
-  do {
-    privateKey = readlineSync.question('Private Key (64 hex chars): ', { hideEchoBack: true });
-    if (privateKey === EXIT_KEYWORD) {
+  // If not provided via command line, prompt for destination
+  if (!destination) {
+    do {
+      destination = readlineSync.question('Enter the destination address: ');
+      if (destination === EXIT_KEYWORD) {
+        console.log('Exiting program...');
+        process.exit(0);
+      }
+      if (!validateAddress(destination)) {
+        console.log('Invalid address format. Must be a valid Bittensor address.');
+      }
+    } while (!validateAddress(destination));
+  } else if (!validateAddress(destination)) {
+    console.error('Invalid address format. Must be a valid Bittensor address.');
+    process.exit(1);
+  }
+
+  // If not provided via command line, prompt for amount
+  if (!amount) {
+    do {
+      amount = readlineSync.question('Enter the amount to transfer: ');
+      if (amount === EXIT_KEYWORD) {
+        console.log('Exiting program...');
+        process.exit(0);
+      }
+      if (!validateAmount(amount)) {
+        console.log('Invalid amount. Must be a positive number.');
+      }
+    } while (!validateAmount(amount));
+  } else if (!validateAmount(amount)) {
+    console.error('Invalid amount. Must be a positive number.');
+    process.exit(1);
+  }
+
+  // If not provided via command line, prompt for endpoint
+  if (endpoint === DEFAULT_ENDPOINT && !commandLineArgs.endpoint) {
+    endpoint = readlineSync.question(
+      'Enter the endpoint (e.g., wss://entrypoint-finney.opentensor.ai:443): ',
+      { defaultInput: DEFAULT_ENDPOINT }
+    );
+    if (endpoint === EXIT_KEYWORD) {
       console.log('Exiting program...');
       process.exit(0);
     }
-    if (!validateHex(privateKey, 32)) {
-      console.log('Invalid private key format. Must be 64 hexadecimal characters.');
-    }
-  } while (!validateHex(privateKey, 32));
+  }
 
-  let destination;
-  do {
-    destination = readlineSync.question('Enter the destination address: ');
-    if (destination === EXIT_KEYWORD) {
-      console.log('Exiting program...');
+  // If all parameters are provided via command line, ask for confirmation
+  if (commandLineArgs.privateKey && commandLineArgs.destination && commandLineArgs.amount) {
+    console.log('\nTransaction Details:');
+    console.log(`Destination: ${destination}`);
+    console.log(`Amount: ${amount}`);
+    console.log(`Endpoint: ${endpoint}`);
+    
+    const confirm = readlineSync.keyInYNStrict('\nConfirm transaction?');
+    if (!confirm) {
+      console.log('Transaction cancelled.');
       process.exit(0);
     }
-    if (!validateAddress(destination)) {
-      console.log('Invalid address format. Must be a valid Bittensor address.');
-    }
-  } while (!validateAddress(destination));
-
-  let amount;
-  do {
-    amount = readlineSync.question('Enter the amount to transfer: ');
-    if (amount === EXIT_KEYWORD) {
-      console.log('Exiting program...');
-      process.exit(0);
-    }
-    if (!validateAmount(amount)) {
-      console.log('Invalid amount. Must be a positive number.');
-    }
-  } while (!validateAmount(amount));
-
-  const endpoint = readlineSync.question(
-    'Enter the endpoint (e.g., wss://entrypoint-finney.opentensor.ai:443): ',
-    { defaultInput: 'wss://entrypoint-finney.opentensor.ai:443' }
-  );
-  if (endpoint === EXIT_KEYWORD) {
-    console.log('Exiting program...');
-    process.exit(0);
   }
 
   console.log('\nProcessing your transaction...\n');

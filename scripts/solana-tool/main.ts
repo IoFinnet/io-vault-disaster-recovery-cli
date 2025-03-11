@@ -15,6 +15,64 @@ const DEVNET_URL = 'https://api.devnet.solana.com';
 const EXIT_KEYWORD = '.exit';
 const EXIT_MESSAGE = `Type '${EXIT_KEYWORD}' at any prompt to exit the program`;
 
+// Parse command line arguments
+const args = process.argv.slice(2);
+const commandLineArgs = {
+  privateKey: '',
+  destination: '',
+  amount: '',
+  network: '',
+  checkBalance: false,
+  broadcast: false
+};
+
+for (let i = 0; i < args.length; i++) {
+  switch (args[i]) {
+    case '--private-key':
+    case '-p':
+      commandLineArgs.privateKey = args[++i];
+      break;
+    case '--destination':
+    case '-d':
+      commandLineArgs.destination = args[++i];
+      break;
+    case '--amount':
+    case '-a':
+      commandLineArgs.amount = args[++i];
+      break;
+    case '--network':
+    case '-n':
+      commandLineArgs.network = args[++i]?.toLowerCase();
+      break;
+    case '--check-balance':
+    case '-c':
+      commandLineArgs.checkBalance = true;
+      break;
+    case '--broadcast':
+    case '-b':
+      commandLineArgs.broadcast = true;
+      break;
+    case '--help':
+    case '-h':
+      console.log(`
+Usage: node main.js [options]
+
+Options:
+  -p, --private-key <key>     Private key (64 hex chars)
+  -d, --destination <address> Destination address
+  -a, --amount <amount>       Amount of SOL to transfer
+  -n, --network <network>     Network to use (mainnet, testnet, devnet)
+  -c, --check-balance         Check wallet balance before transfer
+  -b, --broadcast             Broadcast the transaction
+  -h, --help                  Show this help message
+      
+If any required parameter is not provided, you will be prompted for it interactively.
+`);
+      process.exit(0);
+      break;
+  }
+}
+
 /**
  * Validates if the input string is a valid hex string of the given byte length.
  * @param key - The input string to validate.
@@ -179,33 +237,62 @@ async function transferSOL(
 
 async function main() {
   console.log('Solana Transfer Tool\n');
-  console.log(EXIT_MESSAGE);
+  
+  // Initialize variables
+  let privateKey = commandLineArgs.privateKey;
+  let destination = commandLineArgs.destination;
+  let amount = commandLineArgs.amount;
+  let networkOption = commandLineArgs.network;
+  let networkIndex = -1;
+  let selectedUrl = '';
+  
+  // Network selection
+  const networkOptions = ['mainnet', 'testnet', 'devnet'];
+  const networkUrls = [MAINNET_URL, TESTNET_URL, DEVNET_URL];
+  
+  // Process network selection from command line
+  if (networkOption) {
+    networkIndex = networkOptions.findIndex(net => net === networkOption);
+    if (networkIndex === -1) {
+      console.error(`Invalid network: ${networkOption}. Must be one of: mainnet, testnet, devnet`);
+      process.exit(1);
+    }
+    selectedUrl = networkUrls[networkIndex];
+    console.log(`Using ${networkOptions[networkIndex]} network: ${selectedUrl}`);
+  } else {
+    // Prompt for network if not provided
+    console.log(EXIT_MESSAGE);
+    const networkChoiceIndex = readlineSync.keyInSelect(
+      networkOptions.map(n => n.charAt(0).toUpperCase() + n.slice(1)), 
+      'Which network would you like to use?'
+    );
 
-  // Select network
-  const networkOptions = ['Mainnet', 'Testnet', 'Devnet'];
-  const networkIndex = readlineSync.keyInSelect(networkOptions, 'Which network would you like to use?');
+    if (networkChoiceIndex === -1) {
+      console.log('Exiting...');
+      return;
+    }
 
-  if (networkIndex === -1) {
-    console.log('Exiting...');
-    return;
+    networkIndex = networkChoiceIndex;
+    selectedUrl = networkUrls[networkIndex];
+    console.log(`Using ${networkOptions[networkIndex]} network: ${selectedUrl}`);
   }
 
-  const networkUrls = [MAINNET_URL, TESTNET_URL, DEVNET_URL];
-  const selectedUrl = networkUrls[networkIndex];
-  console.log(`Using ${networkOptions[networkIndex]} network: ${selectedUrl}`);
-
-  // Get private key
-  let privateKey;
-  do {
-    privateKey = readlineSync.question('\nPrivate Key (64 hex chars): ', { hideEchoBack: true });
-    if (privateKey === EXIT_KEYWORD) {
-      console.log('Exiting program...');
-      process.exit(0);
-    }
-    if (!validateHexKey(privateKey, 32)) {
-      console.log('Invalid private key format. Must be 64 hexadecimal characters.');
-    }
-  } while (!validateHexKey(privateKey, 32));
+  // Get private key if not provided
+  if (!privateKey) {
+    do {
+      privateKey = readlineSync.question('\nPrivate Key (64 hex chars): ', { hideEchoBack: true });
+      if (privateKey === EXIT_KEYWORD) {
+        console.log('Exiting program...');
+        process.exit(0);
+      }
+      if (!validateHexKey(privateKey, 32)) {
+        console.log('Invalid private key format. Must be 64 hexadecimal characters.');
+      }
+    } while (!validateHexKey(privateKey, 32));
+  } else if (!validateHexKey(privateKey, 32)) {
+    console.error('Invalid private key format. Must be 64 hexadecimal characters.');
+    process.exit(1);
+  }
 
   try {
     // Create wallet from private key
@@ -215,11 +302,9 @@ async function main() {
     // Connect to Solana network
     const connection = new Connection(selectedUrl, 'confirmed');
 
-    // Check balance
-    const checkBalance = readlineSync.keyInYNStrict('\nWould you like to check the wallet balance? (requires network connection)');
-
+    // Check balance if requested or default to prompt if not specified
     let balance;
-    if (checkBalance) {
+    if (commandLineArgs.checkBalance) {
       try {
         balance = await connection.getBalance(wallet.publicKey);
         console.log(`Balance: ${balance / LAMPORTS_PER_SOL} SOL`);
@@ -227,59 +312,92 @@ async function main() {
         console.error('Error fetching balance:', error.message);
         console.log('Continuing in offline mode...');
       }
+    } else if (!commandLineArgs.privateKey || !commandLineArgs.destination || !commandLineArgs.amount) {
+      // Only prompt for balance check if we're in interactive mode
+      const checkBalance = readlineSync.keyInYNStrict('\nWould you like to check the wallet balance? (requires network connection)');
+      if (checkBalance) {
+        try {
+          balance = await connection.getBalance(wallet.publicKey);
+          console.log(`Balance: ${balance / LAMPORTS_PER_SOL} SOL`);
+        } catch (error: any) {
+          console.error('Error fetching balance:', error.message);
+          console.log('Continuing in offline mode...');
+        }
+      }
     }
 
-    // Ask if user wants to transfer SOL
-    const wantToTransfer = readlineSync.keyInYNStrict('\nWould you like to transfer SOL?');
-    if (!wantToTransfer) {
-      console.log('Exiting...');
-      return;
+    // Ask if user wants to transfer SOL if in interactive mode
+    if (!commandLineArgs.destination && !commandLineArgs.amount) {
+      const wantToTransfer = readlineSync.keyInYNStrict('\nWould you like to transfer SOL?');
+      if (!wantToTransfer) {
+        console.log('Exiting...');
+        return;
+      }
     }
 
-    // Get destination address
-    let destination;
-    do {
-      destination = readlineSync.question('\nEnter destination address: ');
-      if (destination === EXIT_KEYWORD) {
-        console.log('Exiting program...');
-        process.exit(0);
-      }
-      if (!validateSolanaAddress(destination)) {
-        console.log('Invalid Solana address format.');
-      }
-    } while (!validateSolanaAddress(destination));
+    // Get destination address if not provided
+    if (!destination) {
+      do {
+        destination = readlineSync.question('\nEnter destination address: ');
+        if (destination === EXIT_KEYWORD) {
+          console.log('Exiting program...');
+          process.exit(0);
+        }
+        if (!validateSolanaAddress(destination)) {
+          console.log('Invalid Solana address format.');
+        }
+      } while (!validateSolanaAddress(destination));
+    } else if (!validateSolanaAddress(destination)) {
+      console.error('Invalid Solana address format.');
+      process.exit(1);
+    }
 
-    // Get amount to transfer
-    let amount;
-    do {
-      amount = readlineSync.question('\nEnter amount of SOL to send: ');
-      if (amount === EXIT_KEYWORD) {
-        console.log('Exiting program...');
-        process.exit(0);
-      }
-      if (!validateAmount(amount)) {
-        console.log('Invalid amount. Must be a positive number.');
-      } else if (balance !== undefined && Number(amount) > balance / LAMPORTS_PER_SOL) {
-        console.log('Amount exceeds available balance.');
-        continue;
-      }
-      break;
-    } while (true);
+    // Get amount to transfer if not provided
+    if (!amount) {
+      do {
+        amount = readlineSync.question('\nEnter amount of SOL to send: ');
+        if (amount === EXIT_KEYWORD) {
+          console.log('Exiting program...');
+          process.exit(0);
+        }
+        if (!validateAmount(amount)) {
+          console.log('Invalid amount. Must be a positive number.');
+        } else if (balance !== undefined && Number(amount) > balance / LAMPORTS_PER_SOL) {
+          console.log('Amount exceeds available balance.');
+          continue;
+        }
+        break;
+      } while (true);
+    } else if (!validateAmount(amount)) {
+      console.error('Invalid amount. Must be a positive number.');
+      process.exit(1);
+    } else if (balance !== undefined && Number(amount) > balance / LAMPORTS_PER_SOL) {
+      console.error('Amount exceeds available balance.');
+      process.exit(1);
+    }
 
-    // Confirm transaction
+    // Display transaction details and confirm
     console.log('\nTransaction Details:');
     console.log(`From: ${wallet.address}`);
     console.log(`To: ${destination}`);
     console.log(`Amount: ${amount} SOL`);
+    console.log(`Network: ${networkOptions[networkIndex]}`);
 
-    const confirmTransaction = readlineSync.keyInYNStrict('\nConfirm transaction?');
+    // If we're in non-interactive mode with all parameters, confirm the transaction
+    let confirmTransaction = true;
+    if (!commandLineArgs.broadcast) {
+      confirmTransaction = readlineSync.keyInYNStrict('\nConfirm transaction?');
+    }
+    
     if (!confirmTransaction) {
       console.log('Transaction cancelled.');
       return;
     }
     
-    // Broadcast transaction confirmation
-    const wantToBroadcast = readlineSync.keyInYNStrict('\nWould you like to broadcast this transaction now?');
+    // Broadcast transaction if requested
+    const wantToBroadcast = commandLineArgs.broadcast || 
+                           readlineSync.keyInYNStrict('\nWould you like to broadcast this transaction now?');
+    
     if (wantToBroadcast) {
       console.log('\nSigning and broadcasting transaction...');
       try {
@@ -288,7 +406,7 @@ async function main() {
         console.log(`Transaction signature: ${signature}`);
         
         // Create explorer URL based on network
-        const network = networkOptions[networkIndex].toLowerCase();
+        const network = networkOptions[networkIndex];
         const explorerUrl = network === 'mainnet' 
           ? `https://explorer.solana.com/tx/${signature}` 
           : `https://explorer.solana.com/tx/${signature}?cluster=${network}`;
