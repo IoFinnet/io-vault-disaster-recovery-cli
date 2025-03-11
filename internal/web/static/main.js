@@ -72,6 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Current state
     let fileCounter = 1;
     let selectedVaultId = null;
+    let selectedVaultName = null;
     let recoveredKeys = null;
 
     // ==================
@@ -355,7 +356,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Add event listeners to select buttons
         document.querySelectorAll('.select-vault-btn').forEach(btn => {
             btn.addEventListener('click', () => {
+                // Store selected vault ID and name
                 selectedVaultId = btn.dataset.id;
+                const row = btn.closest('tr');
+                selectedVaultName = row.querySelector('td:first-child').textContent;
 
                 // Highlight the selected row and button
                 document.querySelectorAll('#vaults-list tr').forEach(row => {
@@ -366,7 +370,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     button.textContent = 'Select';
                 });
                 
-                btn.closest('tr').classList.add('selected');
+                row.classList.add('selected');
                 btn.classList.add('selected');
                 btn.textContent = 'Selected';
             });
@@ -448,6 +452,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Display recovery results
     function displayRecoveryResults(result) {
+        // Display vault information
+        document.getElementById('vault-name').textContent = selectedVaultName || 'Unknown';
+        document.getElementById('vault-id').textContent = selectedVaultId || 'Unknown';
+        
         // Fill in all the key display elements
         document.getElementById('eth-address').textContent = result.address;
         document.getElementById('ecdsa-private-key').textContent = result.ecdsaPrivateKey;
@@ -492,6 +500,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Reset selected vault
         selectedVaultId = null;
+        selectedVaultName = null;
         recoveredKeys = null;
         
         // Clear any selected vault UI elements

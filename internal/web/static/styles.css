@@ -371,6 +371,29 @@ button:active {
     display: none;
 }
 
+.vault-info {
+    margin-bottom: 2rem;
+    padding: 1.2rem 1.5rem;
+    background-color: var(--light-gray);
+    border-radius: 8px;
+    border-left: 4px solid var(--primary-color);
+}
+
+.vault-info h3 {
+    margin-top: 0;
+    color: var(--dark-gray);
+}
+
+.vault-info p {
+    margin-bottom: 0;
+    color: var(--text-light);
+}
+
+.vault-info span {
+    font-weight: 500;
+    color: var(--text-color);
+}
+
 .result-section {
     margin-bottom: 2rem;
     padding-bottom: 1.5rem;
