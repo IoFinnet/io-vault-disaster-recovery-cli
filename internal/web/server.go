@@ -129,10 +129,7 @@ func (s *Server) Start() (string, error) {
 	// API endpoint for listing vaults
 	mux.HandleFunc("POST /api/list-vaults", s.handleListVaults)
 
-	// API endpoints for address validation
-	mux.HandleFunc("POST /api/validate/xrpl", s.handleValidateXRPL)
-	mux.HandleFunc("POST /api/validate/bittensor", s.handleValidateBittensor)
-	mux.HandleFunc("POST /api/validate/solana", s.handleValidateSolana)
+	// No validation endpoints needed
 
 	// Find an available port
 	port := s.config.Port
@@ -473,100 +470,6 @@ func getMapKeys(m interface{}) []string {
 	return keys
 }
 
-// handleValidateXRPL validates an XRPL address
-func (s *Server) handleValidateXRPL(w http.ResponseWriter, r *http.Request) {
-	// Parse the form data
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to parse form: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	// Get the address from the form
-	address := r.FormValue("address")
-	if address == "" {
-		http.Error(w, "Address is required", http.StatusBadRequest)
-		return
-	}
-
-	// Validate the address using our internal package
-	isValid := xrpl.ValidateXRPLAddress(address)
-
-	// Return the result as JSON
-	response := struct {
-		Valid bool `json:"valid"`
-	}{
-		Valid: isValid,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
-		return
-	}
-}
-
-// handleValidateBittensor validates a Bittensor SS58 address
-func (s *Server) handleValidateBittensor(w http.ResponseWriter, r *http.Request) {
-	// Parse the form data
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to parse form: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	// Get the address from the form
-	address := r.FormValue("address")
-	if address == "" {
-		http.Error(w, "Address is required", http.StatusBadRequest)
-		return
-	}
-
-	// Validate the address using our internal package
-	isValid := bittensor.ValidateBittensorAddress(address)
-
-	// Return the result as JSON
-	response := struct {
-		Valid bool `json:"valid"`
-	}{
-		Valid: isValid,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
-		return
-	}
-}
-
-// handleValidateSolana validates a Solana address
-func (s *Server) handleValidateSolana(w http.ResponseWriter, r *http.Request) {
-	// Parse the form data
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to parse form: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	// Get the address from the form
-	address := r.FormValue("address")
-	if address == "" {
-		http.Error(w, "Address is required", http.StatusBadRequest)
-		return
-	}
-
-	// Validate the address using our internal package
-	isValid := solana.ValidateSolanaAddress(address)
-
-	// Return the result as JSON
-	response := struct {
-		Valid bool `json:"valid"`
-	}{
-		Valid: isValid,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
-		return
-	}
-}
+// Validation handlers removed - unused in frontend
 
 // The runTool function implementation is in tool.go
