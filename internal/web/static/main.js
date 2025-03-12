@@ -762,11 +762,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 return "";
         }
         
-        // Create two separate commands - one for installation (requires internet) and one for execution (can be offline)
-        const installCommand = `cd ${scriptPath} && npm install`;
-        const runCommand = `cd ${scriptPath} && npm start -- ${args.join(' ')}`;
+        // Create two separate commands with cross-platform return to original directory
+        // For Unix/Linux/Mac (bash/zsh)
+        const installCommand = `cd ${scriptPath} && npm install && cd -`;
+        const runCommand = `cd ${scriptPath} && npm start -- ${args.join(' ')} && cd -`;
         
-        return { installCommand, runCommand };
+        // For Windows CMD
+        const installCommandWin = `pushd ${scriptPath} && npm install && popd`;
+        const runCommandWin = `pushd ${scriptPath} && npm start -- ${args.join(' ')} && popd`;
+        
+        return { 
+            installCommand, 
+            runCommand,
+            installCommandWin,
+            runCommandWin
+        };
     }
     
     // Display the commands in the terminal
@@ -783,23 +793,53 @@ document.addEventListener('DOMContentLoaded', () => {
         step1Header.innerHTML = `<span class="step-number">Step 1:</span> <span class="step-title">Install dependencies (requires internet connection)</span>`;
         terminal.appendChild(step1Header);
         
+        // For Mac/Linux
+        const osHeader1 = document.createElement('div');
+        osHeader1.className = 'terminal-line terminal-os-header';
+        osHeader1.textContent = 'Mac/Linux:';
+        terminal.appendChild(osHeader1);
+        
         const installBox = document.createElement('div');
         installBox.className = 'terminal-line terminal-command-box';
         installBox.textContent = commands.installCommand;
         terminal.appendChild(installBox);
         
-        // Create copy button for install command
+        // Create copy button for Unix install command
         const installCopyBtn = document.createElement('button');
         installCopyBtn.className = 'terminal-copy-btn';
-        installCopyBtn.textContent = 'Copy Install Command';
+        installCopyBtn.textContent = 'Copy Mac/Linux Command';
         installCopyBtn.onclick = function() {
             copyToClipboard(commands.installCommand);
             installCopyBtn.textContent = 'Copied!';
             setTimeout(() => {
-                installCopyBtn.textContent = 'Copy Install Command';
+                installCopyBtn.textContent = 'Copy Mac/Linux Command';
             }, 1500);
         };
         terminal.appendChild(installCopyBtn);
+        
+        // For Windows
+        const osHeader1Win = document.createElement('div');
+        osHeader1Win.className = 'terminal-line terminal-os-header';
+        osHeader1Win.textContent = 'Windows:';
+        terminal.appendChild(osHeader1Win);
+        
+        const installBoxWin = document.createElement('div');
+        installBoxWin.className = 'terminal-line terminal-command-box';
+        installBoxWin.textContent = commands.installCommandWin;
+        terminal.appendChild(installBoxWin);
+        
+        // Create copy button for Windows install command
+        const installCopyBtnWin = document.createElement('button');
+        installCopyBtnWin.className = 'terminal-copy-btn';
+        installCopyBtnWin.textContent = 'Copy Windows Command';
+        installCopyBtnWin.onclick = function() {
+            copyToClipboard(commands.installCommandWin);
+            installCopyBtnWin.textContent = 'Copied!';
+            setTimeout(() => {
+                installCopyBtnWin.textContent = 'Copy Windows Command';
+            }, 1500);
+        };
+        terminal.appendChild(installCopyBtnWin);
         
         // STEP 2: Run the transaction command (can be offline)
         const step2Header = document.createElement('div');
@@ -807,23 +847,53 @@ document.addEventListener('DOMContentLoaded', () => {
         step2Header.innerHTML = `<span class="step-number">Step 2:</span> <span class="step-title">Execute transaction (can be offline)</span>`;
         terminal.appendChild(step2Header);
         
+        // For Mac/Linux
+        const osHeader2 = document.createElement('div');
+        osHeader2.className = 'terminal-line terminal-os-header';
+        osHeader2.textContent = 'Mac/Linux:';
+        terminal.appendChild(osHeader2);
+        
         const runBox = document.createElement('div');
         runBox.className = 'terminal-line terminal-command-box';
         runBox.textContent = commands.runCommand;
         terminal.appendChild(runBox);
         
-        // Create copy button for run command
+        // Create copy button for Unix run command
         const runCopyBtn = document.createElement('button');
         runCopyBtn.className = 'terminal-copy-btn';
-        runCopyBtn.textContent = 'Copy Run Command';
+        runCopyBtn.textContent = 'Copy Mac/Linux Command';
         runCopyBtn.onclick = function() {
             copyToClipboard(commands.runCommand);
             runCopyBtn.textContent = 'Copied!';
             setTimeout(() => {
-                runCopyBtn.textContent = 'Copy Run Command';
+                runCopyBtn.textContent = 'Copy Mac/Linux Command';
             }, 1500);
         };
         terminal.appendChild(runCopyBtn);
+        
+        // For Windows
+        const osHeader2Win = document.createElement('div');
+        osHeader2Win.className = 'terminal-line terminal-os-header';
+        osHeader2Win.textContent = 'Windows:';
+        terminal.appendChild(osHeader2Win);
+        
+        const runBoxWin = document.createElement('div');
+        runBoxWin.className = 'terminal-line terminal-command-box';
+        runBoxWin.textContent = commands.runCommandWin;
+        terminal.appendChild(runBoxWin);
+        
+        // Create copy button for Windows run command
+        const runCopyBtnWin = document.createElement('button');
+        runCopyBtnWin.className = 'terminal-copy-btn';
+        runCopyBtnWin.textContent = 'Copy Windows Command';
+        runCopyBtnWin.onclick = function() {
+            copyToClipboard(commands.runCommandWin);
+            runCopyBtnWin.textContent = 'Copied!';
+            setTimeout(() => {
+                runCopyBtnWin.textContent = 'Copy Windows Command';
+            }, 1500);
+        };
+        terminal.appendChild(runCopyBtnWin);
         
         // Add prerequisites section
         const prerequisites = document.createElement('div');
@@ -894,11 +964,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
         }
         
-        // Create two separate commands - one for installation (requires internet) and one for execution (can be offline)
-        const installCommand = `cd ${scriptPath} && npm install`;
-        const runCommand = `cd ${scriptPath} && npm start -- ${args.join(' ')}`;
+        // Create two separate commands with cross-platform return to original directory
+        // For Unix/Linux/Mac (bash/zsh)
+        const installCommand = `cd ${scriptPath} && npm install && cd -`;
+        const runCommand = `cd ${scriptPath} && npm start -- ${args.join(' ')} && cd -`;
+        
+        // For Windows CMD
+        const installCommandWin = `pushd ${scriptPath} && npm install && popd`;
+        const runCommandWin = `pushd ${scriptPath} && npm start -- ${args.join(' ')} && popd`;
         
         // Display the commands
-        displayCommand(terminal, { installCommand, runCommand }, chain);
+        displayCommand(terminal, { 
+            installCommand, 
+            runCommand,
+            installCommandWin,
+            runCommandWin
+        }, chain);
     }
 });
