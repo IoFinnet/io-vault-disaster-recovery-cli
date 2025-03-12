@@ -375,6 +375,8 @@ button:active {
     margin: 1rem 0 1.5rem;
     border-radius: 4px;
     align-items: flex-start;
+    max-width: 100%;
+    overflow-x: hidden; /* Prevents horizontal scrollbar on the container itself */
 }
 
 .error-icon {
@@ -385,6 +387,8 @@ button:active {
 
 .error-content {
     flex: 1;
+    overflow-x: auto;  /* Add horizontal scrolling */
+    max-width: 100%;   /* Prevent expanding beyond container */
 }
 
 .error-content h4 {
@@ -394,6 +398,10 @@ button:active {
 
 .error-content p {
     margin: 0;
+    overflow-wrap: break-word;  /* Break long words */
+    word-wrap: break-word;      /* Legacy support */
+    hyphens: auto;              /* Add hyphens for very long words */
+    max-width: 100%;            /* Respect container width */
 }
 
 /* Recovery results */
