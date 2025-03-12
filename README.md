@@ -109,7 +109,7 @@ The recovery tool includes a web-based interface that provides a more user-frien
 To use the web interface, run the recovery tool and navigate to the provided local URL (typically http://localhost:8080):
 
 ```
-$ ./bin/recovery-tool -serve
+$ ./bin/recovery-tool -web
 Starting web server on http://localhost:8080
 ```
 
