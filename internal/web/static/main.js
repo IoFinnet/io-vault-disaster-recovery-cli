@@ -851,12 +851,12 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         terminal.appendChild(installCopyBtnWin);
         
-        // STEP 2: Run the command (can be offline)
+        // STEP 2: Run the command
         const step2Header = document.createElement('div');
         step2Header.className = 'terminal-line terminal-step-header';
         step2Header.innerHTML = isBalanceCheck 
-            ? `<span class="step-number">Step 2:</span> <span class="step-title">Check balance (can be offline)</span>`
-            : `<span class="step-number">Step 2:</span> <span class="step-title">Execute transaction (can be offline)</span>`;
+            ? `<span class="step-number">Step 2:</span> <span class="step-title">Check balance</span>`
+            : `<span class="step-number">Step 2:</span> <span class="step-title">Execute transaction</span>`;
         terminal.appendChild(step2Header);
         
         // For Mac/Linux
@@ -950,15 +950,20 @@ document.addEventListener('DOMContentLoaded', () => {
         // Generate the command with --check-balance flag
         let scriptPath, command, args = [];
         
-        // Common arguments: private key
-        const privateKey = recoveredKeys.eddsaPrivateKey;
-        args.push("--private-key", privateKey);
         args.push("--check-balance");
         
         switch (chain) {
             case 'xrpl':
                 scriptPath = "scripts/xrpl-tool";
-                args.push("--public-key", recoveredKeys.eddsaPublicKey);
+                
+                // For XRPL, we'll use the address directly instead of private key for balance check
+                if (recoveredKeys.xrplAddress) {
+                    args.push("--address", recoveredKeys.xrplAddress);
+                } else {
+                    // Fallback to using private key if address isn't available
+                    args.push("--private-key", recoveredKeys.eddsaPrivateKey);
+                    args.push("--public-key", recoveredKeys.eddsaPublicKey);
+                }
                 
                 const xrplNetwork = document.querySelector('input[name="xrpl-network"]:checked').value;
                 args.push("--network", xrplNetwork);
@@ -967,6 +972,14 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'bittensor':
                 scriptPath = "scripts/bittensor-tool";
                 
+                // For Bittensor, use the address directly
+                if (recoveredKeys.bittensorAddress) {
+                    args.push("--address", recoveredKeys.bittensorAddress);
+                } else {
+                    // Fallback to using private key if address isn't available
+                    args.push("--private-key", recoveredKeys.eddsaPrivateKey);
+                }
+                
                 const bittensorNetwork = document.querySelector('input[name="bittensor-network"]:checked').value;
                 
                 // Set the correct endpoint based on network selection
@@ -974,15 +987,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     ? 'wss://entrypoint-finney.opentensor.ai:443'
                     : 'wss://test.finney.opentensor.ai:443';
                     
-                args.push("--endpoint", endpoint);
                 args.push("--network", bittensorNetwork);
-                
-                // When checking balance, we don't need to include destination address
-                // The script will check the balance of the wallet derived from the provided private key
                 break;
                 
             case 'solana':
                 scriptPath = "scripts/solana-tool";
+                
+                // For Solana, use the address directly
+                if (recoveredKeys.solanaAddress) {
+                    args.push("--address", recoveredKeys.solanaAddress);
+                } else {
+                    // Fallback to using private key if address isn't available
+                    args.push("--private-key", recoveredKeys.eddsaPrivateKey);
+                }
                 
                 const solanaNetwork = document.querySelector('input[name="solana-network"]:checked').value;
                 args.push("--network", solanaNetwork);
