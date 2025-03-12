@@ -592,87 +592,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ==================
-    // Balance Check Functions
+    // Address Validation Functions
     // ==================
-    let xrplClient = null;
-    let solanaConnection = null;
-
-    async function initXRPLClient() {
-        // This function would initialize the XRPL client using a library like xrpl.js
-        // Import and create client dynamically
-        if (!window.xrpl) {
-            // Load xrpl.js script if not already loaded
-            const script = document.createElement('script');
-            script.src = 'https://unpkg.com/xrpl@2.7.0/build/xrpl-latest-min.js';
-            script.async = true;
-
-            await new Promise((resolve, reject) => {
-                script.onload = resolve;
-                script.onerror = reject;
-                document.head.appendChild(script);
-            });
-        }
-
-        // Get the network selection
-        const useMainNet = document.querySelector('input[name="xrpl-network"]:checked').value === 'mainnet';
-        const rpcUrl = useMainNet ? 'wss://s1.ripple.com' : 'wss://testnet.xrpl-labs.com';
-
-        // Create client
-        xrplClient = new xrpl.Client(rpcUrl);
-        await xrplClient.connect();
-
-        return xrplClient;
-    }
-
-    async function checkXRPLBalance() {
-        // Create status element if it doesn't exist
-        let statusEl = document.getElementById('xrpl-status');
-        if (!statusEl) {
-            statusEl = document.createElement('div');
-            statusEl.id = 'xrpl-status';
-            statusEl.className = 'transaction-status';
-            document.querySelector('#xrpl-transaction-dialog .transaction-actions').after(statusEl);
-        }
-        
-        statusEl.textContent = 'Connecting to XRPL network...';
-        statusEl.className = 'transaction-status info';
-        statusEl.style.display = 'block';
-
-        try {
-            const client = await initXRPLClient();
-
-            // Create wallet from the private key
-            const privateKey = recoveredKeys.eddsaPrivateKey;
-            const publicKey = recoveredKeys.eddsaPublicKey;
-            const wallet = new xrpl.Wallet('ed' + publicKey, 'ed' + privateKey);
-
-            // Get account info
-            const accountInfo = await client.request({
-                command: 'account_info',
-                account: wallet.address,
-                ledger_index: 'validated'
-            });
-
-            const xrpBalance = Number(accountInfo.result.account_data.Balance) / 1000000;
-
-            statusEl.textContent = `Balance: ${xrpBalance} XRP`;
-            statusEl.className = 'transaction-status success';
-
-        } catch (error) {
-            statusEl.textContent = `Error: ${error.message}`;
-            statusEl.className = 'transaction-status error';
-
-            // If the error is related to account not found, provide a friendly message
-            if (error.message.includes('Account not found')) {
-                statusEl.textContent = 'Account not found. This account may not be activated yet or may not exist on this network.';
-            }
-        } finally {
-            if (xrplClient) {
-                await xrplClient.disconnect();
-                xrplClient = null;
-            }
-        }
-    }
 
     // XRPL validation functions
     async function validateXRPLDestination(address) {
