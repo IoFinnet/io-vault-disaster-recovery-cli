@@ -4,7 +4,7 @@
   "description": "Solana recovery tool for io.finnet",
   "main": "main.js",
   "scripts": {
-    "start": "tsx main.ts"
+    "start": "npx tsx main.ts"
   },
   "dependencies": {
     "@noble/curves": "^1.2.0",
@@ -16,6 +16,7 @@
   "devDependencies": {
     "@types/node": "^20.5.9",
     "@types/readline-sync": "^1.4.4",
+    "tsx": "^4.19.3",
     "typescript": "^5.2.2"
   }
 }
