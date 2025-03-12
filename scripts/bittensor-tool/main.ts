@@ -348,8 +348,6 @@ async function transferFunds(privateKeyHex: string, destination: string, amount:
       };
     }
   } else {
-    console.log('Using online mode. Restart with the flag --offline to use offline mode.');
-
     // Online mode - connect to the network
     console.log("Connecting to the Bittensor network...");
     const provider = new WsProvider(endpoint);
