@@ -42,7 +42,9 @@ const commandLineArgs = {
   destination: '',
   amount: '',
   endpoint: DEFAULT_ENDPOINT,
-  confirm: false
+  checkBalance: false,
+  confirm: false,
+  network: ''
 };
 
 for (let i = 0; i < args.length; i++) {
@@ -63,6 +65,14 @@ for (let i = 0; i < args.length; i++) {
     case '-e':
       commandLineArgs.endpoint = args[++i];
       break;
+    case '--network':
+    case '-n':
+      commandLineArgs.network = args[++i];
+      break;
+    case '--check-balance':
+    case '-c':
+      commandLineArgs.checkBalance = true;
+      break;
     case '--confirm':
     case '-y':
       commandLineArgs.confirm = true;
@@ -77,6 +87,8 @@ Options:
   -d, --destination <address> Destination address
   -a, --amount <amount>       Amount to transfer
   -e, --endpoint <url>        Endpoint URL (default: ${DEFAULT_ENDPOINT})
+  -n, --network <network>     Network to use (mainnet, testnet)
+  -c, --check-balance         Check wallet balance without transferring
   -y, --confirm               Auto-confirm transaction without prompting
   -h, --help                  Show this help message
       
@@ -84,6 +96,64 @@ If any required parameter is not provided, you will be prompted for it interacti
 `);
       process.exit(0);
       break;
+  }
+}
+
+/**
+ * Check the balance of a wallet on the Bittensor network.
+ * @param privateKeyHex - The raw Ed25519 private key in hex format.
+ * @param endpoint - The WebSocket endpoint for the Bittensor network.
+ */
+async function checkBalance(privateKeyHex: string, endpoint: string) {
+  await cryptoWaitReady();
+
+  console.log("Connecting to the Bittensor network...");
+  const provider = new WsProvider(endpoint);
+  const api = await ApiPromise.create({ provider });
+
+  console.log("Creating keyring...");
+  const keyring = new Keyring({ type: 'ed25519', ss58Format: SS58_FORMAT });
+
+  // Prepare the private key
+  let privateKey = Buffer.from(privateKeyHex, 'hex');
+  if (privateKey.length !== 32) {
+    throw new Error('Private key must be 32 bytes');
+  }
+
+  // Derive the public key from the private key
+  const publicKey = ed.ExtendedPoint.BASE.multiply(bytesToNumberBE(privateKey)).toRawBytes();
+  console.log("Derived Public Key (Hex):", Buffer.from(publicKey).toString('hex'));
+
+  // Add the keypair to the keyring
+  const keyPair = keyring.addFromPair({
+    publicKey: publicKey,
+    secretKey: new Uint8Array(0),
+  });
+
+  console.log("Derived Address (SS58):", keyPair.address);
+
+  try {
+    // Get account information
+    const accountInfo = await api.query.system.account(keyPair.address);
+    
+    // Extract and display the balance
+    const free = accountInfo.data.free.toBigInt();
+    const reserved = accountInfo.data.reserved.toBigInt();
+    const total = free + reserved;
+    
+    // Convert from Planck (smallest unit) to TAO
+    const freeBalance = Number(free) / Number(PLANCK);
+    const reservedBalance = Number(reserved) / Number(PLANCK);
+    const totalBalance = Number(total) / Number(PLANCK);
+    
+    console.log("\nBalance Information:");
+    console.log(`Free Balance: ${freeBalance.toFixed(9)} TAO`);
+    console.log(`Reserved Balance: ${reservedBalance.toFixed(9)} TAO`);
+    console.log(`Total Balance: ${totalBalance.toFixed(9)} TAO`);
+  } catch (error) {
+    console.error("Error fetching balance:", error.message);
+  } finally {
+    await api.disconnect();
   }
 }
 
@@ -172,12 +242,31 @@ function validateAmount(amount: string): boolean {
 }
 
 async function main() {
-  console.log('Bittensor Transfer Tool\n');
+  // Set title based on mode
+  if (commandLineArgs.checkBalance) {
+    console.log('Bittensor Balance Check Tool\n');
+  } else {
+    console.log('Bittensor Transfer Tool\n');
+  }
   
   let privateKey = commandLineArgs.privateKey;
   let destination = commandLineArgs.destination;
   let amount = commandLineArgs.amount;
   let endpoint = commandLineArgs.endpoint;
+  
+  // Handle network parameter if provided
+  if (commandLineArgs.network) {
+    if (commandLineArgs.network === 'mainnet') {
+      endpoint = 'wss://entrypoint-finney.opentensor.ai:443';
+      console.log('Using mainnet network');
+    } else if (commandLineArgs.network === 'testnet') {
+      endpoint = 'wss://test.finney.opentensor.ai:443';
+      console.log('Using testnet network');
+    } else {
+      console.error(`Invalid network: ${commandLineArgs.network}. Must be either 'mainnet' or 'testnet'`);
+      process.exit(1);
+    }
+  }
   
   // If not provided via command line, prompt for private key
   if (!privateKey) {
@@ -195,6 +284,18 @@ async function main() {
   } else if (!validateHex(privateKey, 32)) {
     console.error('Invalid private key format. Must be 64 hexadecimal characters.');
     process.exit(1);
+  }
+
+  // If checking balance, skip destination and amount prompts
+  if (commandLineArgs.checkBalance) {
+    console.log('\nChecking balance...\n');
+    try {
+      await checkBalance(privateKey, endpoint);
+    } catch (error) {
+      console.error('Error checking balance:', error.message);
+      process.exit(1);
+    }
+    return;
   }
 
   // If not provided via command line, prompt for destination
@@ -232,7 +333,7 @@ async function main() {
   }
 
   // If not provided via command line, prompt for endpoint
-  if (endpoint === DEFAULT_ENDPOINT && !commandLineArgs.endpoint) {
+  if (endpoint === DEFAULT_ENDPOINT && !commandLineArgs.endpoint && !commandLineArgs.network) {
     endpoint = readlineSync.question(
       'Enter the endpoint (e.g., wss://entrypoint-finney.opentensor.ai:443): ',
       { defaultInput: DEFAULT_ENDPOINT }
