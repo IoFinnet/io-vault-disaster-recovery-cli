@@ -992,25 +992,21 @@ document.addEventListener('DOMContentLoaded', () => {
         // Add prerequisites section
         const prerequisites = document.createElement('div');
         prerequisites.className = 'terminal-line terminal-prerequisites';
-        prerequisites.innerHTML = `
-            <h4>Prerequisites:</h4>
-            <p>You need Node.js installed on your computer to run this command.</p>
-            <p>If you don't have Node.js installed:</p>
-            <p>1. Download and install from <a href="https://nodejs.org" target="_blank">nodejs.org</a> (LTS version recommended)</p>
-            <p>2. Verify installation by typing <code>node --version</code> in your terminal</p>
-        `;
+        prerequisites.innerHTML = `<h4>Prerequisites:</h4>
+<p>You need Node.js installed on your computer to run this command.</p>
+<p>If you don't have Node.js installed:</p>
+<p>1. Download and install from <a href="https://nodejs.org" target="_blank">nodejs.org</a> (LTS version recommended)</p>
+<p>2. Verify installation by typing <code>node --version</code> in your terminal</p>`;
         terminal.appendChild(prerequisites);
         
         // Add instructions
         const instructions = document.createElement('div');
         instructions.className = 'terminal-line terminal-instructions';
-        instructions.innerHTML = `
-            <h4>Instructions:</h4>
-            <p>1. Open a terminal or command prompt on your computer</p>
-            <p>2. Navigate to the directory containing the recovery tool</p>
-            <p>3. Run the command above to execute the ${chain.toUpperCase()} transaction</p>
-            <p>4. The command will automatically install required dependencies before running</p>
-        `;
+        instructions.innerHTML = `<h4>Instructions:</h4>
+<p>1. Open a terminal or command prompt on your computer</p>
+<p>2. Navigate to the directory containing the recovery tool</p>
+<p>3. Run the command above to execute the ${chain.toUpperCase()} transaction</p>
+<p>4. The command will automatically install required dependencies before running</p>`;
         terminal.appendChild(instructions);
     }
     
