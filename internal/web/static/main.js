@@ -976,6 +976,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                 args.push("--endpoint", endpoint);
                 args.push("--network", bittensorNetwork);
+                
+                // When checking balance, we don't need to include destination address
+                // The script will check the balance of the wallet derived from the provided private key
                 break;
                 
             case 'solana':
