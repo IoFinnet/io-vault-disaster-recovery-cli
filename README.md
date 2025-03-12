@@ -1,4 +1,4 @@
-# TSS Recovery Tools
+# io.finnet Key Recovery Tool for io.vault
 ![Screenshot](https://github.com/user-attachments/assets/d1ab307a-6059-44d1-828a-be27d0fb9944)
 
 This terminal app recovers the private keys of vaults by combining the shares of each TSS app backup file.
@@ -8,10 +8,9 @@ It exports a WIF for Bitcoin key import to Electrum Wallet. It will also create 
 For other coins and wallets, please see the specific recovery information below or on our [guides page](https://docs.iofinnet.com/docs/disaster-recovery).
 You may be required to run another script contained in the [scripts](./scripts) area of this repository.
 
-> ### **Important Notice**
->
+> [!IMPORTANT]
 > This app does not do ANY communication with any external host or service. It does not need an Internet connection at all.
->
+> 
 > It is recommended that you run it on a non internet connected ("air gapped") device such as a laptop not connected to any network.
 >
 > The web interface and transaction tools are designed with a security-first approach:
@@ -80,7 +79,8 @@ A WIF looks like: L1CujRNEhNfZgTS9b6e3hytTDu7gpUv1kiLx4ETEEhEc8nJcx4QA
 
 You may download Electrum wallet, and follow these steps to import a WIF:
 
-> **IMPORTANT:** If you intend to recover a **testnet** key (address with `tb1` prefix), you must run Electrum with the `--testnet` flag from your Terminal:
+> [!IMPORTANT]
+> If you intend to recover a **testnet** key (address with `tb1` prefix), you must run Electrum with the `--testnet` flag from your Terminal:
 > On a Mac, this is done as follows:
 > `open -n /Applications/Electrum.app --args --testnet`
 
@@ -141,12 +141,7 @@ For transaction operations, the tool generates commands for you to run in your t
 
 1. Private keys never leave your local machine
 2. Transaction details are transparent and visible before signing
-3. You can run the transaction steps in a completely offline environment
-
-The process typically involves:
-1. Install dependencies (with internet connection)
-2. Disconnect from the internet for maximum security
-3. Execute the transaction (can be run completely offline)
+3. You can run the transaction steps in a completely offline environment until the point of broadcasting the transaction to the chain
 
 ### XRP Ledger Recovery & Transactions
 

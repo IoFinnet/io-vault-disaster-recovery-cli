@@ -116,9 +116,13 @@ func main() {
 	/**
 	 * Retrieve vaults information and select a vault
 	 */
+
 	_, _, _, vaultsFormInfo, err := runTool(*vaultsDataFiles, nil, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
 	if err != nil {
-		fmt.Printf("Failed to run tool to retrieve vault information: %s\n", err)
+		fmt.Printf("Failed to run tool: %s\n", err)
+
+		fmt.Println("Are the words you entered correct? Are you using the newest files?")
+		fmt.Println()
 		os.Exit(1)
 	}
 
