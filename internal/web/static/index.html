@@ -243,24 +243,42 @@
                         </div>
                     </div>
 
-                    <div class="form-group">
-                        <label for="xrpl-destination">Destination Address:</label>
-                        <input type="text" id="xrpl-destination" placeholder="Enter XRP destination address" 
-                               pattern="^r[1-9A-HJ-NP-Za-km-z]{25,34}$" 
-                               title="XRPL address must start with 'r' and be 25-35 characters long" required>
-                        <small class="form-hint">Must be a valid XRPL address (starts with 'r')</small>
-                    </div>
+                    <!-- Tabs for different actions -->
+                    <div class="transaction-tabs">
+                        <div class="tab-header">
+                            <button class="tab-button active" data-tab="xrpl-balance-tab">Check Balance</button>
+                            <button class="tab-button" data-tab="xrpl-transaction-tab">Create Transaction</button>
+                        </div>
+                        
+                        <!-- Check Balance Tab -->
+                        <div id="xrpl-balance-tab" class="tab-content active">
+                            <p class="tab-description">Check the balance of your XRPL account using the address from your recovered key.</p>
+                            <div class="transaction-actions">
+                                <button id="xrpl-check-balance" class="primary">Check Balance</button>
+                            </div>
+                        </div>
+                        
+                        <!-- Create Transaction Tab -->
+                        <div id="xrpl-transaction-tab" class="tab-content">
+                            <div class="form-group">
+                                <label for="xrpl-destination">Destination Address:</label>
+                                <input type="text" id="xrpl-destination" placeholder="Enter XRP destination address" 
+                                       pattern="^r[1-9A-HJ-NP-Za-km-z]{25,34}$" 
+                                       title="XRPL address must start with 'r' and be 25-35 characters long" required>
+                                <small class="form-hint">Must be a valid XRPL address (starts with 'r')</small>
+                            </div>
 
-                    <div class="form-group">
-                        <label for="xrpl-amount">Amount (XRP):</label>
-                        <input type="number" id="xrpl-amount" placeholder="Enter amount to send" 
-                               min="0.000001" max="100000000000" step="0.000001" required>
-                        <small class="form-hint">Must be greater than 0 and less than 100 billion</small>
-                    </div>
+                            <div class="form-group">
+                                <label for="xrpl-amount">Amount (XRP):</label>
+                                <input type="number" id="xrpl-amount" placeholder="Enter amount to send" 
+                                       min="0.000001" max="100000000000" step="0.000001" required>
+                                <small class="form-hint">Must be greater than 0 and less than 100 billion</small>
+                            </div>
 
-                    <div class="transaction-actions">
-                        <button id="xrpl-check-balance" class="secondary">Check Balance</button>
-                        <button id="xrpl-create-tx" class="primary">Create Transaction</button>
+                            <div class="transaction-actions">
+                                <button id="xrpl-create-tx" class="primary">Create Transaction</button>
+                            </div>
+                        </div>
                     </div>
                     
                     <!-- Command display for transaction execution -->
@@ -297,24 +315,42 @@
                         </div>
                     </div>
 
-                    <div class="form-group">
-                        <label for="bittensor-destination">Destination Address:</label>
-                        <input type="text" id="bittensor-destination" placeholder="Enter Bittensor destination address" 
-                               pattern="^[1-9A-HJ-NP-Za-km-z]{48}$" 
-                               title="Bittensor address must be 48 characters long" required>
-                        <small class="form-hint">Must be a valid 48-character Bittensor address</small>
-                    </div>
+                    <!-- Tabs for different actions -->
+                    <div class="transaction-tabs">
+                        <div class="tab-header">
+                            <button class="tab-button active" data-tab="bittensor-balance-tab">Check Balance</button>
+                            <button class="tab-button" data-tab="bittensor-transaction-tab">Create Transaction</button>
+                        </div>
+                        
+                        <!-- Check Balance Tab -->
+                        <div id="bittensor-balance-tab" class="tab-content active">
+                            <p class="tab-description">Check the balance of your Bittensor account using the address from your recovered key.</p>
+                            <div class="transaction-actions">
+                                <button id="bittensor-check-balance" class="primary">Check Balance</button>
+                            </div>
+                        </div>
+                        
+                        <!-- Create Transaction Tab -->
+                        <div id="bittensor-transaction-tab" class="tab-content">
+                            <div class="form-group">
+                                <label for="bittensor-destination">Destination Address:</label>
+                                <input type="text" id="bittensor-destination" placeholder="Enter Bittensor destination address" 
+                                       pattern="^[1-9A-HJ-NP-Za-km-z]{48}$" 
+                                       title="Bittensor address must be 48 characters long" required>
+                                <small class="form-hint">Must be a valid 48-character Bittensor address</small>
+                            </div>
 
-                    <div class="form-group">
-                        <label for="bittensor-amount">Amount (TAO):</label>
-                        <input type="number" id="bittensor-amount" placeholder="Enter amount to send" 
-                               min="0.000001" step="0.000001" required>
-                        <small class="form-hint">Must be greater than 0</small>
-                    </div>
+                            <div class="form-group">
+                                <label for="bittensor-amount">Amount (TAO):</label>
+                                <input type="number" id="bittensor-amount" placeholder="Enter amount to send" 
+                                       min="0.000001" step="0.000001" required>
+                                <small class="form-hint">Must be greater than 0</small>
+                            </div>
 
-                    <div class="transaction-actions">
-                        <button id="bittensor-check-balance" class="secondary">Check Balance</button>
-                        <button id="bittensor-create-tx" class="primary">Create Transaction</button>
+                            <div class="transaction-actions">
+                                <button id="bittensor-create-tx" class="primary">Create Transaction</button>
+                            </div>
+                        </div>
                     </div>
                     
                     <!-- Command display for transaction execution -->
@@ -355,24 +391,42 @@
                         </div>
                     </div>
 
-                    <div class="form-group">
-                        <label for="solana-destination">Destination Address:</label>
-                        <input type="text" id="solana-destination" placeholder="Enter Solana destination address" 
-                               pattern="^[1-9A-HJ-NP-Za-km-z]{32,44}$" 
-                               title="Solana address must be 32-44 characters long" required>
-                        <small class="form-hint">Must be a valid Solana address (32-44 characters)</small>
-                    </div>
+                    <!-- Tabs for different actions -->
+                    <div class="transaction-tabs">
+                        <div class="tab-header">
+                            <button class="tab-button active" data-tab="solana-balance-tab">Check Balance</button>
+                            <button class="tab-button" data-tab="solana-transaction-tab">Create Transaction</button>
+                        </div>
+                        
+                        <!-- Check Balance Tab -->
+                        <div id="solana-balance-tab" class="tab-content active">
+                            <p class="tab-description">Check the balance of your Solana account using the address from your recovered key.</p>
+                            <div class="transaction-actions">
+                                <button id="solana-check-balance" class="primary">Check Balance</button>
+                            </div>
+                        </div>
+                        
+                        <!-- Create Transaction Tab -->
+                        <div id="solana-transaction-tab" class="tab-content">
+                            <div class="form-group">
+                                <label for="solana-destination">Destination Address:</label>
+                                <input type="text" id="solana-destination" placeholder="Enter Solana destination address" 
+                                       pattern="^[1-9A-HJ-NP-Za-km-z]{32,44}$" 
+                                       title="Solana address must be 32-44 characters long" required>
+                                <small class="form-hint">Must be a valid Solana address (32-44 characters)</small>
+                            </div>
 
-                    <div class="form-group">
-                        <label for="solana-amount">Amount (SOL):</label>
-                        <input type="number" id="solana-amount" placeholder="Enter amount to send" 
-                               min="0.000001" step="0.000001" required>
-                        <small class="form-hint">Must be greater than 0</small>
-                    </div>
+                            <div class="form-group">
+                                <label for="solana-amount">Amount (SOL):</label>
+                                <input type="number" id="solana-amount" placeholder="Enter amount to send" 
+                                       min="0.000001" step="0.000001" required>
+                                <small class="form-hint">Must be greater than 0</small>
+                            </div>
 
-                    <div class="transaction-actions">
-                        <button id="solana-check-balance" class="secondary">Check Balance</button>
-                        <button id="solana-create-tx" class="primary">Create Transaction</button>
+                            <div class="transaction-actions">
+                                <button id="solana-create-tx" class="primary">Create Transaction</button>
+                            </div>
+                        </div>
                     </div>
                     
                     <!-- Command display for transaction execution -->

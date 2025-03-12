@@ -721,6 +721,40 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize file input event listeners
     initializeFileInputs();
     
+    // Initialize tab switching functionality for dialogs
+    function initializeTabs() {
+        const tabButtons = document.querySelectorAll('.tab-button');
+        
+        tabButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                // Get the parent tab container
+                const tabHeader = button.closest('.tab-header');
+                const tabsContainer = tabHeader.closest('.transaction-tabs');
+                
+                // Get the target tab content
+                const targetTabId = button.dataset.tab;
+                const targetTab = document.getElementById(targetTabId);
+                
+                // Remove active class from all buttons in this container
+                tabHeader.querySelectorAll('.tab-button').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                
+                // Remove active class from all content tabs in this container
+                tabsContainer.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.remove('active');
+                });
+                
+                // Add active class to clicked button and target content
+                button.classList.add('active');
+                targetTab.classList.add('active');
+            });
+        });
+    }
+    
+    // Initialize tabs
+    initializeTabs();
+    
     // ==================
     // Command Generation Functions
     // ==================
