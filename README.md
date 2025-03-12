@@ -169,8 +169,6 @@ npm start -- --address XXXYourAddressXXX --check-balance --network mainnet
 npm start -- --private-key YourPrivateKey --destination XXX... --amount 10 --network mainnet
 ```
 
-You can also use the [Bittensor Wallet](https://bittensor.com/wallet) on mobile to recover TAO assets.
-
 ### Solana Recovery & Transactions
 
 For Solana (SOL) recovery and transactions:
