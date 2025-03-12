@@ -103,26 +103,4 @@ func encodeBase58WithXRPLAlphabet(b []byte) string {
 	return string(answer)
 }
 
-// ValidateXRPLAddress validates an XRPL address
-func ValidateXRPLAddress(address string) bool {
-	// XRPL addresses should start with r and be 25-35 characters long
-	if len(address) < 25 || len(address) > 35 || address[0] != 'r' {
-		return false
-	}
-
-	// Check if the address contains only valid base58 characters
-	for _, c := range address {
-		found := false
-		for _, a := range xrplBase58Alphabet {
-			if c == a {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return false
-		}
-	}
-
-	return true
-}
+// ValidateXRPLAddress function removed - unused
