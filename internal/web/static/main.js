@@ -123,15 +123,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const xrplCheckBalanceBtn = document.getElementById('xrpl-check-balance');
     const xrplCreateTxBtn = document.getElementById('xrpl-create-tx');
     
-    xrplCheckBalanceBtn.addEventListener('click', () => {
+    xrplCheckBalanceBtn.addEventListener('click', (e) => {
         if (recoveredKeys && recoveredKeys.xrplAddress) {
             createBalanceCheckCommand('xrpl');
         } else {
+            const button = e.target;
+            button.classList.add('shake');
+            setTimeout(() => button.classList.remove('shake'), 600);
             alert('No valid XRPL address found for this vault');
         }
     });
     
-    xrplCreateTxBtn.addEventListener('click', () => {
+    xrplCreateTxBtn.addEventListener('click', (e) => {
         // Use browser's built-in form validation
         const xrplDestInput = document.getElementById('xrpl-destination');
         const xrplAmountInput = document.getElementById('xrpl-amount');
@@ -139,9 +142,22 @@ document.addEventListener('DOMContentLoaded', () => {
         if (xrplDestInput.checkValidity() && xrplAmountInput.checkValidity()) {
             createTerminalTransaction('xrpl');
         } else {
-            // Trigger the browser's validation UI
-            if (!xrplDestInput.checkValidity()) xrplDestInput.reportValidity();
-            if (!xrplAmountInput.checkValidity()) xrplAmountInput.reportValidity();
+            // Apply shake animation and trigger validation UI
+            if (!xrplDestInput.checkValidity()) {
+                xrplDestInput.classList.add('shake');
+                xrplDestInput.reportValidity();
+                setTimeout(() => xrplDestInput.classList.remove('shake'), 600);
+            }
+            if (!xrplAmountInput.checkValidity()) {
+                xrplAmountInput.classList.add('shake');
+                xrplAmountInput.reportValidity();
+                setTimeout(() => xrplAmountInput.classList.remove('shake'), 600);
+            }
+            // Also shake the button to indicate error
+            xrplCreateTxBtn.classList.add('shake');
+            setTimeout(() => xrplCreateTxBtn.classList.remove('shake'), 600);
+            e.preventDefault();
+            return false;
         }
     });
     
@@ -150,15 +166,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const bittensorCheckBalanceBtn = document.getElementById('bittensor-check-balance');
     const bittensorCreateTxBtn = document.getElementById('bittensor-create-tx');
     
-    bittensorCheckBalanceBtn.addEventListener('click', () => {
+    bittensorCheckBalanceBtn.addEventListener('click', (e) => {
         if (recoveredKeys && recoveredKeys.bittensorAddress) {
             createBalanceCheckCommand('bittensor');
         } else {
+            const button = e.target;
+            button.classList.add('shake');
+            setTimeout(() => button.classList.remove('shake'), 600);
             alert('No valid Bittensor address found for this vault');
         }
     });
     
-    bittensorCreateTxBtn.addEventListener('click', () => {
+    bittensorCreateTxBtn.addEventListener('click', (e) => {
         // Use browser's built-in form validation
         const bittensorDestInput = document.getElementById('bittensor-destination');
         const bittensorAmountInput = document.getElementById('bittensor-amount');
@@ -166,9 +185,22 @@ document.addEventListener('DOMContentLoaded', () => {
         if (bittensorDestInput.checkValidity() && bittensorAmountInput.checkValidity()) {
             createTerminalTransaction('bittensor');
         } else {
-            // Trigger the browser's validation UI
-            if (!bittensorDestInput.checkValidity()) bittensorDestInput.reportValidity();
-            if (!bittensorAmountInput.checkValidity()) bittensorAmountInput.reportValidity();
+            // Apply shake animation and trigger validation UI
+            if (!bittensorDestInput.checkValidity()) {
+                bittensorDestInput.classList.add('shake');
+                bittensorDestInput.reportValidity();
+                setTimeout(() => bittensorDestInput.classList.remove('shake'), 600);
+            }
+            if (!bittensorAmountInput.checkValidity()) {
+                bittensorAmountInput.classList.add('shake');
+                bittensorAmountInput.reportValidity();
+                setTimeout(() => bittensorAmountInput.classList.remove('shake'), 600);
+            }
+            // Also shake the button to indicate error
+            bittensorCreateTxBtn.classList.add('shake');
+            setTimeout(() => bittensorCreateTxBtn.classList.remove('shake'), 600);
+            e.preventDefault();
+            return false;
         }
     });
     
@@ -177,15 +209,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const solanaCheckBalanceBtn = document.getElementById('solana-check-balance');
     const solanaCreateTxBtn = document.getElementById('solana-create-tx');
     
-    solanaCheckBalanceBtn.addEventListener('click', () => {
+    solanaCheckBalanceBtn.addEventListener('click', (e) => {
         if (recoveredKeys && recoveredKeys.solanaAddress) {
             createBalanceCheckCommand('solana');
         } else {
+            const button = e.target;
+            button.classList.add('shake');
+            setTimeout(() => button.classList.remove('shake'), 600);
             alert('No valid Solana address found for this vault');
         }
     });
     
-    solanaCreateTxBtn.addEventListener('click', () => {
+    solanaCreateTxBtn.addEventListener('click', (e) => {
         // Use browser's built-in form validation
         const solanaDestInput = document.getElementById('solana-destination');
         const solanaAmountInput = document.getElementById('solana-amount');
@@ -193,9 +228,22 @@ document.addEventListener('DOMContentLoaded', () => {
         if (solanaDestInput.checkValidity() && solanaAmountInput.checkValidity()) {
             createTerminalTransaction('solana');
         } else {
-            // Trigger the browser's validation UI
-            if (!solanaDestInput.checkValidity()) solanaDestInput.reportValidity();
-            if (!solanaAmountInput.checkValidity()) solanaAmountInput.reportValidity();
+            // Apply shake animation and trigger validation UI
+            if (!solanaDestInput.checkValidity()) {
+                solanaDestInput.classList.add('shake');
+                solanaDestInput.reportValidity();
+                setTimeout(() => solanaDestInput.classList.remove('shake'), 600);
+            }
+            if (!solanaAmountInput.checkValidity()) {
+                solanaAmountInput.classList.add('shake');
+                solanaAmountInput.reportValidity();
+                setTimeout(() => solanaAmountInput.classList.remove('shake'), 600);
+            }
+            // Also shake the button to indicate error
+            solanaCreateTxBtn.classList.add('shake');
+            setTimeout(() => solanaCreateTxBtn.classList.remove('shake'), 600);
+            e.preventDefault();
+            return false;
         }
     });
     
