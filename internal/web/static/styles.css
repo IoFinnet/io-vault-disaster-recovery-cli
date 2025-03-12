@@ -669,6 +669,14 @@ button:active {
     font-family: 'Consolas', 'Courier New', monospace;
 }
 
+.security-tip {
+    color: #ff9800 !important;
+    font-weight: 500;
+    margin-top: 0.8rem !important;
+    border-left: 3px solid #ff9800;
+    padding-left: 0.5rem !important;
+}
+
 @keyframes dialogFadeIn {
     from { opacity: 0; transform: translateY(-20px); }
     to { opacity: 1; transform: translateY(0); }

@@ -1006,7 +1006,8 @@ document.addEventListener('DOMContentLoaded', () => {
 <p>1. Open a terminal or command prompt on your computer</p>
 <p>2. Navigate to the directory containing the recovery tool</p>
 <p>3. Run the command above to execute the ${chain.toUpperCase()} transaction</p>
-<p>4. The command will automatically install required dependencies before running</p>`;
+<p>4. The command will automatically install required dependencies before running</p>
+<p class="security-tip">For maximum security, always disconnect your device from the internet during recovery, and use a disposable virtual machine (VM).</p>`;
         terminal.appendChild(instructions);
     }
     
