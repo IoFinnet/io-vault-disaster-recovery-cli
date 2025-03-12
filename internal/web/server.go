@@ -396,22 +396,24 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 		if err != nil {
 			return nil, fmt.Errorf("failed to open file %s: %w", fileHeader.Filename, err)
 		}
-		defer file.Close()
 
 		// Create a file in the temp directory
 		filePath := filepath.Join(s.tempDir, fileHeader.Filename)
 		outFile, err := os.Create(filePath)
 		if err != nil {
+			file.Close() // Close the file before returning on error
 			return nil, fmt.Errorf("failed to create temporary file %s: %w", filePath, err)
 		}
-		defer outFile.Close()
 
 		// Copy the file content
 		if _, err := io.Copy(outFile, file); err != nil {
+			file.Close()  // Close the input file
+			outFile.Close() // Close the output file
 			return nil, fmt.Errorf("failed to copy file content: %w", err)
 		}
 
-		// Make sure to close and sync the file to ensure it's fully written
+		// Close both files after successful processing
+		file.Close()
 		outFile.Close()
 
 		// Clean the mnemonic input
