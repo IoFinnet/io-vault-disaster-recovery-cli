@@ -278,9 +278,18 @@
                 <h3>Bittensor Transaction</h3>
 
                 <div class="transaction-form">
-                    <div class="form-group">
-                        <label for="bittensor-endpoint">Network Endpoint:</label>
-                        <input type="text" id="bittensor-endpoint" value="wss://entrypoint-finney.opentensor.ai:443" placeholder="Enter Bittensor network endpoint">
+                    <div class="network-selection">
+                        <label>Network:</label>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="bittensor-network" value="mainnet" checked>
+                                Mainnet (Finney)
+                            </label>
+                            <label>
+                                <input type="radio" name="bittensor-network" value="testnet">
+                                Testnet
+                            </label>
+                        </div>
                     </div>
 
                     <div class="form-group">
@@ -294,6 +303,7 @@
                     </div>
 
                     <div class="transaction-actions">
+                        <button id="bittensor-check-balance" class="secondary">Check Balance</button>
                         <button id="bittensor-create-tx" class="primary">Create Transaction</button>
                     </div>
                     

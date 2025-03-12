@@ -124,6 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('xrpl-create-tx').addEventListener('click', () => createTerminalTransaction('xrpl'));
     document.getElementById('xrpl-terminal-close').addEventListener('click', () => closeTerminal('xrpl'));
     
+    document.getElementById('bittensor-check-balance').addEventListener('click', () => createBalanceCheckCommand('bittensor'));
     document.getElementById('bittensor-create-tx').addEventListener('click', () => createTerminalTransaction('bittensor'));
     document.getElementById('bittensor-terminal-close').addEventListener('click', () => closeTerminal('bittensor'));
     
@@ -739,8 +740,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 const bittensorAmount = document.getElementById('bittensor-amount').value;
                 if (bittensorAmount) args.push("--amount", bittensorAmount);
                 
-                const bittensorEndpoint = document.getElementById('bittensor-endpoint').value;
-                if (bittensorEndpoint) args.push("--endpoint", bittensorEndpoint);
+                const bittensorNetwork = document.querySelector('input[name="bittensor-network"]:checked').value;
+                
+                // Set the correct endpoint based on network selection
+                const endpoint = bittensorNetwork === 'mainnet' 
+                    ? 'wss://entrypoint-finney.opentensor.ai:443'
+                    : 'wss://test.finney.opentensor.ai:443';
+                    
+                args.push("--endpoint", endpoint);
+                args.push("--network", bittensorNetwork);
                 break;
                 
             case 'solana':
@@ -954,6 +962,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 const xrplNetwork = document.querySelector('input[name="xrpl-network"]:checked').value;
                 args.push("--network", xrplNetwork);
+                break;
+                
+            case 'bittensor':
+                scriptPath = "scripts/bittensor-tool";
+                
+                const bittensorNetwork = document.querySelector('input[name="bittensor-network"]:checked').value;
+                
+                // Set the correct endpoint based on network selection
+                const endpoint = bittensorNetwork === 'mainnet' 
+                    ? 'wss://entrypoint-finney.opentensor.ai:443'
+                    : 'wss://test.finney.opentensor.ai:443';
+                    
+                args.push("--endpoint", endpoint);
+                args.push("--network", bittensorNetwork);
                 break;
                 
             case 'solana':
