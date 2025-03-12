@@ -780,11 +780,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // Display the commands in the terminal
-    function displayCommand(terminal, commands, chain) {
+    function displayCommand(terminal, commands, chain, isBalanceCheck = false) {
         // Create header
         const header = document.createElement('div');
         header.className = 'terminal-line terminal-header';
-        header.innerHTML = `<strong>Two-step process for maximum security:</strong>`;
+        header.innerHTML = isBalanceCheck
+            ? `<strong>Two-step process to check balance securely:</strong>`
+            : `<strong>Two-step process for secure transaction:</strong>`;
         terminal.appendChild(header);
         
         // STEP 1: Install dependencies (requires internet)
@@ -841,10 +843,12 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         terminal.appendChild(installCopyBtnWin);
         
-        // STEP 2: Run the transaction command (can be offline)
+        // STEP 2: Run the command (can be offline)
         const step2Header = document.createElement('div');
         step2Header.className = 'terminal-line terminal-step-header';
-        step2Header.innerHTML = `<span class="step-number">Step 2:</span> <span class="step-title">Execute transaction (can be offline)</span>`;
+        step2Header.innerHTML = isBalanceCheck 
+            ? `<span class="step-number">Step 2:</span> <span class="step-title">Check balance (can be offline)</span>`
+            : `<span class="step-number">Step 2:</span> <span class="step-title">Execute transaction (can be offline)</span>`;
         terminal.appendChild(step2Header);
         
         // For Mac/Linux
@@ -973,12 +977,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const installCommandWin = `pushd ${scriptPath} && npm install && popd`;
         const runCommandWin = `pushd ${scriptPath} && npm start -- ${args.join(' ')} && popd`;
         
-        // Display the commands
+        // Display the commands, indicating this is a balance check
         displayCommand(terminal, { 
             installCommand, 
             runCommand,
             installCommandWin,
             runCommandWin
-        }, chain);
+        }, chain, true);
     }
 });
