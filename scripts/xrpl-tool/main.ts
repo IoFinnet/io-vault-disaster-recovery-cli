@@ -35,6 +35,7 @@ const args = process.argv.slice(2);
 const commandLineArgs = {
   publicKey: '',
   privateKey: '',
+  address: '',
   destination: '',
   amount: '',
   network: '',
@@ -53,12 +54,16 @@ for (let i = 0; i < args.length; i++) {
     case '-p':
       commandLineArgs.privateKey = args[++i];
       break;
+    case '--address':
+    case '-a':
+      commandLineArgs.address = args[++i];
+      break;
     case '--destination':
     case '-d':
       commandLineArgs.destination = args[++i];
       break;
     case '--amount':
-    case '-a':
+    case '-m':
       commandLineArgs.amount = args[++i];
       break;
     case '--network':
@@ -83,16 +88,19 @@ for (let i = 0; i < args.length; i++) {
 Usage: node main.js [options]
 
 Options:
-  -k, --public-key <key>      Public key (64 hex chars)
-  -p, --private-key <key>     Private key (64 hex chars)
-  -d, --destination <address> Destination address
-  -a, --amount <amount>       Amount of XRP to transfer
+  -k, --public-key <key>      Public key (64 hex chars) for transaction signing
+  -p, --private-key <key>     Private key (64 hex chars) for transaction signing
+  -a, --address <address>     XRPL Address to check balance (use with --check-balance)
+  -d, --destination <address> Destination address for transfers
+  -m, --amount <amount>       Amount of XRP to transfer
   -n, --network <network>     Network to use (mainnet, testnet)
-  -c, --check-balance         Check wallet balance before transfer
+  -c, --check-balance         Check wallet balance
   -b, --broadcast             Broadcast the transaction
   -y, --confirm               Auto-confirm transaction without prompting
   -h, --help                  Show this help message
       
+For balance checks: Use --address and --check-balance
+For transfers: Use --private-key, --public-key, --destination, and --amount
 If any required parameter is not provided, you will be prompted for it interactively.
 `);
       process.exit(0);
@@ -117,11 +125,16 @@ function validateDestinationAddress(address) {
 }
 
 async function main() {
-  console.log('XRP Transfer Tool\n');
+  if (commandLineArgs.checkBalance) {
+    console.log('XRP Balance Check Tool\n');
+  } else {
+    console.log('XRP Transfer Tool\n');
+  }
   
   // Initialize variables from command line arguments
   let publicKey = commandLineArgs.publicKey;
   let privateKey = commandLineArgs.privateKey;
+  let address = commandLineArgs.address;
   let destination = commandLineArgs.destination;
   let amount = commandLineArgs.amount;
   let networkOption = commandLineArgs.network;
@@ -149,6 +162,75 @@ async function main() {
     useMainNet = readlineSync.keyInYNStrict('Would you like to use mainnet? (No for testnet)');
     rpcUrl = !useMainNet ? TESTNET_URL : MAINNET_URL;
     console.log(`Using ${useMainNet ? 'mainnet' : 'testnet'} network`);
+  }
+
+  // If checking balance with address parameter only
+  if (commandLineArgs.checkBalance && address) {
+    if (!validateDestinationAddress(address)) {
+      console.error('Invalid address format. Must be a valid XRPL address starting with "r".');
+      process.exit(1);
+    }
+    
+    console.log(`\nChecking balance for address: ${address}`);
+    
+    // Check balance for the provided address
+    try {
+      const client = new Client(rpcUrl);
+      await client.connect();
+
+      const accountInfo = await client.request({
+        command: 'account_info',
+        account: address,
+        ledger_index: 'validated'
+      });
+
+      const xrpBalance = Number(accountInfo.result.account_data.Balance) / 1000000;
+      console.log(`Balance: ${xrpBalance} XRP`);
+
+      await client.disconnect();
+      return;
+    } catch (error) {
+      console.error('Error fetching balance:', error.message);
+      process.exit(1);
+    }
+  }
+
+  // If we're only checking balance and no address provided, prompt for address
+  if (commandLineArgs.checkBalance && !address && !publicKey && !privateKey) {
+    console.log(EXIT_MESSAGE);
+    do {
+      address = readlineSync.question('Enter XRPL address to check: ');
+      if (address === EXIT_KEYWORD) {
+        console.log('Exiting program...');
+        process.exit(0);
+      }
+      if (!validateDestinationAddress(address)) {
+        console.log('Invalid address format. Must be a valid XRPL address starting with "r".');
+      }
+    } while (!validateDestinationAddress(address));
+    
+    console.log(`\nChecking balance for address: ${address}`);
+    
+    // Check balance for the provided address
+    try {
+      const client = new Client(rpcUrl);
+      await client.connect();
+
+      const accountInfo = await client.request({
+        command: 'account_info',
+        account: address,
+        ledger_index: 'validated'
+      });
+
+      const xrpBalance = Number(accountInfo.result.account_data.Balance) / 1000000;
+      console.log(`Balance: ${xrpBalance} XRP`);
+
+      await client.disconnect();
+      return;
+    } catch (error) {
+      console.error('Error fetching balance:', error.message);
+      process.exit(1);
+    }
   }
 
   // If public key and private key not provided, prompt for them
@@ -213,6 +295,7 @@ async function main() {
       console.log(`Balance: ${xrpBalance} XRP`);
 
       await client.disconnect();
+      return;
     } catch (error) {
       console.error('Error fetching balance:', error.message);
       console.log('Continuing in offline mode...');

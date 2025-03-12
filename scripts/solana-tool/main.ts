@@ -19,6 +19,7 @@ const EXIT_MESSAGE = `Type '${EXIT_KEYWORD}' at any prompt to exit the program`;
 const args = process.argv.slice(2);
 const commandLineArgs = {
   privateKey: '',
+  address: '',
   destination: '',
   amount: '',
   network: '',
@@ -33,12 +34,16 @@ for (let i = 0; i < args.length; i++) {
     case '-p':
       commandLineArgs.privateKey = args[++i];
       break;
+    case '--address':
+    case '-a':
+      commandLineArgs.address = args[++i];
+      break;
     case '--destination':
     case '-d':
       commandLineArgs.destination = args[++i];
       break;
     case '--amount':
-    case '-a':
+    case '-m':
       commandLineArgs.amount = args[++i];
       break;
     case '--network':
@@ -63,15 +68,18 @@ for (let i = 0; i < args.length; i++) {
 Usage: node main.js [options]
 
 Options:
-  -p, --private-key <key>     Private key (64 hex chars)
-  -d, --destination <address> Destination address
-  -a, --amount <amount>       Amount of SOL to transfer
+  -p, --private-key <key>     Private key (64 hex chars) for transaction signing
+  -a, --address <address>     Solana public address to check balance (use with --check-balance)
+  -d, --destination <address> Destination address for transfers
+  -m, --amount <amount>       Amount of SOL to transfer
   -n, --network <network>     Network to use (mainnet, testnet, devnet)
-  -c, --check-balance         Check wallet balance before transfer
+  -c, --check-balance         Check wallet balance
   -b, --broadcast             Broadcast the transaction
   -y, --confirm               Auto-confirm transaction without prompting
   -h, --help                  Show this help message
       
+For balance checks: Use --address and --check-balance
+For transfers: Use --private-key, --destination, and --amount
 If any required parameter is not provided, you will be prompted for it interactively.
 `);
       process.exit(0);
@@ -242,10 +250,15 @@ async function transferSOL(
 }
 
 async function main() {
-  console.log('Solana Transfer Tool\n');
+  if (commandLineArgs.checkBalance) {
+    console.log('Solana Balance Check Tool\n');
+  } else {
+    console.log('Solana Transfer Tool\n');
+  }
   
   // Initialize variables
   let privateKey = commandLineArgs.privateKey;
+  let address = commandLineArgs.address;
   let destination = commandLineArgs.destination;
   let amount = commandLineArgs.amount;
   let networkOption = commandLineArgs.network;
@@ -283,7 +296,55 @@ async function main() {
     console.log(`Using ${networkOptions[networkIndex]} network: ${selectedUrl}`);
   }
 
-  // Get private key if not provided
+  // Connect to Solana network
+  const connection = new Connection(selectedUrl, 'confirmed');
+  
+  // If checking balance with address parameter only
+  if (commandLineArgs.checkBalance && address) {
+    try {
+      if (!validateSolanaAddress(address)) {
+        console.error('Invalid Solana address format.');
+        process.exit(1);
+      }
+      
+      console.log(`\nChecking balance for address: ${address}`);
+      const pubKey = new PublicKey(address);
+      const balance = await connection.getBalance(pubKey);
+      console.log(`Balance: ${balance / LAMPORTS_PER_SOL} SOL`);
+      return;
+    } catch (error: any) {
+      console.error('Error fetching balance:', error.message);
+      process.exit(1);
+    }
+  }
+  
+  // If we're only checking balance and no address provided, prompt for address
+  if (commandLineArgs.checkBalance && !address && !privateKey) {
+    console.log(EXIT_MESSAGE);
+    do {
+      address = readlineSync.question('\nEnter Solana address to check: ');
+      if (address === EXIT_KEYWORD) {
+        console.log('Exiting program...');
+        process.exit(0);
+      }
+      if (!validateSolanaAddress(address)) {
+        console.log('Invalid Solana address format.');
+      }
+    } while (!validateSolanaAddress(address));
+    
+    console.log(`\nChecking balance for address: ${address}`);
+    try {
+      const pubKey = new PublicKey(address);
+      const balance = await connection.getBalance(pubKey);
+      console.log(`Balance: ${balance / LAMPORTS_PER_SOL} SOL`);
+      return;
+    } catch (error: any) {
+      console.error('Error fetching balance:', error.message);
+      process.exit(1);
+    }
+  }
+
+  // Get private key if not provided (needed for transactions or derived balance check)
   if (!privateKey) {
     do {
       privateKey = readlineSync.question('\nPrivate Key (64 hex chars): ', { hideEchoBack: true });
@@ -305,20 +366,18 @@ async function main() {
     const wallet = createKeypairFromPrivateKey(privateKey);
     console.log(`\nDerived Solana Address: ${wallet.address}`);
 
-    // Connect to Solana network
-    const connection = new Connection(selectedUrl, 'confirmed');
-
-    // Check balance if requested or default to prompt if not specified
+    // Check balance if requested with private key
     let balance;
     if (commandLineArgs.checkBalance) {
       try {
         balance = await connection.getBalance(wallet.publicKey);
         console.log(`Balance: ${balance / LAMPORTS_PER_SOL} SOL`);
+        return;
       } catch (error: any) {
         console.error('Error fetching balance:', error.message);
         console.log('Continuing in offline mode...');
       }
-    } else if (!commandLineArgs.privateKey || !commandLineArgs.destination || !commandLineArgs.amount) {
+    } else if (!commandLineArgs.destination || !commandLineArgs.amount) {
       // Only prompt for balance check if we're in interactive mode
       const checkBalance = readlineSync.keyInYNStrict('\nWould you like to check the wallet balance? (requires network connection)');
       if (checkBalance) {
