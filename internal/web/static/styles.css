@@ -623,9 +623,10 @@ button:active {
     border: none;
     border-radius: 4px;
     padding: 0.4rem 0.8rem;
-    margin-bottom: 0.8rem;
+    margin: 0.2rem 0 0.7rem 0;
     cursor: pointer;
     font-size: 0.85rem;
+    display: inline-block;
 }
 
 .terminal-copy-btn:hover {
@@ -675,6 +676,21 @@ button:active {
     margin-top: 0.8rem !important;
     border-left: 3px solid #ff9800;
     padding-left: 0.5rem !important;
+}
+
+.terminal-step-header {
+    margin: 1rem 0 0.4rem 0;
+    color: #58a6ff;
+    font-weight: 500;
+}
+
+.step-number {
+    font-weight: bold;
+    margin-right: 0.3rem;
+}
+
+.step-title {
+    color: #ddd;
 }
 
 @keyframes dialogFadeIn {

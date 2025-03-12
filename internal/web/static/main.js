@@ -762,38 +762,68 @@ document.addEventListener('DOMContentLoaded', () => {
                 return "";
         }
         
-        // Construct the command with proper escaping - include npm install to ensure dependencies are installed
-        command = `cd ${scriptPath} && npm install && npm start -- ${args.join(' ')}`;
+        // Create two separate commands - one for installation (requires internet) and one for execution (can be offline)
+        const installCommand = `cd ${scriptPath} && npm install`;
+        const runCommand = `cd ${scriptPath} && npm start -- ${args.join(' ')}`;
         
-        return command;
+        return { installCommand, runCommand };
     }
     
-    // Display the command in the terminal
-    function displayCommand(terminal, command, chain) {
+    // Display the commands in the terminal
+    function displayCommand(terminal, commands, chain) {
         // Create header
         const header = document.createElement('div');
         header.className = 'terminal-line terminal-header';
-        header.innerHTML = `<strong>Run this command in your terminal:</strong>`;
+        header.innerHTML = `<strong>Two-step process for maximum security:</strong>`;
         terminal.appendChild(header);
         
-        // Create command box
-        const commandBox = document.createElement('div');
-        commandBox.className = 'terminal-line terminal-command-box';
-        commandBox.textContent = command;
-        terminal.appendChild(commandBox);
+        // STEP 1: Install dependencies (requires internet)
+        const step1Header = document.createElement('div');
+        step1Header.className = 'terminal-line terminal-step-header';
+        step1Header.innerHTML = `<span class="step-number">Step 1:</span> <span class="step-title">Install dependencies (requires internet connection)</span>`;
+        terminal.appendChild(step1Header);
         
-        // Create copy button
-        const copyBtn = document.createElement('button');
-        copyBtn.className = 'terminal-copy-btn';
-        copyBtn.textContent = 'Copy Command';
-        copyBtn.onclick = function() {
-            copyToClipboard(command);
-            copyBtn.textContent = 'Copied!';
+        const installBox = document.createElement('div');
+        installBox.className = 'terminal-line terminal-command-box';
+        installBox.textContent = commands.installCommand;
+        terminal.appendChild(installBox);
+        
+        // Create copy button for install command
+        const installCopyBtn = document.createElement('button');
+        installCopyBtn.className = 'terminal-copy-btn';
+        installCopyBtn.textContent = 'Copy Install Command';
+        installCopyBtn.onclick = function() {
+            copyToClipboard(commands.installCommand);
+            installCopyBtn.textContent = 'Copied!';
             setTimeout(() => {
-                copyBtn.textContent = 'Copy Command';
+                installCopyBtn.textContent = 'Copy Install Command';
             }, 1500);
         };
-        terminal.appendChild(copyBtn);
+        terminal.appendChild(installCopyBtn);
+        
+        // STEP 2: Run the transaction command (can be offline)
+        const step2Header = document.createElement('div');
+        step2Header.className = 'terminal-line terminal-step-header';
+        step2Header.innerHTML = `<span class="step-number">Step 2:</span> <span class="step-title">Execute transaction (can be offline)</span>`;
+        terminal.appendChild(step2Header);
+        
+        const runBox = document.createElement('div');
+        runBox.className = 'terminal-line terminal-command-box';
+        runBox.textContent = commands.runCommand;
+        terminal.appendChild(runBox);
+        
+        // Create copy button for run command
+        const runCopyBtn = document.createElement('button');
+        runCopyBtn.className = 'terminal-copy-btn';
+        runCopyBtn.textContent = 'Copy Run Command';
+        runCopyBtn.onclick = function() {
+            copyToClipboard(commands.runCommand);
+            runCopyBtn.textContent = 'Copied!';
+            setTimeout(() => {
+                runCopyBtn.textContent = 'Copy Run Command';
+            }, 1500);
+        };
+        terminal.appendChild(runCopyBtn);
         
         // Add prerequisites section
         const prerequisites = document.createElement('div');
@@ -809,11 +839,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const instructions = document.createElement('div');
         instructions.className = 'terminal-line terminal-instructions';
         instructions.innerHTML = `<h4>Instructions:</h4>
-<p>1. Open a terminal or command prompt on your computer</p>
-<p>2. Navigate to the directory containing the recovery tool</p>
-<p>3. Run the command above to execute the ${chain.toUpperCase()} transaction</p>
-<p>4. The command will automatically install required dependencies before running</p>
-<p class="security-tip">For maximum security, always disconnect your device from the internet during recovery, and use a disposable virtual machine (VM).</p>`;
+<p>1. <strong>First, with an internet connection</strong>: Navigate to the recovery tool directory and run the Step 1 install command</p>
+<p>2. <strong>Then, disconnect from the internet</strong> for maximum security</p>
+<p>3. Run the Step 2 command to execute the ${chain.toUpperCase()} transaction in offline mode</p>
+<p class="security-tip">For maximum security, perform Step 1 and Step 2 in separate sessions. Install dependencies while connected to the internet, then disconnect completely before performing the actual transaction with your private keys.</p>
+<p class="security-tip">Ideally, use a disposable virtual machine (VM) that you can discard after the recovery process is complete.</p>`;
         terminal.appendChild(instructions);
     }
     
@@ -864,10 +894,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
         }
         
-        // Construct the command with proper escaping - include npm install to ensure dependencies are installed
-        command = `cd ${scriptPath} && npm install && npm start -- ${args.join(' ')}`;
+        // Create two separate commands - one for installation (requires internet) and one for execution (can be offline)
+        const installCommand = `cd ${scriptPath} && npm install`;
+        const runCommand = `cd ${scriptPath} && npm start -- ${args.join(' ')}`;
         
-        // Display the command
-        displayCommand(terminal, command, chain);
+        // Display the commands
+        displayCommand(terminal, { installCommand, runCommand }, chain);
     }
 });
