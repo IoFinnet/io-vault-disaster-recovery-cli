@@ -119,17 +119,86 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Connect transaction buttons
-    document.getElementById('xrpl-check-balance').addEventListener('click', () => createBalanceCheckCommand('xrpl'));
-    document.getElementById('xrpl-create-tx').addEventListener('click', () => createTerminalTransaction('xrpl'));
+    // Connect transaction buttons with HTML5 validation
+    const xrplCheckBalanceBtn = document.getElementById('xrpl-check-balance');
+    const xrplCreateTxBtn = document.getElementById('xrpl-create-tx');
+    
+    xrplCheckBalanceBtn.addEventListener('click', () => {
+        if (recoveredKeys && recoveredKeys.xrplAddress) {
+            createBalanceCheckCommand('xrpl');
+        } else {
+            alert('No valid XRPL address found for this vault');
+        }
+    });
+    
+    xrplCreateTxBtn.addEventListener('click', () => {
+        // Use browser's built-in form validation
+        const xrplDestInput = document.getElementById('xrpl-destination');
+        const xrplAmountInput = document.getElementById('xrpl-amount');
+        
+        if (xrplDestInput.checkValidity() && xrplAmountInput.checkValidity()) {
+            createTerminalTransaction('xrpl');
+        } else {
+            // Trigger the browser's validation UI
+            if (!xrplDestInput.checkValidity()) xrplDestInput.reportValidity();
+            if (!xrplAmountInput.checkValidity()) xrplAmountInput.reportValidity();
+        }
+    });
+    
     document.getElementById('xrpl-terminal-close').addEventListener('click', () => closeTerminal('xrpl'));
     
-    document.getElementById('bittensor-check-balance').addEventListener('click', () => createBalanceCheckCommand('bittensor'));
-    document.getElementById('bittensor-create-tx').addEventListener('click', () => createTerminalTransaction('bittensor'));
+    const bittensorCheckBalanceBtn = document.getElementById('bittensor-check-balance');
+    const bittensorCreateTxBtn = document.getElementById('bittensor-create-tx');
+    
+    bittensorCheckBalanceBtn.addEventListener('click', () => {
+        if (recoveredKeys && recoveredKeys.bittensorAddress) {
+            createBalanceCheckCommand('bittensor');
+        } else {
+            alert('No valid Bittensor address found for this vault');
+        }
+    });
+    
+    bittensorCreateTxBtn.addEventListener('click', () => {
+        // Use browser's built-in form validation
+        const bittensorDestInput = document.getElementById('bittensor-destination');
+        const bittensorAmountInput = document.getElementById('bittensor-amount');
+        
+        if (bittensorDestInput.checkValidity() && bittensorAmountInput.checkValidity()) {
+            createTerminalTransaction('bittensor');
+        } else {
+            // Trigger the browser's validation UI
+            if (!bittensorDestInput.checkValidity()) bittensorDestInput.reportValidity();
+            if (!bittensorAmountInput.checkValidity()) bittensorAmountInput.reportValidity();
+        }
+    });
+    
     document.getElementById('bittensor-terminal-close').addEventListener('click', () => closeTerminal('bittensor'));
     
-    document.getElementById('solana-check-balance').addEventListener('click', () => createBalanceCheckCommand('solana'));
-    document.getElementById('solana-create-tx').addEventListener('click', () => createTerminalTransaction('solana'));
+    const solanaCheckBalanceBtn = document.getElementById('solana-check-balance');
+    const solanaCreateTxBtn = document.getElementById('solana-create-tx');
+    
+    solanaCheckBalanceBtn.addEventListener('click', () => {
+        if (recoveredKeys && recoveredKeys.solanaAddress) {
+            createBalanceCheckCommand('solana');
+        } else {
+            alert('No valid Solana address found for this vault');
+        }
+    });
+    
+    solanaCreateTxBtn.addEventListener('click', () => {
+        // Use browser's built-in form validation
+        const solanaDestInput = document.getElementById('solana-destination');
+        const solanaAmountInput = document.getElementById('solana-amount');
+        
+        if (solanaDestInput.checkValidity() && solanaAmountInput.checkValidity()) {
+            createTerminalTransaction('solana');
+        } else {
+            // Trigger the browser's validation UI
+            if (!solanaDestInput.checkValidity()) solanaDestInput.reportValidity();
+            if (!solanaAmountInput.checkValidity()) solanaAmountInput.reportValidity();
+        }
+    });
+    
     document.getElementById('solana-terminal-close').addEventListener('click', () => closeTerminal('solana'));
 
     // ==================
