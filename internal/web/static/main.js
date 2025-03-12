@@ -1,41 +1,3 @@
-// Reference to the noble-ed25519 library (loaded from jsdelivr in the HTML)
-// The library exposes its methods directly on the window namespace as nobleEd25519
-document.addEventListener('DOMContentLoaded', () => {
-    // Check if the noble library is loaded
-    if (typeof window.nobleEd25519 === 'undefined') {
-        console.error('Noble ed25519 library not loaded. Check the script tag in the HTML.');
-    }
-});
-
-// Polyfill Buffer for browser environments if not available
-if (typeof Buffer === 'undefined') {
-    window.Buffer = {
-        from: function(data, encoding) {
-            if (encoding === 'hex') {
-                // Convert hex string to Uint8Array
-                const hexString = data.toString();
-                const result = new Uint8Array(hexString.length / 2);
-                for (let i = 0; i < hexString.length; i += 2) {
-                    result[i / 2] = parseInt(hexString.substring(i, i + 2), 16);
-                }
-                return result;
-            } else {
-                // Default behavior for other encodings
-                return new TextEncoder().encode(data.toString());
-            }
-        },
-        toString: function(buffer, encoding) {
-            if (encoding === 'hex') {
-                return Array.from(buffer)
-                    .map(b => b.toString(16).padStart(2, '0'))
-                    .join('');
-            } else {
-                return new TextDecoder().decode(buffer);
-            }
-        }
-    };
-}
-
 document.addEventListener('DOMContentLoaded', () => {
     // Element references
     const addFileBtn = document.getElementById('add-file');
@@ -905,72 +867,13 @@ document.addEventListener('DOMContentLoaded', () => {
             // Continue to fallback validation
         }
 
-        // Fallback: web3 library validation if available
-        if (window.solanaWeb3) {
-            try {
-                new solanaWeb3.PublicKey(address);
-                return true;
-            } catch (error) {
-                return false;
-            }
-        }
+        // Server-side validation failed, continue to regex fallback
 
         // Final fallback: regex validation for Solana addresses
         // Matching the validation in the solana.go package: base58 format, length between 32-44 chars
         return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address);
     }
 
-
-    // ==================
-    // Crypto Utility Functions
-    // ==================
-
-    // Adapted from the Node.js scripts for browser compatibility
-    async function signWithScalar(messageHex, privateKeyHex) {
-        // Remove '0x' prefix if present from inputs
-        messageHex = messageHex.replace(/^0x/, '');
-        privateKeyHex = privateKeyHex.replace(/^0x/, '');
-
-        // Convert hex message to Uint8Array using our helper function
-        const message = hexToBytes(messageHex);
-
-        // Convert hex private key scalar to Uint8Array
-        const privateKeyBytes = hexToBytes(privateKeyHex);
-
-        try {
-            // Calculate public key directly from private key scalar using the Noble ed25519 library
-            // Access it from the window object where it's loaded from jsdelivr
-            const publicKey = await window.nobleEd25519.getPublicKey(privateKeyBytes);
-
-            // Sign the message
-            const signature = await window.nobleEd25519.sign(message, privateKeyBytes);
-
-            // Convert outputs to hex strings
-            return {
-                signature: bytesToHex(signature),
-                publicKey: bytesToHex(publicKey)
-            };
-        } catch (error) {
-            console.error('Error in signWithScalar:', error);
-            throw error;
-        }
-    }
-
-    // Helper function to convert hex string to Uint8Array
-    function hexToBytes(hex) {
-        const bytes = new Uint8Array(hex.length / 2);
-        for (let i = 0; i < hex.length; i += 2) {
-            bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
-        }
-        return bytes;
-    }
-
-    // Helper function to convert Uint8Array to hex string
-    function bytesToHex(bytes) {
-        return Array.from(bytes)
-            .map(b => b.toString(16).padStart(2, '0'))
-            .join('');
-    }
 
     // Initialize file input event listeners
     initializeFileInputs();
