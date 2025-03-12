@@ -157,15 +157,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Connect terminal buttons
-    document.getElementById('xrpl-check-balance').addEventListener('click', checkXRPLBalance);
+    // Connect transaction buttons
+    document.getElementById('xrpl-check-balance').addEventListener('click', () => createBalanceCheckCommand('xrpl'));
     document.getElementById('xrpl-create-tx').addEventListener('click', () => createTerminalTransaction('xrpl'));
     document.getElementById('xrpl-terminal-close').addEventListener('click', () => closeTerminal('xrpl'));
     
     document.getElementById('bittensor-create-tx').addEventListener('click', () => createTerminalTransaction('bittensor'));
     document.getElementById('bittensor-terminal-close').addEventListener('click', () => closeTerminal('bittensor'));
     
-    document.getElementById('solana-check-balance').addEventListener('click', checkSolanaBalance);
+    document.getElementById('solana-check-balance').addEventListener('click', () => createBalanceCheckCommand('solana'));
     document.getElementById('solana-create-tx').addEventListener('click', () => createTerminalTransaction('solana'));
     document.getElementById('solana-terminal-close').addEventListener('click', () => closeTerminal('solana'));
 
@@ -976,96 +976,11 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeFileInputs();
     
     // ==================
-    // Terminal WebSocket Functions
+    // Command Generation Functions
     // ==================
     
-    // WebSocket connection
-    let terminalSocket = null;
-    let activeTerminal = null;
-    let waitingForTerminal = false;
-    
-    // Create or reconnect WebSocket
-    function connectWebSocket() {
-        // Close existing connection if any
-        if (terminalSocket) {
-            terminalSocket.close();
-        }
-        
-        // Create WebSocket URL based on the current page URL
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/api/terminal`;
-        
-        // Create new WebSocket connection
-        terminalSocket = new WebSocket(wsUrl);
-        
-        // Set up event handlers
-        terminalSocket.onopen = (event) => {
-            console.log('Terminal WebSocket connection established');
-            // If we were waiting to start a terminal, send the command now
-            if (waitingForTerminal && activeTerminal) {
-                setTimeout(() => sendTerminalCommand(activeTerminal), 500);
-            }
-        };
-        
-        terminalSocket.onmessage = (event) => {
-            const message = JSON.parse(event.data);
-            handleTerminalMessage(message);
-        };
-        
-        terminalSocket.onclose = (event) => {
-            console.log('Terminal WebSocket connection closed');
-            // Try to reconnect after a delay if we're still using a terminal
-            if (activeTerminal) {
-                setTimeout(connectWebSocket, 2000);
-            }
-        };
-        
-        terminalSocket.onerror = (event) => {
-            console.error('Terminal WebSocket error:', event);
-        };
-    }
-    
-    // Handle terminal messages
-    function handleTerminalMessage(message) {
-        if (!activeTerminal) return;
-        
-        const terminal = document.getElementById(`${activeTerminal}-terminal`);
-        
-        switch (message.type) {
-            case 'output':
-                appendToTerminal(terminal, message.data);
-                break;
-                
-            case 'error':
-                appendToTerminal(terminal, message.data, 'error');
-                break;
-                
-            case 'exit':
-                appendToTerminal(terminal, `\nProcess exited with code ${message.exitCode}`, 
-                    message.exitCode === 0 ? 'success' : 'error');
-                break;
-                
-            default:
-                console.warn('Unknown message type:', message.type);
-        }
-        
-        // Scroll to bottom
-        terminal.scrollTop = terminal.scrollHeight;
-    }
-    
-    // Append text to the terminal with optional class
-    function appendToTerminal(terminal, text, className = 'output') {
-        const line = document.createElement('div');
-        line.className = `terminal-line terminal-${className}`;
-        line.textContent = text;
-        terminal.appendChild(line);
-    }
-    
-    // Create transaction in terminal
+    // Generate and display the command for the user to run
     function createTerminalTransaction(chain) {
-        // Set active terminal
-        activeTerminal = chain;
-        
         // Get terminal element and container
         const terminal = document.getElementById(`${chain}-terminal`);
         const terminalContainer = document.getElementById(`${chain}-terminal-container`);
@@ -1073,82 +988,180 @@ document.addEventListener('DOMContentLoaded', () => {
         // Clear terminal
         terminal.innerHTML = '';
         
-        // Show terminal
+        // Show terminal container
         terminalContainer.style.display = 'block';
         
-        // Connect WebSocket if not already connected
-        if (!terminalSocket || terminalSocket.readyState !== WebSocket.OPEN) {
-            connectWebSocket();
-            waitingForTerminal = true;
-        } else {
-            // Send the command
-            sendTerminalCommand(chain);
-        }
+        // Generate and display the command
+        const command = generateScriptCommand(chain);
+        displayCommand(terminal, command, chain);
     }
     
-    // Send command to start chain script
-    function sendTerminalCommand(chain) {
-        waitingForTerminal = false;
-        
-        // Prepare arguments based on chain
-        const args = {};
+    // Generate script command based on chain and form values
+    function generateScriptCommand(chain) {
+        // Base command with npx added for cross-platform compatibility
+        let scriptPath, command, args = [];
         
         // Common arguments for all chains: private key and confirm
-        args.privateKey = recoveredKeys.eddsaPrivateKey;
-        args.confirm = "true"; // Auto-confirm transactions
+        const privateKey = recoveredKeys.eddsaPrivateKey;
         
         switch (chain) {
             case 'xrpl':
-                args.publicKey = recoveredKeys.eddsaPublicKey;
-                args.destination = document.getElementById('xrpl-destination').value;
-                args.amount = document.getElementById('xrpl-amount').value;
-                args.network = document.querySelector('input[name="xrpl-network"]:checked').value;
+                scriptPath = "scripts/xrpl-tool";
+                args.push("--private-key", privateKey);
+                args.push("--public-key", recoveredKeys.eddsaPublicKey);
+                
+                const xrplDestination = document.getElementById('xrpl-destination').value;
+                if (xrplDestination) args.push("--destination", xrplDestination);
+                
+                const xrplAmount = document.getElementById('xrpl-amount').value;
+                if (xrplAmount) args.push("--amount", xrplAmount);
+                
+                const xrplNetwork = document.querySelector('input[name="xrpl-network"]:checked').value;
+                args.push("--network", xrplNetwork);
                 break;
                 
             case 'bittensor':
-                args.destination = document.getElementById('bittensor-destination').value;
-                args.amount = document.getElementById('bittensor-amount').value;
-                args.endpoint = document.getElementById('bittensor-endpoint').value;
+                scriptPath = "scripts/bittensor-tool";
+                args.push("--private-key", privateKey);
+                
+                const bittensorDestination = document.getElementById('bittensor-destination').value;
+                if (bittensorDestination) args.push("--destination", bittensorDestination);
+                
+                const bittensorAmount = document.getElementById('bittensor-amount').value;
+                if (bittensorAmount) args.push("--amount", bittensorAmount);
+                
+                const bittensorEndpoint = document.getElementById('bittensor-endpoint').value;
+                if (bittensorEndpoint) args.push("--endpoint", bittensorEndpoint);
                 break;
                 
             case 'solana':
-                args.destination = document.getElementById('solana-destination').value;
-                args.amount = document.getElementById('solana-amount').value;
-                args.network = document.querySelector('input[name="solana-network"]:checked').value;
+                scriptPath = "scripts/solana-tool";
+                args.push("--private-key", privateKey);
+                
+                const solanaDestination = document.getElementById('solana-destination').value;
+                if (solanaDestination) args.push("--destination", solanaDestination);
+                
+                const solanaAmount = document.getElementById('solana-amount').value;
+                if (solanaAmount) args.push("--amount", solanaAmount);
+                
+                const solanaNetwork = document.querySelector('input[name="solana-network"]:checked').value;
+                args.push("--network", solanaNetwork);
                 break;
                 
             default:
                 console.error('Unknown chain:', chain);
+                return "";
+        }
+        
+        // Construct the command with proper escaping - include npm install to ensure dependencies are installed
+        command = `cd ${scriptPath} && npm install && npm start -- ${args.join(' ')}`;
+        
+        return command;
+    }
+    
+    // Display the command in the terminal
+    function displayCommand(terminal, command, chain) {
+        // Create header
+        const header = document.createElement('div');
+        header.className = 'terminal-line terminal-header';
+        header.innerHTML = `<strong>Run this command in your terminal:</strong>`;
+        terminal.appendChild(header);
+        
+        // Create command box
+        const commandBox = document.createElement('div');
+        commandBox.className = 'terminal-line terminal-command-box';
+        commandBox.textContent = command;
+        terminal.appendChild(commandBox);
+        
+        // Create copy button
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'terminal-copy-btn';
+        copyBtn.textContent = 'Copy Command';
+        copyBtn.onclick = function() {
+            copyToClipboard(command);
+            copyBtn.textContent = 'Copied!';
+            setTimeout(() => {
+                copyBtn.textContent = 'Copy Command';
+            }, 1500);
+        };
+        terminal.appendChild(copyBtn);
+        
+        // Add prerequisites section
+        const prerequisites = document.createElement('div');
+        prerequisites.className = 'terminal-line terminal-prerequisites';
+        prerequisites.innerHTML = `
+            <h4>Prerequisites:</h4>
+            <p>You need Node.js installed on your computer to run this command.</p>
+            <p>If you don't have Node.js installed:</p>
+            <p>1. Download and install from <a href="https://nodejs.org" target="_blank">nodejs.org</a> (LTS version recommended)</p>
+            <p>2. Verify installation by typing <code>node --version</code> in your terminal</p>
+        `;
+        terminal.appendChild(prerequisites);
+        
+        // Add instructions
+        const instructions = document.createElement('div');
+        instructions.className = 'terminal-line terminal-instructions';
+        instructions.innerHTML = `
+            <h4>Instructions:</h4>
+            <p>1. Open a terminal or command prompt on your computer</p>
+            <p>2. Navigate to the directory containing the recovery tool</p>
+            <p>3. Run the command above to execute the ${chain.toUpperCase()} transaction</p>
+            <p>4. The command will automatically install required dependencies before running</p>
+        `;
+        terminal.appendChild(instructions);
+    }
+    
+    // Close command display
+    function closeTerminal(chain) {
+        // Hide terminal container
+        document.getElementById(`${chain}-terminal-container`).style.display = 'none';
+    }
+    
+    // Generate and display a balance check command
+    function createBalanceCheckCommand(chain) {
+        // Get terminal element and container
+        const terminal = document.getElementById(`${chain}-terminal`);
+        const terminalContainer = document.getElementById(`${chain}-terminal-container`);
+        
+        // Clear terminal
+        terminal.innerHTML = '';
+        
+        // Show terminal container
+        terminalContainer.style.display = 'block';
+        
+        // Generate the command with --check-balance flag
+        let scriptPath, command, args = [];
+        
+        // Common arguments: private key
+        const privateKey = recoveredKeys.eddsaPrivateKey;
+        args.push("--private-key", privateKey);
+        args.push("--check-balance");
+        
+        switch (chain) {
+            case 'xrpl':
+                scriptPath = "scripts/xrpl-tool";
+                args.push("--public-key", recoveredKeys.eddsaPublicKey);
+                
+                const xrplNetwork = document.querySelector('input[name="xrpl-network"]:checked').value;
+                args.push("--network", xrplNetwork);
+                break;
+                
+            case 'solana':
+                scriptPath = "scripts/solana-tool";
+                
+                const solanaNetwork = document.querySelector('input[name="solana-network"]:checked').value;
+                args.push("--network", solanaNetwork);
+                break;
+                
+            default:
+                console.error('Unsupported chain for balance check:', chain);
                 return;
         }
         
-        // Send command to server
-        const message = {
-            type: 'command',
-            chain: chain,
-            arguments: args
-        };
+        // Construct the command with proper escaping - include npm install to ensure dependencies are installed
+        command = `cd ${scriptPath} && npm install && npm start -- ${args.join(' ')}`;
         
-        terminalSocket.send(JSON.stringify(message));
-        
-        // Add command line to terminal
-        const terminal = document.getElementById(`${chain}-terminal`);
-        appendToTerminal(terminal, `> Starting ${chain} transaction process...`, 'command');
-    }
-    
-    // Close terminal
-    function closeTerminal(chain) {
-        if (terminalSocket && terminalSocket.readyState === WebSocket.OPEN) {
-            // Send exit command
-            terminalSocket.send(JSON.stringify({ type: 'exit' }));
-        }
-        
-        // Hide terminal container
-        document.getElementById(`${chain}-terminal-container`).style.display = 'none';
-        
-        // Clear active terminal if it's the one we're closing
-        if (activeTerminal === chain) {
-            activeTerminal = null;
-        }
+        // Display the command
+        displayCommand(terminal, command, chain);
     }
 });

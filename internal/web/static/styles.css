@@ -534,6 +534,7 @@ button:active {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    color: #5af78e;
 }
 
 .terminal-title {
@@ -580,7 +581,7 @@ button:active {
 
 .terminal-line {
     margin: 0;
-    padding: 0;
+    padding: 0.2rem 0;
 }
 
 .terminal-prompt {
@@ -601,6 +602,68 @@ button:active {
 
 .terminal-success {
     color: #5af78e;
+}
+
+.terminal-command-box {
+    background-color: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 4px;
+    padding: 0.8rem;
+    margin: 0.5rem 0 1rem 0;
+    word-break: break-all;
+    white-space: pre-wrap;
+    overflow-x: auto;
+    font-family: 'Consolas', 'Courier New', monospace;
+}
+
+.terminal-copy-btn {
+    background-color: #444;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 0.5rem 1rem;
+    margin-bottom: 1rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.terminal-copy-btn:hover {
+    background-color: #555;
+}
+
+.terminal-prerequisites,
+.terminal-instructions {
+    border-top: 1px solid #444;
+    padding-top: 1rem;
+    margin-top: 0.5rem;
+}
+
+.terminal-prerequisites h4,
+.terminal-instructions h4 {
+    color: #5af78e;
+    margin: 0 0 0.5rem 0;
+}
+
+.terminal-prerequisites p,
+.terminal-instructions p {
+    margin: 0.5rem 0;
+    color: #ccc;
+}
+
+.terminal-prerequisites a {
+    color: #58a6ff;
+    text-decoration: none;
+}
+
+.terminal-prerequisites a:hover {
+    text-decoration: underline;
+}
+
+.terminal-prerequisites code {
+    background-color: #2a2a2a;
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-family: 'Consolas', 'Courier New', monospace;
 }
 
 @keyframes dialogFadeIn {
