@@ -41,7 +41,11 @@ const commandLineArgs = {
   network: '',
   checkBalance: false,
   broadcast: false,
-  confirm: false
+  confirm: false,
+  offline: false,
+  sequence: 0,
+  fee: '12',
+  lastLedgerSequence: 0
 };
 
 for (let i = 0; i < args.length; i++) {
@@ -82,6 +86,22 @@ for (let i = 0; i < args.length; i++) {
     case '-y':
       commandLineArgs.confirm = true;
       break;
+    case '--offline':
+    case '-o':
+      commandLineArgs.offline = true;
+      break;
+    case '--sequence':
+    case '-s':
+      commandLineArgs.sequence = parseInt(args[++i], 10);
+      break;
+    case '--fee':
+    case '-f':
+      commandLineArgs.fee = args[++i];
+      break;
+    case '--last-ledger-sequence':
+    case '-l':
+      commandLineArgs.lastLedgerSequence = parseInt(args[++i], 10);
+      break;
     case '--help':
     case '-h':
       console.log(`
@@ -97,10 +117,15 @@ Options:
   -c, --check-balance         Check wallet balance
   -b, --broadcast             Broadcast the transaction
   -y, --confirm               Auto-confirm transaction without prompting
+  -o, --offline               Use offline mode (for air-gapped environments)
+  -s, --sequence <num>        Account sequence number for offline signing
+  -f, --fee <drops>           Transaction fee in drops (default: 12)
+  -l, --last-ledger-sequence <num> Last ledger sequence for transaction validity
   -h, --help                  Show this help message
-      
+
 For balance checks: Use --address and --check-balance
 For transfers: Use --private-key, --public-key, --destination, and --amount
+For offline transactions: Add --offline and provide --sequence and --last-ledger-sequence
 If any required parameter is not provided, you will be prompted for it interactively.
 `);
       process.exit(0);
@@ -130,7 +155,7 @@ async function main() {
   } else {
     console.log('XRP Transfer Tool\n');
   }
-  
+
   // Initialize variables from command line arguments
   let publicKey = commandLineArgs.publicKey;
   let privateKey = commandLineArgs.privateKey;
@@ -138,11 +163,12 @@ async function main() {
   let destination = commandLineArgs.destination;
   let amount = commandLineArgs.amount;
   let networkOption = commandLineArgs.network;
-  
+
   // Determine network URL
   let useMainNet = false;
   let rpcUrl = TESTNET_URL;
-  
+  let offlineMode = commandLineArgs.offline;
+
   if (networkOption) {
     if (networkOption === 'mainnet') {
       useMainNet = true;
@@ -164,15 +190,20 @@ async function main() {
     console.log(`Using ${useMainNet ? 'mainnet' : 'testnet'} network`);
   }
 
+  // Check if offline mode is explicitly requested or should be prompted
+  if (!offlineMode) {
+    console.log('Using online mode. Restart with the flag --offline to use offline mode.');
+  }
+
   // If checking balance with address parameter only
   if (commandLineArgs.checkBalance && address) {
     if (!validateDestinationAddress(address)) {
       console.error('Invalid address format. Must be a valid XRPL address starting with "r".');
       process.exit(1);
     }
-    
+
     console.log(`\nChecking balance for address: ${address}`);
-    
+
     // Check balance for the provided address
     try {
       const client = new Client(rpcUrl);
@@ -208,9 +239,9 @@ async function main() {
         console.log('Invalid address format. Must be a valid XRPL address starting with "r".');
       }
     } while (!validateDestinationAddress(address));
-    
+
     console.log(`\nChecking balance for address: ${address}`);
-    
+
     // Check balance for the provided address
     try {
       const client = new Client(rpcUrl);
@@ -237,7 +268,7 @@ async function main() {
   if (!publicKey || !privateKey) {
     console.log('\nPlease enter your EdDSA keypair from the DR tool (64 bytes each, in hexadecimal):');
   }
-  
+
   // Get and validate public key if not provided
   if (!publicKey) {
     do {
@@ -381,7 +412,7 @@ async function main() {
   console.log(`To: ${destination}`);
   console.log(`Amount: ${amount} XRP`);
   console.log(`Network: ${useMainNet ? 'mainnet' : 'testnet'}`);
-  
+
   // Confirm transaction if not auto-broadcasting and not auto-confirming
   if (!commandLineArgs.broadcast && !commandLineArgs.confirm) {
     const confirmTransaction = readlineSync.keyInYNStrict('\nConfirm transaction?');
@@ -391,22 +422,50 @@ async function main() {
     }
   }
 
-  console.log('\nConnecting to the XRP Ledger to prepare transaction. Please ensure you have network connectivity.');
-  try {
-    const client = new Client(rpcUrl);
-    await client.connect();
+  if (offlineMode) {
+    console.log('\nPreparing transaction in offline mode.');
 
-    // Prepare transaction
-    const tx = await client.autofill({
+    // Create transaction manually without network connection
+    let tx: Transaction = {
       TransactionType: 'Payment',
       Account: wallet.address,
       Destination: destination,
       Amount: xrpToDrops(amount),
-    }) as Transaction;
-    tx.SigningPubKey = wallet.publicKey;
-    if (tx.LastLedgerSequence) {
-      //** Adds 15 minutes worth of ledgers (assuming 4 ledgers per second) to the existing LastLedgerSequence value. */
-      tx.LastLedgerSequence = tx.LastLedgerSequence + 15 * 60 * 4;
+      Flags: 0,
+      Fee: commandLineArgs.fee,
+      SigningPubKey: wallet.publicKey
+    };
+
+    // If sequence number is provided, use it; otherwise prompt
+    if (commandLineArgs.sequence) {
+      tx.Sequence = commandLineArgs.sequence;
+      console.log(`Using provided sequence number: ${tx.Sequence}`);
+    } else {
+      const sequencePrompt = readlineSync.question('\nEnter account sequence number (required for offline transactions): ');
+      if (!sequencePrompt || isNaN(parseInt(sequencePrompt, 10))) {
+        console.error('\nError: Valid sequence number is required for offline transactions.');
+        console.log('\nTo get your account sequence number:');
+        console.log('1. Run this tool with --check-balance on an internet-connected device');
+        console.log('2. Or check your account on an XRPL explorer');
+        process.exit(1);
+      }
+      tx.Sequence = parseInt(sequencePrompt, 10);
+    }
+
+    // If last ledger sequence is provided, use it; otherwise prompt or use default
+    if (commandLineArgs.lastLedgerSequence) {
+      tx.LastLedgerSequence = commandLineArgs.lastLedgerSequence;
+      console.log(`Using provided LastLedgerSequence: ${tx.LastLedgerSequence}`);
+    } else {
+      const lastLedgerPrompt = readlineSync.question('\nEnter last ledger sequence (leave blank for default +1000 from current): ');
+
+      if (lastLedgerPrompt && !isNaN(parseInt(lastLedgerPrompt, 10))) {
+        tx.LastLedgerSequence = parseInt(lastLedgerPrompt, 10);
+      } else {
+        // Use sequence + 1000 as a reasonable default if no network connection
+        tx.LastLedgerSequence = tx.Sequence + 1000;
+        console.log(`Using default LastLedgerSequence: ${tx.LastLedgerSequence} (current sequence + 1000)`);
+      }
     }
 
     // Sign transaction
@@ -424,44 +483,99 @@ async function main() {
 
     if (!verifySignature(encodedTxHex, tx.SigningPubKey)) throw new Error('Signature verification failed');
 
-    // Broadcast transaction if requested or if --confirm flag is set
-    const wantToBroadcast = commandLineArgs.broadcast || commandLineArgs.confirm || readlineSync.keyInYNStrict('\nWould you like to broadcast this transaction now?');
+    // In offline mode, clearly output the signed transaction hex
+    console.log('\nTransaction signed successfully in offline mode!');
+    console.log(`Transaction hash: ${signedTxHash}`);
 
-    if (wantToBroadcast) {
-      console.log('\nBroadcasting transaction...');
-      const submit = await client.submit(encodedTxHex);
-      console.log(`Initial status: ${submit.result.engine_result_message}`);
+    console.log('\n========== SIGNED TRANSACTION HEX ==========');
+    console.log(encodedTxHex);
+    console.log('==========================================');
 
-      if (submit.result.engine_result.includes('SUCCESS')) {
-        console.log('\nWaiting for validation...');
-        const txResponse = await client.request({
-          command: 'tx',
-          transaction: signedTxHash,
-          binary: false
-        });
+    console.log('\nCopy this transaction hex data and save it for broadcasting from an online device.');
 
-        if (txResponse.result.validated) {
-          console.log('\nTransaction validated!');
-          console.log(`Transaction hash: ${signedTxHash}`);
+    console.log('\nTo broadcast this transaction later:');
+    console.log('1. Use the XRPL CLI tool: xrpl submit <tx_blob>');
+    console.log('2. Or use any XRPL node\'s RPC interface with the submit method');
+    console.log('3. Or use the XRPL Explorer to broadcast the transaction: https://livenet.xrpl.org/');
+    console.log('4. Or run this tool without the --offline flag and paste this transaction hex when prompted');
+    return;
+
+  } else {
+    console.log('\nConnecting to the XRP Ledger to prepare transaction. Please ensure you have network connectivity.');
+    try {
+      const client = new Client(rpcUrl);
+      await client.connect();
+
+      // Prepare transaction
+      let tx = await client.autofill({
+        TransactionType: 'Payment',
+        Account: wallet.address,
+        Destination: destination,
+        Amount: xrpToDrops(amount),
+      }) as Transaction;
+      tx.SigningPubKey = wallet.publicKey;
+      if (tx.LastLedgerSequence) {
+        //** Adds 15 minutes worth of ledgers (assuming 4 ledgers per second) to the existing LastLedgerSequence value. */
+        tx.LastLedgerSequence = tx.LastLedgerSequence + 15 * 60 * 4;
+      }
+
+      // Sign transaction
+      const preImageHex = encodeForSigning(tx);
+      console.log('Transaction Pre-image:', encodeForSigning(tx));
+
+      const { signature } = await signWithScalar(preImageHex, privateKey);
+      tx.TxnSignature = signature;
+      console.log('Transaction Details:', tx);
+
+      const encodedTxHex = encode(tx);
+      const signedTxHash = hashSignedTx(encodedTxHex);
+      console.log('\nSigned transaction hex:');
+      console.log(encodedTxHex);
+
+      if (!verifySignature(encodedTxHex, tx.SigningPubKey)) throw new Error('Signature verification failed');
+
+      // Broadcast transaction if requested or if --confirm flag is set
+      const wantToBroadcast = commandLineArgs.broadcast || commandLineArgs.confirm || readlineSync.keyInYNStrict('\nWould you like to broadcast this transaction now?');
+
+      if (wantToBroadcast) {
+        console.log('\nBroadcasting transaction...');
+        const submit = await client.submit(encodedTxHex);
+        console.log(`Initial status: ${submit.result.engine_result_message}`);
+
+        if (submit.result.engine_result.includes('SUCCESS')) {
+          console.log('\nWaiting for validation...');
+          const txResponse = await client.request({
+            command: 'tx',
+            transaction: signedTxHash,
+            binary: false
+          });
+
+          if (txResponse.result.validated) {
+            console.log('\nTransaction validated!');
+            console.log(`Transaction hash: ${signedTxHash}`);
+          } else {
+            console.log('\nTransaction not yet validated. You can check status later with hash:');
+            console.log(signedTxHash);
+          }
         } else {
-          console.log('\nTransaction not yet validated. You can check status later with hash:');
-          console.log(signedTxHash);
+          console.log('\nTransaction failed to submit.');
+          console.log(`Error: ${submit.result.engine_result_message}`);
         }
       } else {
-        console.log('\nTransaction failed to submit.');
-        console.log(`Error: ${submit.result.engine_result_message}`);
+        console.log('\nTo broadcast this transaction later:');
+        console.log('1. Use the XRPL CLI tool: xrpl submit <tx_blob>');
+        console.log('2. Or use any XRPL node\'s RPC interface with the submit method');
       }
-    } else {
-      console.log('\nTo broadcast this transaction later:');
-      console.log('1. Use the XRPL CLI tool: xrpl submit <tx_blob>');
-      console.log('2. Or use any XRPL node\'s RPC interface with the submit method');
-    }
 
-    await client.disconnect();
-  } catch (error) {
-    console.error('Error:', error.data?.error_exception || error.message);
-    console.log('Please ensure you have network connectivity to prepare and broadcast the transaction.');
-    process.exit(1);
+      await client.disconnect();
+    } catch (error) {
+      console.error('Error:', error.data?.error_exception || error.message);
+      if (!offlineMode) {
+        console.log('Please ensure you have network connectivity to prepare and broadcast the transaction.');
+        console.log('If you are in an air-gapped environment, try running with the --offline flag.');
+      }
+      process.exit(1);
+    }
   }
 }
 

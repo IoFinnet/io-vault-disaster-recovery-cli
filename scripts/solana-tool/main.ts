@@ -25,7 +25,10 @@ const commandLineArgs = {
   network: '',
   checkBalance: false,
   broadcast: false,
-  confirm: false
+  confirm: false,
+  offline: false,
+  blockhash: '',
+  lastValidBlockHeight: 0
 };
 
 for (let i = 0; i < args.length; i++) {
@@ -62,6 +65,16 @@ for (let i = 0; i < args.length; i++) {
     case '-y':
       commandLineArgs.confirm = true;
       break;
+    case '--offline':
+    case '-o':
+      commandLineArgs.offline = true;
+      break;
+    case '--blockhash':
+      commandLineArgs.blockhash = args[++i];
+      break;
+    case '--last-valid-block-height':
+      commandLineArgs.lastValidBlockHeight = parseInt(args[++i], 10);
+      break;
     case '--help':
     case '-h':
       console.log(`
@@ -76,10 +89,14 @@ Options:
   -c, --check-balance         Check wallet balance
   -b, --broadcast             Broadcast the transaction
   -y, --confirm               Auto-confirm transaction without prompting
+  -o, --offline               Use offline mode (for air-gapped environments)
+      --blockhash <hash>      Recent blockhash to use in offline mode
+      --last-valid-block-height <height>  Last valid block height for blockhash
   -h, --help                  Show this help message
-      
+
 For balance checks: Use --address and --check-balance
 For transfers: Use --private-key, --destination, and --amount
+For offline transactions: Add --offline and optionally --blockhash and --last-valid-block-height
 If any required parameter is not provided, you will be prompted for it interactively.
 `);
       process.exit(0);
@@ -139,10 +156,10 @@ function createKeypairFromPrivateKey(privateKeyHex: string): { publicKey: Public
 
   // Calculate public key directly from private key scalar using BASE point multiplication
   const publicKeyBytes = ed.ExtendedPoint.BASE.multiply(bytesToNumberBE(privateKeyBytes)).toRawBytes();
-  
+
   // Create a public key object directly
   const publicKey = new PublicKey(Buffer.from(publicKeyBytes));
-  
+
   // Return object with the public key and address
   return {
     publicKey: publicKey,
@@ -168,24 +185,71 @@ async function transferSOL(
     // Get wallet from private key using our helper function - this gives us the correct public key
     const wallet = createKeypairFromPrivateKey(privateKeyHex);
     console.log(`Using wallet address: ${wallet.address}`);
-    
+
     // For signing, we'll use the noble-ed25519 library directly
     const privateKeyBytes = Buffer.from(privateKeyHex, 'hex');
-    
+
     const destinationPubkey = new PublicKey(destination);
     const lamports = amount * LAMPORTS_PER_SOL;
 
     // Create a new transaction
     const transaction = new Transaction();
-    
-    // Get recent blockhash and explicitly set it on the transaction
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+
+    // Get blockhash - either from parameters or from network
+    let blockhash: string;
+    let lastValidBlockHeight: number;
+
+    if (offlineMode) {
+      // Use provided blockhash or prompt for one
+      if (commandLineArgs.blockhash) {
+        blockhash = commandLineArgs.blockhash;
+        lastValidBlockHeight = commandLineArgs.lastValidBlockHeight || 0;
+        console.log(`Using provided blockhash: ${blockhash}`);
+        console.log(`Using provided last valid block height: ${lastValidBlockHeight}`);
+      } else {
+        console.log("In offline mode, you need to provide a recent blockhash from the network.");
+        console.log("To get a blockhash, run this tool on an internet-connected machine with:");
+        console.log("  --check-balance --address <any_valid_address>\n");
+
+        blockhash = readlineSync.question('Enter recent blockhash: ');
+        if (!blockhash) {
+          throw new Error('Blockhash is required for offline transactions');
+        }
+
+        const heightInput = readlineSync.question('Enter last valid block height (optional): ');
+        lastValidBlockHeight = heightInput ? parseInt(heightInput, 10) : 0;
+      }
+    } else {
+      // Get blockhash from the network
+      try {
+        const { blockhash: recentBlockhash, lastValidBlockHeight: validHeight } =
+          await connection.getLatestBlockhash('confirmed');
+        blockhash = recentBlockhash;
+        lastValidBlockHeight = validHeight;
+        console.log(`Retrieved blockhash from network: ${blockhash.slice(0, 12)}...`);
+      } catch (error) {
+        console.error('Error fetching recent blockhash:', error.message);
+        console.log('\nFalling back to offline mode...');
+
+        blockhash = readlineSync.question('Enter recent blockhash: ');
+        if (!blockhash) {
+          throw new Error('Blockhash is required for transactions');
+        }
+
+        const heightInput = readlineSync.question('Enter last valid block height (optional): ');
+        lastValidBlockHeight = heightInput ? parseInt(heightInput, 10) : 0;
+      }
+    }
+
+    // Set the transaction blockhash
     transaction.recentBlockhash = blockhash;
-    transaction.lastValidBlockHeight = lastValidBlockHeight;
-    
+    if (lastValidBlockHeight > 0) {
+      transaction.lastValidBlockHeight = lastValidBlockHeight;
+    }
+
     // Set the fee payer to the correct public key
     transaction.feePayer = wallet.publicKey;
-    
+
     // Add the transfer instruction using the correct public key
     transaction.add(
       SystemProgram.transfer({
@@ -194,55 +258,92 @@ async function transferSOL(
         lamports,
       })
     );
-    
+
     // Manually sign the transaction
     // 1. Get the message to sign
     const messageBytes = transaction.serializeMessage();
     console.log('Transaction message length:', messageBytes.length);
-    
+
     // 2. Sign the message with our private key using the same method that works in XRPL
     const { signature } = await signWithScalar(Buffer.from(messageBytes).toString('hex'), privateKeyHex);
     console.log('Signature length:', Buffer.from(signature, 'hex').length);
-    
+
     // 3. Add the signature to the transaction
     transaction.addSignature(wallet.publicKey, Buffer.from(signature, 'hex'));
-    
+
     // Verify the signature
     const isValid = transaction.verifySignatures();
     console.log('Signature verification result:', isValid);
-    
+
     if (!isValid) {
       throw new Error('Transaction signature verification failed');
     }
-    
+
     console.log('Transaction signatures verified successfully');
-    
-    // Serialize and send the transaction
+
+    // Serialize the transaction
     const rawTransaction = transaction.serialize();
     console.log('Transaction serialized successfully, length:', rawTransaction.length);
-    
-    // Send transaction to the network
-    console.log('Sending transaction to network...');
-    const txid = await connection.sendRawTransaction(rawTransaction, {
-      skipPreflight: false,
-      preflightCommitment: 'confirmed',
-    });
-    console.log('Transaction sent, ID:', txid);
 
-    // Wait for confirmation
-    console.log('Waiting for confirmation...');
-    const confirmation = await connection.confirmTransaction({
-      blockhash,
-      lastValidBlockHeight,
-      signature: txid
-    }, 'confirmed');
-    
-    if (confirmation.value.err) {
-      throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+    // Save the transaction to a file if in offline mode
+    if (offlineMode) {
+      const txHex = Buffer.from(rawTransaction).toString('hex');
+
+      console.log('\n========== SIGNED TRANSACTION HEX ==========');
+      console.log(txHex);
+      console.log('==========================================');
+
+      // Save to optional file
+      console.log('\nCopy this transaction hex data and save it for broadcasting from an online device.');
+
+      // Offer guidance on how to broadcast later
+      console.log('\nTo broadcast this transaction later:');
+      console.log('1. Use the Solana CLI: solana transfer --from <keypair> <destination> <amount>');
+      console.log('2. Or save this hex data and use the solana CLI: solana tx --raw <hex_data>');
+      console.log('3. Or use the Solana explorer to broadcast raw transactions');
+
+      // Return the transaction ID which can be used to look up the transaction later
+      const txid = transaction.signatures[0]?.signature?.toString('base64') || 'unknown';
+      return txid;
     }
-    
-    console.log('Transaction confirmed successfully');
-    return txid;
+
+    try {
+      // Send transaction to the network
+      console.log('Sending transaction to network...');
+      const txid = await connection.sendRawTransaction(rawTransaction, {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+      });
+      console.log('Transaction sent, ID:', txid);
+
+      // Wait for confirmation
+      console.log('Waiting for confirmation...');
+      const confirmation = await connection.confirmTransaction({
+        blockhash,
+        lastValidBlockHeight,
+        signature: txid
+      }, 'confirmed');
+
+      if (confirmation.value.err) {
+        throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+      }
+
+      console.log('Transaction confirmed successfully');
+      return txid;
+    } catch (error) {
+      console.error('Error broadcasting transaction:', error.message);
+      console.log('\nYour transaction was signed successfully but could not be broadcast.');
+      console.log('The network may be unavailable or there may be an issue with the transaction.');
+
+      // Provide the raw transaction for later use
+      const txHex = Buffer.from(rawTransaction).toString('hex');
+      console.log('\nSigned transaction data (hex):');
+      console.log(txHex);
+
+      // Get the signature from the transaction
+      const txid = transaction.signatures[0]?.signature?.toString('base64') || 'unknown';
+      return txid;
+    }
   } catch (error) {
     console.error('Error during transaction:', error);
     throw error;
@@ -255,7 +356,7 @@ async function main() {
   } else {
     console.log('Solana Transfer Tool\n');
   }
-  
+
   // Initialize variables
   let privateKey = commandLineArgs.privateKey;
   let address = commandLineArgs.address;
@@ -264,11 +365,12 @@ async function main() {
   let networkOption = commandLineArgs.network;
   let networkIndex = -1;
   let selectedUrl = '';
-  
+  let offlineMode = commandLineArgs.offline || false;
+
   // Network selection
   const networkOptions = ['mainnet', 'testnet', 'devnet'];
   const networkUrls = [MAINNET_URL, TESTNET_URL, DEVNET_URL];
-  
+
   // Process network selection from command line
   if (networkOption) {
     networkIndex = networkOptions.findIndex(net => net === networkOption);
@@ -282,7 +384,7 @@ async function main() {
     // Prompt for network if not provided
     console.log(EXIT_MESSAGE);
     const networkChoiceIndex = readlineSync.keyInSelect(
-      networkOptions.map(n => n.charAt(0).toUpperCase() + n.slice(1)), 
+      networkOptions.map(n => n.charAt(0).toUpperCase() + n.slice(1)),
       'Which network would you like to use?'
     );
 
@@ -296,9 +398,14 @@ async function main() {
     console.log(`Using ${networkOptions[networkIndex]} network: ${selectedUrl}`);
   }
 
+  // Check if offline mode is explicitly requested or should be prompted
+  if (!offlineMode) {
+    console.log('Using online mode. Restart with the flag --offline to use offline mode.');
+  }
+
   // Connect to Solana network
   const connection = new Connection(selectedUrl, 'confirmed');
-  
+
   // If checking balance with address parameter only
   if (commandLineArgs.checkBalance && address) {
     try {
@@ -306,7 +413,7 @@ async function main() {
         console.error('Invalid Solana address format.');
         process.exit(1);
       }
-      
+
       console.log(`\nChecking balance for address: ${address}`);
       const pubKey = new PublicKey(address);
       const balance = await connection.getBalance(pubKey);
@@ -317,7 +424,7 @@ async function main() {
       process.exit(1);
     }
   }
-  
+
   // If we're only checking balance and no address provided, prompt for address
   if (commandLineArgs.checkBalance && !address && !privateKey) {
     console.log(EXIT_MESSAGE);
@@ -331,7 +438,7 @@ async function main() {
         console.log('Invalid Solana address format.');
       }
     } while (!validateSolanaAddress(address));
-    
+
     console.log(`\nChecking balance for address: ${address}`);
     try {
       const pubKey = new PublicKey(address);
@@ -454,30 +561,46 @@ async function main() {
     if (!commandLineArgs.broadcast && !commandLineArgs.confirm) {
       confirmTransaction = readlineSync.keyInYNStrict('\nConfirm transaction?');
     }
-    
+
     if (!confirmTransaction) {
       console.log('Transaction cancelled.');
       return;
     }
-    
-    // Broadcast transaction if requested or if --confirm flag is set
-    const wantToBroadcast = commandLineArgs.broadcast || 
+
+    // In offline mode, we'll just sign the transaction and display the details
+    if (offlineMode) {
+      console.log('\nSigning transaction in offline mode...');
+      try {
+        const signature = await transferSOL(privateKey, destination, Number(amount), connection);
+        console.log('\nTransaction signed successfully!');
+        console.log(`Transaction ID: ${signature}`);
+
+        console.log('\nTo broadcast this transaction, run this tool on an internet-connected machine');
+        console.log('with the same transaction details (without --offline flag).');
+      } catch (error: any) {
+        console.error('\nTransaction signing failed:', error.message);
+      }
+      return;
+    }
+
+    // If in online mode, ask about broadcasting (unless auto-broadcast is set)
+    const wantToBroadcast = commandLineArgs.broadcast ||
                            commandLineArgs.confirm ||
                            readlineSync.keyInYNStrict('\nWould you like to broadcast this transaction now?');
-    
+
     if (wantToBroadcast) {
       console.log('\nSigning and broadcasting transaction...');
       try {
         const signature = await transferSOL(privateKey, destination, Number(amount), connection);
         console.log('\nTransaction successful!');
         console.log(`Transaction signature: ${signature}`);
-        
+
         // Create explorer URL based on network
         const network = networkOptions[networkIndex];
-        const explorerUrl = network === 'mainnet' 
-          ? `https://explorer.solana.com/tx/${signature}` 
+        const explorerUrl = network === 'mainnet'
+          ? `https://explorer.solana.com/tx/${signature}`
           : `https://explorer.solana.com/tx/${signature}?cluster=${network}`;
-          
+
         console.log(`Transaction URL: ${explorerUrl}`);
       } catch (error: any) {
         console.error('\nTransaction failed:', error.message);

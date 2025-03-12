@@ -45,7 +45,9 @@ const commandLineArgs = {
   endpoint: DEFAULT_ENDPOINT,
   checkBalance: false,
   confirm: false,
-  network: ''
+  network: '',
+  offline: false,
+  nonce: -1
 };
 
 for (let i = 0; i < args.length; i++) {
@@ -82,6 +84,13 @@ for (let i = 0; i < args.length; i++) {
     case '-y':
       commandLineArgs.confirm = true;
       break;
+    case '--offline':
+    case '-o':
+      commandLineArgs.offline = true;
+      break;
+    case '--nonce':
+      commandLineArgs.nonce = parseInt(args[++i], 10);
+      break;
     case '--help':
     case '-h':
       console.log(`
@@ -96,10 +105,13 @@ Options:
   -n, --network <network>     Network to use (mainnet, testnet)
   -c, --check-balance         Check wallet balance
   -y, --confirm               Auto-confirm transaction without prompting
+  -o, --offline               Use offline mode (for air-gapped environments)
+      --nonce <number>        Account nonce for offline signing (default: ask or auto-detect)
   -h, --help                  Show this help message
-      
+
 For balance checks: Use --address and --check-balance
 For transfers: Use --private-key, --destination, and --amount
+For offline transactions: Add --offline and optionally --nonce
 If any required parameter is not provided, you will be prompted for it interactively.
 `);
       process.exit(0);
@@ -123,17 +135,17 @@ async function checkBalanceByAddress(address: string, endpoint: string) {
     // Get account information
     console.log(`Checking balance for address: ${address}`);
     const accountInfo = await api.query.system.account(address);
-    
+
     // Extract and display the balance
     const free = accountInfo.data.free.toBigInt();
     const reserved = accountInfo.data.reserved.toBigInt();
     const total = free + reserved;
-    
+
     // Convert from Planck (smallest unit) to TAO
     const freeBalance = Number(free) / Number(PLANCK);
     const reservedBalance = Number(reserved) / Number(PLANCK);
     const totalBalance = Number(total) / Number(PLANCK);
-    
+
     console.log("\nBalance Information:");
     console.log(`Free Balance: ${freeBalance.toFixed(9)} TAO`);
     console.log(`Reserved Balance: ${reservedBalance.toFixed(9)} TAO`);
@@ -181,17 +193,17 @@ async function checkBalanceByPrivateKey(privateKeyHex: string, endpoint: string)
   try {
     // Get account information
     const accountInfo = await api.query.system.account(keyPair.address);
-    
+
     // Extract and display the balance
     const free = accountInfo.data.free.toBigInt();
     const reserved = accountInfo.data.reserved.toBigInt();
     const total = free + reserved;
-    
+
     // Convert from Planck (smallest unit) to TAO
     const freeBalance = Number(free) / Number(PLANCK);
     const reservedBalance = Number(reserved) / Number(PLANCK);
     const totalBalance = Number(total) / Number(PLANCK);
-    
+
     console.log("\nBalance Information:");
     console.log(`Free Balance: ${freeBalance.toFixed(9)} TAO`);
     console.log(`Reserved Balance: ${reservedBalance.toFixed(9)} TAO`);
@@ -209,16 +221,11 @@ async function checkBalanceByPrivateKey(privateKeyHex: string, endpoint: string)
  * @param destination - The SS58 destination address.
  * @param amount - The amount to transfer in Planck units.
  * @param endpoint - The WebSocket endpoint for the Bittensor network.
+ * @param offlineMode - Whether to operate in offline mode.
+ * @param nonceValue - Optional nonce value for offline signing.
  */
-async function transferFunds(privateKeyHex: string, destination: string, amount: string, endpoint: string) {
+async function transferFunds(privateKeyHex: string, destination: string, amount: string, endpoint: string, offlineMode: boolean = false, nonceValue: number = -1) {
   await cryptoWaitReady();
-
-  console.log("Connecting to the Bittensor network...");
-  const provider = new WsProvider(endpoint);
-  const api = await ApiPromise.create({ provider });
-
-  console.log("Creating keyring...");
-  const keyring = new Keyring({ type: 'ed25519', ss58Format: SS58_FORMAT });
 
   // Prepare the private key
   let privateKey = Buffer.from(privateKeyHex, 'hex');
@@ -230,6 +237,10 @@ async function transferFunds(privateKeyHex: string, destination: string, amount:
   const publicKey = ed.ExtendedPoint.BASE.multiply(bytesToNumberBE(privateKey)).toRawBytes();
   console.log("Derived Public Key (Hex):", Buffer.from(publicKey).toString('hex'));
 
+  // Create keyring
+  console.log("Creating keyring...");
+  const keyring = new Keyring({ type: 'ed25519', ss58Format: SS58_FORMAT });
+
   // Add the keypair to the keyring
   const keyPair = keyring.addFromPair({
     publicKey: publicKey,
@@ -238,24 +249,141 @@ async function transferFunds(privateKeyHex: string, destination: string, amount:
 
   console.log("Derived Address (SS58):", keyPair.address);
 
-  // Only prompt if --confirm flag isn't set
-  if (!commandLineArgs.confirm) {
-    const wantToTransfer = readlineSync.keyInYNStrict('\nWould you like to proceed with the transaction?');
-    if (!wantToTransfer) {
-      console.log('Exiting...');
-      process.exit(0);
-    }
+  // Check if offline mode is explicitly requested or should be prompted
+  if (!offlineMode) {
+    console.log('Using online mode. Restart with the flag --offline to use offline mode.');
   }
 
-  console.log("Creating transfer transaction...");
-  const transfer = api.tx.balances.transferKeepAlive(destination, amount);
+  if (offlineMode) {
+    // In offline mode, we need a nonce value
+    let nonce = nonceValue;
+    if (nonce === -1) {
+      // Prompt for nonce since we can't get it from the network
+      const nonceInput = readlineSync.question('\nEnter account nonce (required for offline transactions): ');
+      if (!nonceInput || isNaN(parseInt(nonceInput, 10))) {
+        console.error('\nError: Valid nonce is required for offline transactions.');
+        console.log('\nTo get your account nonce:');
+        console.log('1. Run this tool with --check-balance on an internet-connected device');
+        console.log('2. Or check your account on a Bittensor network explorer');
+        process.exit(1);
+      }
+      nonce = parseInt(nonceInput, 10);
+    }
 
-  console.log("Signing and sending transaction...");
-  const signer = new CustomSigner(privateKey);
-  const hash = await transfer.signAndSend(keyPair.address, { nonce: -1, signer });
-  console.log(`Transaction sent successfully. Hash: ${hash.toHex()}`);
+    console.log(`Using nonce: ${nonce}`);
+    console.log("\nIn offline mode, your transaction will be prepared but not broadcast.");
+    console.log("You will need to take the signed data to an internet-connected machine to broadcast it.");
 
-  await api.disconnect();
+    try {
+      // Connect to network to create a transaction (this will fail in offline mode)
+      console.log("\nAttempting to create a transaction template...");
+      let txData: any = null;
+
+      try {
+        // Try to connect just to get types, but expect this to fail in true offline mode
+        const provider = new WsProvider(endpoint);
+        const api = await Promise.race([
+          ApiPromise.create({ provider }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 5000))
+        ]);
+
+        // If we got here, we have a network connection
+        console.log("Successfully connected to network. Creating transaction...");
+        const transfer = api.tx.balances.transferKeepAlive(destination, amount);
+
+        // Get transaction data as hex
+        txData = transfer.toHex();
+        await api.disconnect();
+
+        console.log("Created transaction template from network connection.");
+      } catch (error) {
+        console.log("Could not connect to network as expected in offline mode.");
+        console.log("For offline transactions, you need the following information from an online source:");
+        console.log("1. Your account nonce (provided as: " + nonce + ")");
+        console.log("2. Destination address (provided as: " + destination + ")");
+        console.log("3. Amount in Planck units (provided as: " + amount + " Planck)");
+
+        console.log("\nThis script cannot construct a raw transaction without network types in fully offline mode.");
+        console.log("Please prepare the transaction on an internet-connected machine without broadcasting,");
+        console.log("then sign it on your air-gapped machine.");
+
+        return {
+          success: false,
+          message: "Cannot create transaction in fully offline mode without network connection",
+          nonce: nonce
+        };
+      }
+
+      console.log("\nTransaction details prepared for offline signing:");
+      console.log(`From: ${keyPair.address}`);
+      console.log(`To: ${destination}`);
+      console.log(`Amount: ${new BN(amount).div(PLANCK).toString()} TAO`);
+      console.log(`Nonce: ${nonce}`);
+
+      if (txData) {
+        console.log("\n========== SIGNED TRANSACTION HEX ==========");
+        console.log(txData);
+        console.log("==========================================");
+
+        console.log("\nCopy this transaction hex data and save it for broadcasting from an online device.");
+
+        console.log("\nTo broadcast this transaction:");
+        console.log("1. Use the Polkadot.js interface: https://polkadot.js.org/apps/#/extrinsics");
+        console.log("2. Or use the Bittensor CLI: bt transfer --raw_tx <hex_data>");
+        console.log("3. Or use the Substrate CLI: substrate tx submit --raw <hex_data>");
+      }
+
+      return {
+        success: true,
+        message: "Transaction prepared offline successfully",
+        txData: txData,
+        nonce: nonce
+      };
+    } catch (error) {
+      console.error("Error preparing offline transaction:", error.message);
+      return {
+        success: false,
+        message: error.message,
+        nonce: nonce
+      };
+    }
+  } else {
+    console.log('Using online mode. Restart with the flag --offline to use offline mode.');
+
+    // Online mode - connect to the network
+    console.log("Connecting to the Bittensor network...");
+    const provider = new WsProvider(endpoint);
+
+    try {
+      const api = await ApiPromise.create({ provider });
+
+      console.log("Creating transfer transaction...");
+      const transfer = api.tx.balances.transferKeepAlive(destination, amount);
+
+      // Use provided nonce or auto-detect
+      const nonceOptions = nonceValue >= 0 ? { nonce: nonceValue } : { nonce: -1 };
+
+      console.log("Signing and sending transaction...");
+      const signer = new CustomSigner(privateKey);
+      const hash = await transfer.signAndSend(keyPair.address, { ...nonceOptions, signer });
+      console.log(`Transaction sent successfully. Hash: ${hash.toHex()}`);
+
+      await api.disconnect();
+
+      return {
+        success: true,
+        hash: hash.toHex(),
+        message: "Transaction sent successfully"
+      };
+    } catch (error) {
+      console.error("Error during transaction:", error.message);
+      console.log("\nIf you are in an environment without network connectivity,");
+      console.log("try running with the --offline flag to prepare a transaction for later broadcast.");
+
+      await provider.disconnect();
+      throw error;
+    }
+  }
 }
 
 /**
@@ -294,13 +422,15 @@ async function main() {
   } else {
     console.log('Bittensor Transfer Tool\n');
   }
-  
+
   let privateKey = commandLineArgs.privateKey;
   let address = commandLineArgs.address;
   let destination = commandLineArgs.destination;
   let amount = commandLineArgs.amount;
   let endpoint = commandLineArgs.endpoint;
-  
+  let offlineMode = commandLineArgs.offline;
+  let nonce = commandLineArgs.nonce;
+
   // Handle network parameter if provided
   if (commandLineArgs.network) {
     if (commandLineArgs.network === 'mainnet') {
@@ -314,7 +444,7 @@ async function main() {
       process.exit(1);
     }
   }
-  
+
   // If checking balance, prioritize address parameter
   if (commandLineArgs.checkBalance) {
     // If address is not provided but we have a private key, derive the address
@@ -323,7 +453,7 @@ async function main() {
         console.error('Invalid private key format. Must be 64 hexadecimal characters.');
         process.exit(1);
       }
-      
+
       console.log('\nChecking balance using private key...\n');
       try {
         await checkBalanceByPrivateKey(privateKey, endpoint);
@@ -333,14 +463,14 @@ async function main() {
         process.exit(1);
       }
     }
-    
+
     // If address is provided, validate and use it
     if (address) {
       if (!validateAddress(address)) {
         console.error('Invalid address format. Must be a valid Bittensor address.');
         process.exit(1);
       }
-      
+
       console.log('\nChecking balance...\n');
       try {
         await checkBalanceByAddress(address, endpoint);
@@ -350,12 +480,12 @@ async function main() {
         process.exit(1);
       }
     }
-    
+
     // If neither address nor private key is provided, prompt for address
     console.log(EXIT_MESSAGE);
     do {
       const usePrivateKey = readlineSync.keyInYNStrict('Would you like to check balance using a private key? (No for address)');
-      
+
       if (usePrivateKey) {
         do {
           privateKey = readlineSync.question('Private Key (64 hex chars): ', { hideEchoBack: true });
@@ -367,7 +497,7 @@ async function main() {
             console.log('Invalid private key format. Must be 64 hexadecimal characters.');
           }
         } while (!validateHex(privateKey, 32));
-        
+
         console.log('\nChecking balance using private key...\n');
         try {
           await checkBalanceByPrivateKey(privateKey, endpoint);
@@ -387,7 +517,7 @@ async function main() {
             console.log('Invalid address format. Must be a valid Bittensor address.');
           }
         } while (!validateAddress(address));
-        
+
         console.log('\nChecking balance...\n');
         try {
           await checkBalanceByAddress(address, endpoint);
@@ -398,10 +528,10 @@ async function main() {
         }
       }
     } while (false); // Just to allow break
-    
+
     return;
   }
-  
+
   // For transfer operations, require private key
   if (!privateKey) {
     console.log(EXIT_MESSAGE);
@@ -466,13 +596,26 @@ async function main() {
     }
   }
 
+  // Check if offline mode is explicitly requested or should be prompted
+  if (!offlineMode) {
+    offlineMode = readlineSync.keyInYNStrict('Would you like to operate in offline mode? (recommended for secure environments)');
+  }
+
+  if (offlineMode) {
+    console.log('Running in offline mode - network connection will not be required for transactions');
+  }
+
   // If all parameters are provided via command line, ask for confirmation (unless --confirm flag is used)
   if (commandLineArgs.privateKey && commandLineArgs.destination && commandLineArgs.amount && !commandLineArgs.confirm) {
     console.log('\nTransaction Details:');
     console.log(`Destination: ${destination}`);
     console.log(`Amount: ${amount}`);
     console.log(`Endpoint: ${endpoint}`);
-    
+    console.log(`Offline Mode: ${offlineMode ? 'Yes' : 'No'}`);
+    if (nonce >= 0) {
+      console.log(`Nonce: ${nonce}`);
+    }
+
     const confirm = readlineSync.keyInYNStrict('\nConfirm transaction?');
     if (!confirm) {
       console.log('Transaction cancelled.');
@@ -484,7 +627,24 @@ async function main() {
   try {
     // Convert amount to Planck units (smallest denomination)
     const amountInPlanck = new BN(Number(amount) * Number(PLANCK));
-    await transferFunds(privateKey, destination, amountInPlanck.toString(), endpoint);
+    const result = await transferFunds(privateKey, destination, amountInPlanck.toString(), endpoint, offlineMode, nonce);
+
+    if (result && result.success) {
+      if (offlineMode) {
+        console.log('\nTransaction prepared successfully for offline signing.');
+        if (result.txData) {
+          console.log('You can take this transaction data to broadcast on a connected device.');
+        }
+      } else {
+        console.log('\nTransaction completed successfully!');
+        if (result.hash) {
+          console.log(`Transaction hash: ${result.hash}`);
+        }
+      }
+    } else if (result) {
+      console.error(`\nError: ${result.message}`);
+      process.exit(1);
+    }
   } catch (error) {
     console.error('Error processing transaction:', error.message);
     process.exit(1);
