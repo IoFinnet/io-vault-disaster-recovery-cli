@@ -39,6 +39,7 @@ ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
 const args = process.argv.slice(2);
 const commandLineArgs = {
   privateKey: '',
+  address: '',
   destination: '',
   amount: '',
   endpoint: DEFAULT_ENDPOINT,
@@ -53,12 +54,16 @@ for (let i = 0; i < args.length; i++) {
     case '-p':
       commandLineArgs.privateKey = args[++i];
       break;
+    case '--address':
+    case '-a':
+      commandLineArgs.address = args[++i];
+      break;
     case '--destination':
     case '-d':
       commandLineArgs.destination = args[++i];
       break;
     case '--amount':
-    case '-a':
+    case '-m':
       commandLineArgs.amount = args[++i];
       break;
     case '--endpoint':
@@ -83,15 +88,18 @@ for (let i = 0; i < args.length; i++) {
 Usage: node main.js [options]
 
 Options:
-  -p, --private-key <key>     Private key (64 hex chars)
-  -d, --destination <address> Destination address
-  -a, --amount <amount>       Amount to transfer
+  -p, --private-key <key>     Private key (64 hex chars) for transaction signing
+  -a, --address <address>     Address to check balance (use this with --check-balance)
+  -d, --destination <address> Destination address for transfers
+  -m, --amount <amount>       Amount to transfer
   -e, --endpoint <url>        Endpoint URL (default: ${DEFAULT_ENDPOINT})
   -n, --network <network>     Network to use (mainnet, testnet)
-  -c, --check-balance         Check wallet balance without transferring
+  -c, --check-balance         Check wallet balance
   -y, --confirm               Auto-confirm transaction without prompting
   -h, --help                  Show this help message
       
+For balance checks: Use --address and --check-balance
+For transfers: Use --private-key, --destination, and --amount
 If any required parameter is not provided, you will be prompted for it interactively.
 `);
       process.exit(0);
@@ -100,11 +108,49 @@ If any required parameter is not provided, you will be prompted for it interacti
 }
 
 /**
- * Check the balance of a wallet on the Bittensor network.
+ * Check the balance of a wallet on the Bittensor network using SS58 address.
+ * @param address - The SS58 address to check.
+ * @param endpoint - The WebSocket endpoint for the Bittensor network.
+ */
+async function checkBalanceByAddress(address: string, endpoint: string) {
+  await cryptoWaitReady();
+
+  console.log("Connecting to the Bittensor network...");
+  const provider = new WsProvider(endpoint);
+  const api = await ApiPromise.create({ provider });
+
+  try {
+    // Get account information
+    console.log(`Checking balance for address: ${address}`);
+    const accountInfo = await api.query.system.account(address);
+    
+    // Extract and display the balance
+    const free = accountInfo.data.free.toBigInt();
+    const reserved = accountInfo.data.reserved.toBigInt();
+    const total = free + reserved;
+    
+    // Convert from Planck (smallest unit) to TAO
+    const freeBalance = Number(free) / Number(PLANCK);
+    const reservedBalance = Number(reserved) / Number(PLANCK);
+    const totalBalance = Number(total) / Number(PLANCK);
+    
+    console.log("\nBalance Information:");
+    console.log(`Free Balance: ${freeBalance.toFixed(9)} TAO`);
+    console.log(`Reserved Balance: ${reservedBalance.toFixed(9)} TAO`);
+    console.log(`Total Balance: ${totalBalance.toFixed(9)} TAO`);
+  } catch (error) {
+    console.error("Error fetching balance:", error.message);
+  } finally {
+    await api.disconnect();
+  }
+}
+
+/**
+ * Check the balance of a wallet on the Bittensor network using private key.
  * @param privateKeyHex - The raw Ed25519 private key in hex format.
  * @param endpoint - The WebSocket endpoint for the Bittensor network.
  */
-async function checkBalance(privateKeyHex: string, endpoint: string) {
+async function checkBalanceByPrivateKey(privateKeyHex: string, endpoint: string) {
   await cryptoWaitReady();
 
   console.log("Connecting to the Bittensor network...");
@@ -250,6 +296,7 @@ async function main() {
   }
   
   let privateKey = commandLineArgs.privateKey;
+  let address = commandLineArgs.address;
   let destination = commandLineArgs.destination;
   let amount = commandLineArgs.amount;
   let endpoint = commandLineArgs.endpoint;
@@ -268,7 +315,94 @@ async function main() {
     }
   }
   
-  // If not provided via command line, prompt for private key
+  // If checking balance, prioritize address parameter
+  if (commandLineArgs.checkBalance) {
+    // If address is not provided but we have a private key, derive the address
+    if (!address && privateKey) {
+      if (!validateHex(privateKey, 32)) {
+        console.error('Invalid private key format. Must be 64 hexadecimal characters.');
+        process.exit(1);
+      }
+      
+      console.log('\nChecking balance using private key...\n');
+      try {
+        await checkBalanceByPrivateKey(privateKey, endpoint);
+        return;
+      } catch (error) {
+        console.error('Error checking balance:', error.message);
+        process.exit(1);
+      }
+    }
+    
+    // If address is provided, validate and use it
+    if (address) {
+      if (!validateAddress(address)) {
+        console.error('Invalid address format. Must be a valid Bittensor address.');
+        process.exit(1);
+      }
+      
+      console.log('\nChecking balance...\n');
+      try {
+        await checkBalanceByAddress(address, endpoint);
+        return;
+      } catch (error) {
+        console.error('Error checking balance:', error.message);
+        process.exit(1);
+      }
+    }
+    
+    // If neither address nor private key is provided, prompt for address
+    console.log(EXIT_MESSAGE);
+    do {
+      const usePrivateKey = readlineSync.keyInYNStrict('Would you like to check balance using a private key? (No for address)');
+      
+      if (usePrivateKey) {
+        do {
+          privateKey = readlineSync.question('Private Key (64 hex chars): ', { hideEchoBack: true });
+          if (privateKey === EXIT_KEYWORD) {
+            console.log('Exiting program...');
+            process.exit(0);
+          }
+          if (!validateHex(privateKey, 32)) {
+            console.log('Invalid private key format. Must be 64 hexadecimal characters.');
+          }
+        } while (!validateHex(privateKey, 32));
+        
+        console.log('\nChecking balance using private key...\n');
+        try {
+          await checkBalanceByPrivateKey(privateKey, endpoint);
+          return;
+        } catch (error) {
+          console.error('Error checking balance:', error.message);
+          process.exit(1);
+        }
+      } else {
+        do {
+          address = readlineSync.question('Enter the address to check: ');
+          if (address === EXIT_KEYWORD) {
+            console.log('Exiting program...');
+            process.exit(0);
+          }
+          if (!validateAddress(address)) {
+            console.log('Invalid address format. Must be a valid Bittensor address.');
+          }
+        } while (!validateAddress(address));
+        
+        console.log('\nChecking balance...\n');
+        try {
+          await checkBalanceByAddress(address, endpoint);
+          return;
+        } catch (error) {
+          console.error('Error checking balance:', error.message);
+          process.exit(1);
+        }
+      }
+    } while (false); // Just to allow break
+    
+    return;
+  }
+  
+  // For transfer operations, require private key
   if (!privateKey) {
     console.log(EXIT_MESSAGE);
     do {
@@ -284,18 +418,6 @@ async function main() {
   } else if (!validateHex(privateKey, 32)) {
     console.error('Invalid private key format. Must be 64 hexadecimal characters.');
     process.exit(1);
-  }
-
-  // If checking balance, skip destination and amount prompts
-  if (commandLineArgs.checkBalance) {
-    console.log('\nChecking balance...\n');
-    try {
-      await checkBalance(privateKey, endpoint);
-    } catch (error) {
-      console.error('Error checking balance:', error.message);
-      process.exit(1);
-    }
-    return;
   }
 
   // If not provided via command line, prompt for destination
