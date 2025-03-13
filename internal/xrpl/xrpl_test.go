@@ -111,7 +111,11 @@ func TestDeriveXRPLAddress(t *testing.T) {
 					
 					// Additional debug info for address comparison
 					t.Logf("Address length: got=%d, want=%d", len(gotAddr), len(tt.wantAddr))
-					t.Logf("First 5 chars: got=%s, want=%s", gotAddr[:5], tt.wantAddr[:5])
+					if len(gotAddr) >= 5 && len(tt.wantAddr) >= 5 {
+						t.Logf("First 5 chars: got=%s, want=%s", gotAddr[:5], tt.wantAddr[:5])
+					} else {
+						t.Logf("Address too short for comparison: got=%s, want=%s", gotAddr, tt.wantAddr)
+					}
 				} else {
 					t.Logf("Successfully derived address: %s", gotAddr)
 				}
