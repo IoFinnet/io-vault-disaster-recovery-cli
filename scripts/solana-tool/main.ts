@@ -179,7 +179,8 @@ async function transferSOL(
   privateKeyHex: string,
   destination: string,
   amount: number,
-  connection: Connection
+  connection: Connection,
+  offlineMode: boolean
 ): Promise<string> {
   try {
     // Get wallet from private key using our helper function - this gives us the correct public key
@@ -571,7 +572,7 @@ async function main() {
     if (offlineMode) {
       console.log('\nSigning transaction in offline mode...');
       try {
-        const signature = await transferSOL(privateKey, destination, Number(amount), connection);
+        const signature = await transferSOL(privateKey, destination, Number(amount), connection, offlineMode);
         console.log('\nTransaction signed successfully!');
         console.log(`Transaction ID: ${signature}`);
 
@@ -591,7 +592,7 @@ async function main() {
     if (wantToBroadcast) {
       console.log('\nSigning and broadcasting transaction...');
       try {
-        const signature = await transferSOL(privateKey, destination, Number(amount), connection);
+        const signature = await transferSOL(privateKey, destination, Number(amount), connection, offlineMode);
         console.log('\nTransaction successful!');
         console.log(`Transaction signature: ${signature}`);
 

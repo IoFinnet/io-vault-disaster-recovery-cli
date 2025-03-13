@@ -182,7 +182,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 			}
 			expHash := sha512.Sum512(plainload)
 			if hex.EncodeToString(expHash[:]) != cipheredVault.Hash {
-				welp = errors2.Errorf("⚠ failed to decrypt vault %s: %s (hash mismatch)", vID, err)
+				welp = errors2.Errorf("⚠ failed to decrypt vault %s: hash mismatch", vID)
 				return
 			}
 

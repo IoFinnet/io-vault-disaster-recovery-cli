@@ -21,7 +21,9 @@ process.on('SIGINT', () => {
 // Override readlineSync to handle CTRL+C
 const originalQuestion = readlineSync.question;
 readlineSync.question = function(...args) {
-  process.stdin.setRawMode(false);
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(false);
+  }
   const result = originalQuestion.apply(this, args);
   return result;
 };
@@ -151,7 +153,8 @@ async function checkBalanceByAddress(address: string, endpoint: string) {
     console.log(`Reserved Balance: ${reservedBalance.toFixed(9)} TAO`);
     console.log(`Total Balance: ${totalBalance.toFixed(9)} TAO`);
   } catch (error) {
-    console.error("Error fetching balance:", error.message);
+    const errorMsg = error && error.message ? error.message : String(error);
+    console.error("Error fetching balance:", errorMsg);
   } finally {
     await api.disconnect();
   }
@@ -209,7 +212,8 @@ async function checkBalanceByPrivateKey(privateKeyHex: string, endpoint: string)
     console.log(`Reserved Balance: ${reservedBalance.toFixed(9)} TAO`);
     console.log(`Total Balance: ${totalBalance.toFixed(9)} TAO`);
   } catch (error) {
-    console.error("Error fetching balance:", error.message);
+    const errorMsg = error && error.message ? error.message : String(error);
+    console.error("Error fetching balance:", errorMsg);
   } finally {
     await api.disconnect();
   }
@@ -340,10 +344,11 @@ async function transferFunds(privateKeyHex: string, destination: string, amount:
         nonce: nonce
       };
     } catch (error) {
-      console.error("Error preparing offline transaction:", error.message);
+      const errorMsg = error && error.message ? error.message : String(error);
+      console.error("Error preparing offline transaction:", errorMsg);
       return {
         success: false,
-        message: error.message,
+        message: errorMsg,
         nonce: nonce
       };
     }
@@ -374,7 +379,8 @@ async function transferFunds(privateKeyHex: string, destination: string, amount:
         message: "Transaction sent successfully"
       };
     } catch (error) {
-      console.error("Error during transaction:", error.message);
+      const errorMsg = error && error.message ? error.message : String(error);
+      console.error("Error during transaction:", errorMsg);
       console.log("\nIf you are in an environment without network connectivity,");
       console.log("try running with the --offline flag to prepare a transaction for later broadcast.");
 
@@ -457,7 +463,8 @@ async function main() {
         await checkBalanceByPrivateKey(privateKey, endpoint);
         return;
       } catch (error) {
-        console.error('Error checking balance:', error.message);
+        const errorMsg = error && error.message ? error.message : String(error);
+        console.error('Error checking balance:', errorMsg);
         process.exit(1);
       }
     }
@@ -474,7 +481,8 @@ async function main() {
         await checkBalanceByAddress(address, endpoint);
         return;
       } catch (error) {
-        console.error('Error checking balance:', error.message);
+        const errorMsg = error && error.message ? error.message : String(error);
+        console.error('Error checking balance:', errorMsg);
         process.exit(1);
       }
     }
@@ -501,7 +509,8 @@ async function main() {
           await checkBalanceByPrivateKey(privateKey, endpoint);
           return;
         } catch (error) {
-          console.error('Error checking balance:', error.message);
+          const errorMsg = error && error.message ? error.message : String(error);
+          console.error('Error checking balance:', errorMsg);
           process.exit(1);
         }
       } else {
@@ -521,7 +530,8 @@ async function main() {
           await checkBalanceByAddress(address, endpoint);
           return;
         } catch (error) {
-          console.error('Error checking balance:', error.message);
+          const errorMsg = error && error.message ? error.message : String(error);
+          console.error('Error checking balance:', errorMsg);
           process.exit(1);
         }
       }
@@ -624,7 +634,7 @@ async function main() {
   console.log('\nProcessing your transaction...\n');
   try {
     // Convert amount to Planck units (smallest denomination)
-    const amountInPlanck = new BN(Number(amount) * Number(PLANCK));
+    const amountInPlanck = new BN(amount).mul(PLANCK);
     const result = await transferFunds(privateKey, destination, amountInPlanck.toString(), endpoint, offlineMode, nonce);
 
     if (result && result.success) {
@@ -644,7 +654,8 @@ async function main() {
       process.exit(1);
     }
   } catch (error) {
-    console.error('Error processing transaction:', error.message);
+    const errorMsg = error && error.message ? error.message : String(error);
+    console.error('Error processing transaction:', errorMsg);
     process.exit(1);
   }
 }
