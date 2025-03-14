@@ -18,39 +18,49 @@ You may be required to run another script contained in the [scripts](./scripts) 
 You can build the code from source. Clone the repo, and make sure the latest [Go](http://go.dev) is installed.
 
 Compile from source:
-
-```
-$ make
+```bash
+make
 ```
 
 Compile individually for Windows, Linux (x86) or Mac (Apple Silicon):
-
+```bash
+make build-win
+make build-linux
+make build-mac
 ```
-$ make build-win
-$ make build-linux
-$ make build-mac
-```
 
-The resulting executable(s) will be in the `bin/` folder. If you are on Mac or Linux, you may have to run `chmod +x bin/*` on the file and accept any security warnings via system settings due to this being an unsigned release. Windows may display a security warning too.
+The resulting executable(s) will be in the `bin/` folder. If you are on Mac or Linux, you may have to run `chmod +x recovery-tool*` on the file on macOS. Windows may display a security warning too.
 
 ## Download a Binary
 
 If you prefer the convenience of downloading a pre-built binary for your platform, head to the [Releases area](https://github.com/IoFinnet/io-vault-disaster-recovery-cli/releases). We have pre-built binaries for Linux, Windows and Mac.
 
-If you are on Mac or Linux, you may have to run `chmod +x bin/*` on the file and accept any security warnings via system settings due to these being unsigned releases. Windows may display a security warning too.
+There are some extra steps to acknowledge security warnings depending on your platform.
+
+### macOS
+
+Run the following commands before you run the tool:
+```bash
+chmod +x recovery-tool*
+xattr -dr com.apple.quarantine recovery-tool*
+```
+
+### Windows
+
+Windows may display a security warning too. Just select "Run anyway" to run it when you see this popup at the next step.
+
+![image](https://github.com/user-attachments/assets/cf010a48-6a2e-462e-99fc-bf916371356d)
 
 ## Usage
 
 Run the recovery tool.
-
-```
-$ ./bin/recovery-tool sandbox/file1.json sandbox/file2.json
+``` bash
+./bin/recovery-tool sandbox/file1.json sandbox/file2.json
 ```
 
 You can also provide the vault ID you want to recover, this will skip the step of choosing a vault.
-
-```
-$ ./bin/recovery-tool -vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.bin sandbox/file2.bin
+```bash
+./bin/recovery-tool -vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.bin sandbox/file2.bin
 ```
 
 The tool will try to auto-detect the optimal "reshare nonce" and "threshold/quroum" of the vault you are trying to recover.
