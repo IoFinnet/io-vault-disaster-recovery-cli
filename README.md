@@ -65,8 +65,9 @@ You can also provide the vault ID you want to recover, this will skip the step o
 
 Replace `mac` with `linux` or `.exe` depending on your computer's OS.
 
-The tool will try to auto-detect the optimal "reshare nonce" and "threshold/quroum" of the vault you are trying to recover.
-However, if you would like to override this behavior, you may specify custom values with `-nonce` and `-threshold` flags respectively.
+> [!NOTE]
+> The tool will try to auto-detect the optimal "reshare nonce" and "threshold/quroum" of the vault you are trying to recover.
+> However, if you would like to override this behavior, you may specify custom values with `-nonce` and `-threshold` flags respectively.
 
 ### Ethereum & Ethereum-Like Recovery
 
