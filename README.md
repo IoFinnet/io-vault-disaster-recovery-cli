@@ -55,13 +55,15 @@ Windows may display a security warning too. Just select "Run anyway" to run it w
 
 Run the recovery tool.
 ``` bash
-./bin/recovery-tool sandbox/file1.json sandbox/file2.json
+./recovery-tool-mac sandbox/file1.json sandbox/file2.json
 ```
 
 You can also provide the vault ID you want to recover, this will skip the step of choosing a vault.
 ```bash
-./bin/recovery-tool -vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.bin sandbox/file2.bin
+./recovery-tool-mac -vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.bin sandbox/file2.bin
 ```
+
+Replace `mac` with `linux` or `.exe` depending on your computer's OS.
 
 The tool will try to auto-detect the optimal "reshare nonce" and "threshold/quroum" of the vault you are trying to recover.
 However, if you would like to override this behavior, you may specify custom values with `-nonce` and `-threshold` flags respectively.
