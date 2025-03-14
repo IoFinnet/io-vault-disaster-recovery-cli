@@ -51,6 +51,13 @@ Windows may display a security warning too. Just select "Run anyway" to run it w
 
 ![image](https://github.com/user-attachments/assets/cf010a48-6a2e-462e-99fc-bf916371356d)
 
+You could also do this another way by:
+
+1. Right-clicking the file
+2. Selecting Properties
+3. At the bottom of the General tab, looking for a "Security" section with "This file came from another computer" message
+4. Checking "Unblock" and clicking OK
+
 ## Usage
 
 Run the recovery tool.
