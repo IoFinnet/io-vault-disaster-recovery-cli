@@ -34,7 +34,7 @@ make build-freebsd        # builds both FreeBSD variants
 make build-mac
 ```
 
-The resulting executable(s) will be in the `bin/` folder. If you are on Mac or Linux, you may have to run `chmod +x recovery-tool*` on the file on macOS. Windows may display a security warning too.
+The resulting executable(s) will be in the `bin/` folder. Windows may display a security warning when running the executable.
 
 ## Download a Binary
 
@@ -53,9 +53,8 @@ There are some extra steps to acknowledge security warnings depending on your pl
 
 ### macOS
 
-Run the following commands before you run the tool:
+Run the following command before you run the tool to remove quarantine attributes:
 ```bash
-chmod +x recovery-tool*
 xattr -dr com.apple.quarantine recovery-tool*
 ```
 

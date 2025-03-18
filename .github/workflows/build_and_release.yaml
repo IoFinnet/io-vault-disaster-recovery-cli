@@ -28,6 +28,13 @@ jobs:
           sha256sum ./bin/recovery-tool-mac | cut -d' ' -f1 > ./bin/recovery-tool-mac.sha256
           sha256sum ./bin/recovery-tool.exe | cut -d' ' -f1 > ./bin/recovery-tool.exe.sha256
           
+          # Set executable permissions on all binaries (except Windows .exe)
+          chmod +x ./bin/recovery-tool-linux-amd64
+          chmod +x ./bin/recovery-tool-linux-arm64
+          chmod +x ./bin/recovery-tool-freebsd-amd64
+          chmod +x ./bin/recovery-tool-freebsd-arm64
+          chmod +x ./bin/recovery-tool-mac
+          
           # Compress the binaries
           tar -czf ./bin/recovery-tool-linux-amd64.tar.gz -C ./bin recovery-tool-linux-amd64
           tar -czf ./bin/recovery-tool-linux-arm64.tar.gz -C ./bin recovery-tool-linux-arm64
