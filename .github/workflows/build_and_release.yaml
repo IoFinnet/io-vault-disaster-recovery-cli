@@ -50,13 +50,13 @@ jobs:
           VERSION="${{ fromJSON(steps.release.outputs.release).tag_name }}"
           VERSION="${VERSION#v}"
           
-          # Compress the binaries with version in filename
-          tar -czf "./bin/recovery-tool-linux-amd64-${VERSION}.tar.gz" -C ./bin recovery-tool-linux-amd64
-          tar -czf "./bin/recovery-tool-linux-arm64-${VERSION}.tar.gz" -C ./bin recovery-tool-linux-arm64
-          tar -czf "./bin/recovery-tool-freebsd-amd64-${VERSION}.tar.gz" -C ./bin recovery-tool-freebsd-amd64
-          tar -czf "./bin/recovery-tool-freebsd-arm64-${VERSION}.tar.gz" -C ./bin recovery-tool-freebsd-arm64
-          tar -czf "./bin/recovery-tool-mac-${VERSION}.tar.gz" -C ./bin recovery-tool-mac
-          tar -czf "./bin/recovery-tool-windows-${VERSION}.tar.gz" -C ./bin recovery-tool.exe
+          # Compress the binaries with version in filename using maximum compression (level 9)
+          tar -I 'gzip -9' -cf "./bin/recovery-tool-linux-amd64-${VERSION}.tar.gz" -C ./bin recovery-tool-linux-amd64
+          tar -I 'gzip -9' -cf "./bin/recovery-tool-linux-arm64-${VERSION}.tar.gz" -C ./bin recovery-tool-linux-arm64
+          tar -I 'gzip -9' -cf "./bin/recovery-tool-freebsd-amd64-${VERSION}.tar.gz" -C ./bin recovery-tool-freebsd-amd64
+          tar -I 'gzip -9' -cf "./bin/recovery-tool-freebsd-arm64-${VERSION}.tar.gz" -C ./bin recovery-tool-freebsd-arm64
+          tar -I 'gzip -9' -cf "./bin/recovery-tool-mac-${VERSION}.tar.gz" -C ./bin recovery-tool-mac
+          tar -I 'gzip -9' -cf "./bin/recovery-tool-windows-${VERSION}.tar.gz" -C ./bin recovery-tool.exe
 
       - name: Upload binary files to release
         if: ${{ steps.release.outputs.created }}
