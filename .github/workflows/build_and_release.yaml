@@ -22,6 +22,8 @@ jobs:
         run: |
           sha256sum ./bin/recovery-tool-linux-amd64 | cut -d' ' -f1 > ./bin/recovery-tool-linux-amd64.sha256
           sha256sum ./bin/recovery-tool-linux-arm64 | cut -d' ' -f1 > ./bin/recovery-tool-linux-arm64.sha256
+          sha256sum ./bin/recovery-tool-freebsd-amd64 | cut -d' ' -f1 > ./bin/recovery-tool-freebsd-amd64.sha256
+          sha256sum ./bin/recovery-tool-freebsd-arm64 | cut -d' ' -f1 > ./bin/recovery-tool-freebsd-arm64.sha256
           sha256sum ./bin/recovery-tool-mac | cut -d' ' -f1 > ./bin/recovery-tool-mac.sha256
           sha256sum ./bin/recovery-tool.exe | cut -d' ' -f1 > ./bin/recovery-tool.exe.sha256
 
@@ -38,6 +40,8 @@ jobs:
         run: |
           gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-linux-amd64
           gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-linux-arm64
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-freebsd-amd64
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-freebsd-arm64
           gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-mac
           gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool.exe
         env:
@@ -58,6 +62,12 @@ jobs:
 
           recovery-tool-linux-arm64 - Linux build (ARM64)
           sha256sum: $(cat ./bin/recovery-tool-linux-arm64.sha256)
+
+          recovery-tool-freebsd-amd64 - FreeBSD build (x86-64)
+          sha256sum: $(cat ./bin/recovery-tool-freebsd-amd64.sha256)
+
+          recovery-tool-freebsd-arm64 - FreeBSD build (ARM64)
+          sha256sum: $(cat ./bin/recovery-tool-freebsd-arm64.sha256)
 
           recovery-tool.exe - Windows build (x86-64)
           sha256sum: $(cat ./bin/recovery-tool.exe.sha256)"
