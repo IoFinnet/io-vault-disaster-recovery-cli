@@ -249,7 +249,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 	vssSharesECDSA := make(vss.Shares, len(vaultAllSharesECDSA[*vaultID]))
 	vssSharesEDDSA := make(vss.Shares, len(vaultAllSharesEDDSA[*vaultID]))
 	if len(vaultAllSharesECDSA[*vaultID]) < tPlus1 {
-		welp = fmt.Errorf("⚠ not enough shares. are you are using the newest files? (need %d, have %d)",
+		welp = fmt.Errorf("⚠ not enough shares. are you using the newest files? (need %d, have %d)",
 			tPlus1, len(vaultAllSharesECDSA[*vaultID]))
 		return
 	}
