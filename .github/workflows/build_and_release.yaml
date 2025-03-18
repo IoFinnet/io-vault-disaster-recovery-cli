@@ -18,14 +18,23 @@ jobs:
       - name: Build all binaries
         run: make build
 
-      - name: Calculate SHA256
+      - name: Calculate SHA256 and Compress Binaries
         run: |
+          # Calculate SHA256 of the original binaries
           sha256sum ./bin/recovery-tool-linux-amd64 | cut -d' ' -f1 > ./bin/recovery-tool-linux-amd64.sha256
           sha256sum ./bin/recovery-tool-linux-arm64 | cut -d' ' -f1 > ./bin/recovery-tool-linux-arm64.sha256
           sha256sum ./bin/recovery-tool-freebsd-amd64 | cut -d' ' -f1 > ./bin/recovery-tool-freebsd-amd64.sha256
           sha256sum ./bin/recovery-tool-freebsd-arm64 | cut -d' ' -f1 > ./bin/recovery-tool-freebsd-arm64.sha256
           sha256sum ./bin/recovery-tool-mac | cut -d' ' -f1 > ./bin/recovery-tool-mac.sha256
           sha256sum ./bin/recovery-tool.exe | cut -d' ' -f1 > ./bin/recovery-tool.exe.sha256
+          
+          # Compress the binaries
+          tar -czf ./bin/recovery-tool-linux-amd64.tar.gz -C ./bin recovery-tool-linux-amd64
+          tar -czf ./bin/recovery-tool-linux-arm64.tar.gz -C ./bin recovery-tool-linux-arm64
+          tar -czf ./bin/recovery-tool-freebsd-amd64.tar.gz -C ./bin recovery-tool-freebsd-amd64
+          tar -czf ./bin/recovery-tool-freebsd-arm64.tar.gz -C ./bin recovery-tool-freebsd-arm64
+          tar -czf ./bin/recovery-tool-mac.tar.gz -C ./bin recovery-tool-mac
+          tar -czf ./bin/recovery-tool-windows.tar.gz -C ./bin recovery-tool.exe
 
       - name: Release
         id: release
@@ -38,12 +47,12 @@ jobs:
       - name: Upload binary files to release
         if: ${{ steps.release.outputs.created }}
         run: |
-          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-linux-amd64
-          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-linux-arm64
-          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-freebsd-amd64
-          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-freebsd-arm64
-          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-mac
-          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool.exe
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-linux-amd64.tar.gz
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-linux-arm64.tar.gz
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-freebsd-amd64.tar.gz
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-freebsd-arm64.tar.gz
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-mac.tar.gz
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-windows.tar.gz
         env:
           GITHUB_TOKEN: ${{ github.TOKEN }}
 

@@ -38,7 +38,16 @@ The resulting executable(s) will be in the `bin/` folder. If you are on Mac or L
 
 ## Download a Binary
 
-If you prefer the convenience of downloading a pre-built binary for your platform, head to the [Releases area](https://github.com/IoFinnet/io-vault-disaster-recovery-cli/releases). We have pre-built binaries for Linux (both x86-64 and ARM64), FreeBSD (both x86-64 and ARM64), Windows (x86-64) and Mac (ARM64).
+If you prefer the convenience of downloading a pre-built binary for your platform, head to the [Releases area](https://github.com/IoFinnet/io-vault-disaster-recovery-cli/releases). We have pre-built binaries for Linux (both x86-64 and ARM64), FreeBSD (both x86-64 and ARM64), Windows (x86-64) and Mac (ARM64). All binaries are compressed in `.tar.gz` archives to reduce download size.
+
+After downloading, extract the binary with:
+```bash
+# For Linux/FreeBSD/Mac:
+tar -xzf recovery-tool-*.tar.gz
+
+# For Windows (PowerShell):
+tar -xzf recovery-tool-windows.tar.gz
+```
 
 There are some extra steps to acknowledge security warnings depending on your platform.
 
