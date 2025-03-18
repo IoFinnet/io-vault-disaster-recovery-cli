@@ -18,7 +18,7 @@ jobs:
       - name: Build all binaries
         run: make build
 
-      - name: Calculate SHA256 and Compress Binaries
+      - name: Calculate SHA256
         run: |
           # Calculate SHA256 of the original binaries
           sha256sum ./bin/recovery-tool-linux-amd64 | cut -d' ' -f1 > ./bin/recovery-tool-linux-amd64.sha256
@@ -34,14 +34,6 @@ jobs:
           chmod +x ./bin/recovery-tool-freebsd-amd64
           chmod +x ./bin/recovery-tool-freebsd-arm64
           chmod +x ./bin/recovery-tool-mac
-          
-          # Compress the binaries
-          tar -czf ./bin/recovery-tool-linux-amd64.tar.gz -C ./bin recovery-tool-linux-amd64
-          tar -czf ./bin/recovery-tool-linux-arm64.tar.gz -C ./bin recovery-tool-linux-arm64
-          tar -czf ./bin/recovery-tool-freebsd-amd64.tar.gz -C ./bin recovery-tool-freebsd-amd64
-          tar -czf ./bin/recovery-tool-freebsd-arm64.tar.gz -C ./bin recovery-tool-freebsd-arm64
-          tar -czf ./bin/recovery-tool-mac.tar.gz -C ./bin recovery-tool-mac
-          tar -czf ./bin/recovery-tool-windows.tar.gz -C ./bin recovery-tool.exe
 
       - name: Release
         id: release
@@ -50,16 +42,36 @@ jobs:
           token: ${{ github.token }}
           prefix: v
           versioning: semver
+          
+      - name: Compress Binaries with Version
+        if: ${{ steps.release.outputs.created }}
+        run: |
+          # Get tag name without leading 'v'
+          VERSION="${{ fromJSON(steps.release.outputs.release).tag_name }}"
+          VERSION="${VERSION#v}"
+          
+          # Compress the binaries with version in filename
+          tar -czf "./bin/recovery-tool-linux-amd64-${VERSION}.tar.gz" -C ./bin recovery-tool-linux-amd64
+          tar -czf "./bin/recovery-tool-linux-arm64-${VERSION}.tar.gz" -C ./bin recovery-tool-linux-arm64
+          tar -czf "./bin/recovery-tool-freebsd-amd64-${VERSION}.tar.gz" -C ./bin recovery-tool-freebsd-amd64
+          tar -czf "./bin/recovery-tool-freebsd-arm64-${VERSION}.tar.gz" -C ./bin recovery-tool-freebsd-arm64
+          tar -czf "./bin/recovery-tool-mac-${VERSION}.tar.gz" -C ./bin recovery-tool-mac
+          tar -czf "./bin/recovery-tool-windows-${VERSION}.tar.gz" -C ./bin recovery-tool.exe
 
       - name: Upload binary files to release
         if: ${{ steps.release.outputs.created }}
         run: |
-          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-linux-amd64.tar.gz
-          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-linux-arm64.tar.gz
-          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-freebsd-amd64.tar.gz
-          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-freebsd-arm64.tar.gz
-          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-mac.tar.gz
-          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-windows.tar.gz
+          # Get version for filenames
+          VERSION="${{ fromJSON(steps.release.outputs.release).tag_name }}"
+          VERSION="${VERSION#v}"
+          
+          # Upload files with version in filename
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} "./bin/recovery-tool-linux-amd64-${VERSION}.tar.gz"
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} "./bin/recovery-tool-linux-arm64-${VERSION}.tar.gz"
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} "./bin/recovery-tool-freebsd-amd64-${VERSION}.tar.gz"
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} "./bin/recovery-tool-freebsd-arm64-${VERSION}.tar.gz"
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} "./bin/recovery-tool-mac-${VERSION}.tar.gz"
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} "./bin/recovery-tool-windows-${VERSION}.tar.gz"
         env:
           GITHUB_TOKEN: ${{ github.TOKEN }}
 
