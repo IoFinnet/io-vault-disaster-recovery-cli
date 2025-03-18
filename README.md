@@ -22,10 +22,12 @@ Compile from source:
 make
 ```
 
-Compile individually for Windows, Linux (x86) or Mac (Apple Silicon):
+Compile individually for Windows, Linux (x86-64 or ARM64), or Mac (Apple Silicon):
 ```bash
 make build-win
-make build-linux
+make build-linux-amd64  # for x86-64 Linux
+make build-linux-arm64  # for ARM64 Linux
+make build-linux        # builds both Linux variants
 make build-mac
 ```
 
@@ -33,7 +35,7 @@ The resulting executable(s) will be in the `bin/` folder. If you are on Mac or L
 
 ## Download a Binary
 
-If you prefer the convenience of downloading a pre-built binary for your platform, head to the [Releases area](https://github.com/IoFinnet/io-vault-disaster-recovery-cli/releases). We have pre-built binaries for Linux, Windows and Mac.
+If you prefer the convenience of downloading a pre-built binary for your platform, head to the [Releases area](https://github.com/IoFinnet/io-vault-disaster-recovery-cli/releases). We have pre-built binaries for Linux (both x86-64 and ARM64), Windows (x86-64) and Mac (ARM64).
 
 There are some extra steps to acknowledge security warnings depending on your platform.
 
@@ -70,7 +72,7 @@ You can also provide the vault ID you want to recover, this will skip the step o
 ./recovery-tool-mac -vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.bin sandbox/file2.bin
 ```
 
-Replace `mac` with `linux` or `.exe` depending on your computer's OS.
+Replace `mac` with `linux-amd64`, `linux-arm64`, or `.exe` depending on your computer's OS and architecture.
 
 > [!NOTE]
 > The tool will try to auto-detect the optimal "reshare nonce" and "threshold/quroum" of the vault you are trying to recover.
