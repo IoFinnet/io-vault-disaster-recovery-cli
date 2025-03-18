@@ -38,7 +38,14 @@ The resulting executable(s) will be in the `bin/` folder. Windows may display a 
 
 ## Download a Binary
 
-If you prefer the convenience of downloading a pre-built binary for your platform, head to the [Releases area](https://github.com/IoFinnet/io-vault-disaster-recovery-cli/releases). We have pre-built binaries for Linux (both x86-64 and ARM64), FreeBSD (both x86-64 and ARM64), Windows (x86-64) and Mac (ARM64). All binaries are compressed in versioned `.tar.gz` archives to reduce download size.
+If you prefer the convenience of downloading a pre-built binary for your platform, head to the [Releases area](https://github.com/IoFinnet/io-vault-disaster-recovery-cli/releases). We have pre-built binaries for:
+
+- **Linux**: x86-64 (amd64) and ARM64 (aarch64)
+- **FreeBSD**: x86-64 (amd64) and ARM64 (aarch64)
+- **Windows**: x86-64 (amd64)
+- **Mac**: ARM64 (Apple Silicon)
+
+All binaries are compressed in versioned `.tar.gz` archives with maximum compression to reduce download size (approximately 50% smaller). The binaries in these archives already have executable permissions set, so no additional `chmod` commands are needed after extraction.
 
 After downloading, extract the binary with:
 ```bash
@@ -83,7 +90,12 @@ You can also provide the vault ID you want to recover, this will skip the step o
 ./recovery-tool-mac -vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.bin sandbox/file2.bin
 ```
 
-Replace `mac` with `linux-amd64`, `linux-arm64`, `freebsd-amd64`, `freebsd-arm64`, or `.exe` depending on your computer's OS and architecture.
+Replace `mac` with one of the following depending on your computer's OS and architecture:
+- `linux-amd64` - For Linux on x86-64 processors
+- `linux-arm64` - For Linux on ARM64 processors (e.g., Raspberry Pi 4, AWS Graviton)
+- `freebsd-amd64` - For FreeBSD on x86-64 processors
+- `freebsd-arm64` - For FreeBSD on ARM64 processors
+- `.exe` - For Windows (just use `recovery-tool.exe`)
 
 > [!NOTE]
 > The tool will try to auto-detect the optimal "reshare nonce" and "threshold/quroum" of the vault you are trying to recover.
