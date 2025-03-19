@@ -52,7 +52,7 @@ After downloading, extract the binary with:
 tar -xzf recovery-tool-*.tar.gz
 ```
 > [!NOTE]
-> In Windows, you should do that in PowerShell.
+> On Windows, you should run tar from Command Prompt.
 
 ### Security Popups
 
