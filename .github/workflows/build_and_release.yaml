@@ -20,9 +20,20 @@ jobs:
 
       - name: Calculate SHA256
         run: |
-          sha256sum ./bin/recovery-tool-linux | cut -d' ' -f1 > ./bin/recovery-tool-linux.sha256
+          # Calculate SHA256 of the original binaries
+          sha256sum ./bin/recovery-tool-linux-amd64 | cut -d' ' -f1 > ./bin/recovery-tool-linux-amd64.sha256
+          sha256sum ./bin/recovery-tool-linux-arm64 | cut -d' ' -f1 > ./bin/recovery-tool-linux-arm64.sha256
+          sha256sum ./bin/recovery-tool-freebsd-amd64 | cut -d' ' -f1 > ./bin/recovery-tool-freebsd-amd64.sha256
+          sha256sum ./bin/recovery-tool-freebsd-arm64 | cut -d' ' -f1 > ./bin/recovery-tool-freebsd-arm64.sha256
           sha256sum ./bin/recovery-tool-mac | cut -d' ' -f1 > ./bin/recovery-tool-mac.sha256
           sha256sum ./bin/recovery-tool.exe | cut -d' ' -f1 > ./bin/recovery-tool.exe.sha256
+          
+          # Set executable permissions on all binaries (except Windows .exe)
+          chmod +x ./bin/recovery-tool-linux-amd64
+          chmod +x ./bin/recovery-tool-linux-arm64
+          chmod +x ./bin/recovery-tool-freebsd-amd64
+          chmod +x ./bin/recovery-tool-freebsd-arm64
+          chmod +x ./bin/recovery-tool-mac
 
       - name: Release
         id: release
@@ -31,13 +42,36 @@ jobs:
           token: ${{ github.token }}
           prefix: v
           versioning: semver
+          
+      - name: Compress Binaries with Version
+        if: ${{ steps.release.outputs.created }}
+        run: |
+          # Get tag name without leading 'v'
+          VERSION="${{ fromJSON(steps.release.outputs.release).tag_name }}"
+          VERSION="${VERSION#v}"
+          
+          # Compress the binaries with version in filename using maximum compression (level 9)
+          tar -I 'gzip -9' -cf "./bin/recovery-tool-linux-amd64-${VERSION}.tar.gz" -C ./bin recovery-tool-linux-amd64
+          tar -I 'gzip -9' -cf "./bin/recovery-tool-linux-arm64-${VERSION}.tar.gz" -C ./bin recovery-tool-linux-arm64
+          tar -I 'gzip -9' -cf "./bin/recovery-tool-freebsd-amd64-${VERSION}.tar.gz" -C ./bin recovery-tool-freebsd-amd64
+          tar -I 'gzip -9' -cf "./bin/recovery-tool-freebsd-arm64-${VERSION}.tar.gz" -C ./bin recovery-tool-freebsd-arm64
+          tar -I 'gzip -9' -cf "./bin/recovery-tool-mac-${VERSION}.tar.gz" -C ./bin recovery-tool-mac
+          tar -I 'gzip -9' -cf "./bin/recovery-tool-windows-${VERSION}.tar.gz" -C ./bin recovery-tool.exe
 
       - name: Upload binary files to release
         if: ${{ steps.release.outputs.created }}
         run: |
-          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-linux
-          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool-mac
-          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} ./bin/recovery-tool.exe
+          # Get version for filenames
+          VERSION="${{ fromJSON(steps.release.outputs.release).tag_name }}"
+          VERSION="${VERSION#v}"
+          
+          # Upload files with version in filename
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} "./bin/recovery-tool-linux-amd64-${VERSION}.tar.gz"
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} "./bin/recovery-tool-linux-arm64-${VERSION}.tar.gz"
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} "./bin/recovery-tool-freebsd-amd64-${VERSION}.tar.gz"
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} "./bin/recovery-tool-freebsd-arm64-${VERSION}.tar.gz"
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} "./bin/recovery-tool-mac-${VERSION}.tar.gz"
+          gh release upload ${{ fromJSON(steps.release.outputs.release).tag_name }} "./bin/recovery-tool-windows-${VERSION}.tar.gz"
         env:
           GITHUB_TOKEN: ${{ github.TOKEN }}
 
@@ -51,8 +85,17 @@ jobs:
           recovery-tool-mac - macOS build (Apple Silicon)
           sha256sum: $(cat ./bin/recovery-tool-mac.sha256)
 
-          recovery-tool-linux - Linux build (x86-64)
-          sha256sum: $(cat ./bin/recovery-tool-linux.sha256)
+          recovery-tool-linux-amd64 - Linux build (x86-64)
+          sha256sum: $(cat ./bin/recovery-tool-linux-amd64.sha256)
+
+          recovery-tool-linux-arm64 - Linux build (ARM64)
+          sha256sum: $(cat ./bin/recovery-tool-linux-arm64.sha256)
+
+          recovery-tool-freebsd-amd64 - FreeBSD build (x86-64)
+          sha256sum: $(cat ./bin/recovery-tool-freebsd-amd64.sha256)
+
+          recovery-tool-freebsd-arm64 - FreeBSD build (ARM64)
+          sha256sum: $(cat ./bin/recovery-tool-freebsd-arm64.sha256)
 
           recovery-tool.exe - Windows build (x86-64)
           sha256sum: $(cat ./bin/recovery-tool.exe.sha256)"
