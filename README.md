@@ -22,16 +22,16 @@ Compile from source:
 make
 ```
 
-Compile individually for Windows, Linux (x86-64 or ARM64), FreeBSD (x86-64 or ARM64), or Mac (Apple Silicon):
+Compile individually for Windows, Mac (Apple Silicon), Linux (x86-64 or ARM64), or FreeBSD (x86-64 or ARM64):
 ```bash
 make build-win
+make build-mac
 make build-linux-amd64    # for x86-64 Linux
 make build-linux-arm64    # for ARM64 Linux
 make build-linux          # builds both Linux variants
 make build-freebsd-amd64  # for x86-64 FreeBSD
 make build-freebsd-arm64  # for ARM64 FreeBSD
 make build-freebsd        # builds both FreeBSD variants
-make build-mac
 ```
 
 The resulting executable(s) will be in the `bin/` folder. Windows may display a security warning when running the executable.
@@ -49,14 +49,12 @@ All binaries are compressed in versioned `.tar.gz` archives with maximum compres
 
 After downloading, extract the binary with:
 ```bash
-# For Linux/FreeBSD/Mac (where X.Y.Z is the version number):
-tar -xzf recovery-tool-*-X.Y.Z.tar.gz
-
-# For Windows (PowerShell, where X.Y.Z is the version number):
-tar -xzf recovery-tool-windows-X.Y.Z.tar.gz
+tar -xzf recovery-tool-*.tar.gz
 ```
+> [!NOTE]
+> In Windows, you should do that in PowerShell.
 
-There are some extra steps to acknowledge security warnings depending on your platform.
+There are some extra steps to acknowledge security warnings depending on your platform:
 
 ### macOS
 
@@ -77,6 +75,11 @@ You could also do this another way by:
 2. Selecting Properties
 3. At the bottom of the General tab, looking for a "Security" section with "This file came from another computer" message
 4. Checking "Unblock" and clicking OK
+
+Alternatively, you may try to run this command in PowerShell.
+```powershell
+Unblock-File -Path "recovery-tool.exe"
+```
 
 ## Usage
 
