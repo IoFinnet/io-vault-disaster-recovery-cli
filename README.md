@@ -54,16 +54,18 @@ tar -xzf recovery-tool-*.tar.gz
 > [!NOTE]
 > In Windows, you should do that in PowerShell.
 
+### Security Popups
+
 There are some extra steps to acknowledge security warnings depending on your platform:
 
-### macOS
+#### macOS
 
 Run the following command before you run the tool to remove quarantine attributes:
 ```bash
 xattr -dr com.apple.quarantine recovery-tool*
 ```
 
-### Windows
+#### Windows
 
 Windows may display a security warning too. Just select "Run anyway" to run it when you see this popup at the next step.
 
@@ -76,7 +78,7 @@ You could also do this another way by:
 3. At the bottom of the General tab, looking for a "Security" section with "This file came from another computer" message
 4. Checking "Unblock" and clicking OK
 
-Alternatively, you may try to run this command in PowerShell.
+Alternatively, you may run this command in PowerShell to unblock the file.
 ```powershell
 Unblock-File -Path "recovery-tool.exe"
 ```
