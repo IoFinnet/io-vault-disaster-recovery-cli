@@ -25,6 +25,7 @@ import (
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/solana"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/wif"
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ziputils"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/xrpl"
 	"github.com/decred/dcrd/dcrec/edwards/v2"
 )
@@ -431,9 +432,9 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 		outFile.Close()
 
 		// Process the file based on its type
-		if ui.IsZipFile(filePath) {
+		if ziputils.IsZipFile(filePath) {
 			// Extract JSON files from the ZIP
-			extractedFiles, err := ui.ProcessZipFile(filePath)
+			extractedFiles, err := ziputils.ProcessZipFile(filePath)
 			if err != nil {
 				// Clean up any temp directories we've created
 				for _, dir := range zipExtractedDirs {
