@@ -24,43 +24,93 @@ You may be required to run another script contained in the [scripts](./scripts) 
 You can build the code from source. Clone the repo, and make sure the latest [Go](http://go.dev) is installed.
 
 Compile from source:
-
-```
-$ make
-```
-
-Compile individually for Windows, Linux (x86) or Mac (Apple Silicon):
-
-```
-$ make build-win
-$ make build-linux
-$ make build-mac
+```bash
+make
 ```
 
-The resulting executable(s) will be in the `bin/` folder. If you are on Mac or Linux, you may have to run `chmod +x bin/*` on the file and accept any security warnings via system settings due to this being an unsigned release. Windows may display a security warning too.
+Compile individually for Windows, Mac (Apple Silicon), Linux (x86-64 or ARM64), or FreeBSD (x86-64 or ARM64):
+```bash
+make build-win
+make build-mac
+make build-linux-amd64    # for x86-64 Linux
+make build-linux-arm64    # for ARM64 Linux
+make build-linux          # builds both Linux variants
+make build-freebsd-amd64  # for x86-64 FreeBSD
+make build-freebsd-arm64  # for ARM64 FreeBSD
+make build-freebsd        # builds both FreeBSD variants
+```
+
+The resulting executable(s) will be in the `bin/` folder. Windows may display a security warning when running the executable.
 
 ## Download a Binary
 
-If you prefer the convenience of downloading a pre-built binary for your platform, head to the [Releases area](https://github.com/IoFinnet/io-vault-disaster-recovery-cli/releases). We have pre-built binaries for Linux, Windows and Mac.
+If you prefer the convenience of downloading a pre-built binary for your platform, head to the [Releases area](https://github.com/IoFinnet/io-vault-disaster-recovery-cli/releases). We have pre-built binaries for:
 
-If you are on Mac or Linux, you may have to run `chmod +x bin/*` on the file and accept any security warnings via system settings due to these being unsigned releases. Windows may display a security warning too.
+- **Linux**: x86-64 (amd64) and ARM64 (aarch64)
+- **FreeBSD**: x86-64 (amd64) and ARM64 (aarch64)
+- **Windows**: x86-64 (amd64)
+- **Mac**: ARM64 (Apple Silicon)
+
+All binaries are compressed in versioned `.tar.gz` archives with maximum compression to reduce download size (approximately 50% smaller). The binaries in these archives already have executable permissions set, so no additional `chmod` commands are needed after extraction.
+
+After downloading, extract the binary with:
+```bash
+tar -xzf recovery-tool-*.tar.gz
+```
+> [!NOTE]
+> On Windows, you should run tar from Command Prompt.
+
+### Security Popups
+
+There are some extra steps to acknowledge security warnings depending on your platform:
+
+#### macOS
+
+Run the following command before you run the tool to remove quarantine attributes:
+```bash
+xattr -dr com.apple.quarantine recovery-tool*
+```
+
+#### Windows
+
+Windows may display a security warning too. Just select "Run anyway" to run it when you see this popup at the next step.
+
+![image](https://github.com/user-attachments/assets/cf010a48-6a2e-462e-99fc-bf916371356d)
+
+You could also do this another way by:
+
+1. Right-clicking the file
+2. Selecting Properties
+3. At the bottom of the General tab, looking for a "Security" section with "This file came from another computer" message
+4. Checking "Unblock" and clicking OK
+
+Alternatively, you may run this command in PowerShell to unblock the file.
+```powershell
+Unblock-File -Path "recovery-tool.exe"
+```
 
 ## Usage
 
 Run the recovery tool.
-
-```
-$ ./bin/recovery-tool sandbox/file1.json sandbox/file2.json
+``` bash
+./recovery-tool-mac sandbox/file1.json sandbox/file2.json
 ```
 
 You can also provide the vault ID you want to recover, this will skip the step of choosing a vault.
-
+```bash
+./recovery-tool-mac -vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.bin sandbox/file2.bin
 ```
-$ ./bin/recovery-tool -vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.bin sandbox/file2.bin
-```
 
-The tool will try to auto-detect the optimal "reshare nonce" and "threshold/quroum" of the vault you are trying to recover.
-However, if you would like to override this behavior, you may specify custom values with `-nonce` and `-threshold` flags respectively.
+Replace `mac` with one of the following depending on your computer's OS and architecture:
+- `linux-amd64` - For Linux on x86-64 processors
+- `linux-arm64` - For Linux on ARM64 processors (e.g., Raspberry Pi 4, AWS Graviton)
+- `freebsd-amd64` - For FreeBSD on x86-64 processors
+- `freebsd-arm64` - For FreeBSD on ARM64 processors
+- `.exe` - For Windows (just use `recovery-tool.exe`)
+
+> [!NOTE]
+> The tool will try to auto-detect the optimal "reshare nonce" and "threshold/quroum" of the vault you are trying to recover.
+> However, if you would like to override this behavior, you may specify custom values with `-nonce` and `-threshold` flags respectively.
 
 ### Ethereum & Ethereum-Like Recovery
 

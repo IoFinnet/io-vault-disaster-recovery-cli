@@ -119,10 +119,9 @@ func main() {
 
 	_, _, _, vaultsFormInfo, err := runTool(*vaultsDataFiles, nil, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
 	if err != nil {
-		fmt.Printf("Failed to run tool: %s\n", err)
-
-		fmt.Println("Are the words you entered correct? Are you using the newest files?")
+		fmt.Println(ui.ErrorBox(err))
 		fmt.Println()
+		fmt.Println("Are the words you entered correct? Are you using the newest files?")
 		os.Exit(1)
 	}
 
@@ -131,7 +130,7 @@ func main() {
 	if *vaultID == "" {
 		selectedVaultId, err = ui.RunVaultPickerForm(vaultsFormInfo)
 		if err != nil {
-			fmt.Printf("Failed to run form: %s\n", err)
+			fmt.Println(ui.ErrorBox(err))
 			os.Exit(1)
 		}
 	} else {
@@ -162,8 +161,9 @@ func main() {
 	address, ecSK, edSK, _, err := runTool(*vaultsDataFiles, &selectedVault.VaultID, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
 	if err != nil {
 		fmt.Println(ui.ErrorBox(err))
+		fmt.Println()
+		fmt.Println("Are the words you entered correct? Are you using the newest files?")
 		os.Exit(1)
-		return
 	}
 	defer func() {
 		clear(ecSK)
