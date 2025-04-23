@@ -33,11 +33,16 @@
                 </div>
             </div>
 
+            <div class="file-info-note">
+                <p>You can upload individual JSON files, or ZIP archives containing multiple JSON files.</p>
+                <p class="note">For ZIP files: Only flat hierarchies are supported (no nested directories), and all JSON files within a ZIP will use the same mnemonic phrase.</p>
+            </div>
+            
             <div id="files-container">
                 <div class="file-input-group">
                     <div class="file-upload">
                         <label for="file-1">Select File</label>
-                        <input type="file" id="file-1" class="file-input" accept=".json,.bin">
+                        <input type="file" id="file-1" class="file-input" accept=".json,.zip">
                         <span class="file-name">No file selected</span>
                     </div>
                     <div class="mnemonic-input">

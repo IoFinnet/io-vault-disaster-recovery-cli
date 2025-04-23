@@ -91,14 +91,28 @@ Unblock-File -Path "recovery-tool.exe"
 
 ## Usage
 
-Run the recovery tool.
+Run the recovery tool with your backup JSON files or ZIP archives containing JSON files.
 ``` bash
 ./recovery-tool-mac sandbox/file1.json sandbox/file2.json
 ```
 
-You can also provide the vault ID you want to recover, this will skip the step of choosing a vault.
+You can also use ZIP archives that contain multiple JSON files:
 ```bash
-./recovery-tool-mac -vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.bin sandbox/file2.bin
+./recovery-tool-mac sandbox/backup.zip
+```
+
+> [!NOTE]
+> When using ZIP files, ensure they contain only a flat hierarchy of JSON files with no nested directories.
+> Each ZIP file will be treated as a batch of JSON files, all using the same mnemonic phrase.
+
+You can also provide the vault ID you want to recover, which will skip the step of choosing a vault:
+```bash
+./recovery-tool-mac -vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.json sandbox/file2.json
+```
+
+Mix and match JSON files and ZIP archives as needed:
+```bash
+./recovery-tool-mac sandbox/file1.json sandbox/backups.zip sandbox/file3.json
 ```
 
 Replace `mac` with one of the following depending on your computer's OS and architecture:

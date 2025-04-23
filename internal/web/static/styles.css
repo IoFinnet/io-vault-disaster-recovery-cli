@@ -148,6 +148,25 @@ h3 {
     word-break: break-all;
 }
 
+.file-info-note {
+    background-color: #f8f9fa;
+    border-left: 4px solid var(--primary-color);
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.5rem;
+    border-radius: 4px;
+}
+
+.file-info-note p {
+    margin: 0.5rem 0;
+    font-size: 0.9rem;
+}
+
+.file-info-note p.note {
+    color: var(--text-light);
+    font-style: italic;
+    font-size: 0.85rem;
+}
+
 .mnemonic-input {
     flex: 2;
 }

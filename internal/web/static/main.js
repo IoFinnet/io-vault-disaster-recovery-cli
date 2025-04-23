@@ -275,7 +275,7 @@ document.addEventListener('DOMContentLoaded', () => {
         fileGroup.innerHTML = `
             <div class="file-upload">
                 <label for="file-${fileCounter}">Select File</label>
-                <input type="file" id="file-${fileCounter}" class="file-input" accept=".json,.bin">
+                <input type="file" id="file-${fileCounter}" class="file-input" accept=".json,.zip">
                 <span class="file-name">No file selected</span>
             </div>
             <div class="mnemonic-input">
@@ -607,7 +607,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="file-input-group" data-index="1">
                 <div class="file-upload">
                     <label for="file-1">Select File</label>
-                    <input type="file" id="file-1" class="file-input" accept=".json,.bin">
+                    <input type="file" id="file-1" class="file-input" accept=".json,.zip">
                     <span class="file-name">No file selected</span>
                 </div>
                 <div class="mnemonic-input">

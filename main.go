@@ -61,7 +61,12 @@ func main() {
 		if choice == "1" {
 			*webMode = true
 		} else if choice == "2" {
-			fmt.Println("\nPlease supply some input files on the command line. \nExample: recovery-tool.exe [-flags] file1.json file2.json … \n\nOptional flags:")
+			fmt.Println("\nPlease supply some input files on the command line. \nExamples:")
+			fmt.Println("- Individual JSON files: recovery-tool.exe [-flags] file1.json file2.json …")
+			fmt.Println("- ZIP archive containing JSON files: recovery-tool.exe [-flags] backup.zip")
+			fmt.Println("- Mixed formats: recovery-tool.exe [-flags] file1.json backup.zip file3.json")
+			fmt.Println("\nNOTE: ZIP files must contain only a flat hierarchy of JSON files (no nested directories)")
+			fmt.Println("\nOptional flags:")
 			flag.PrintDefaults()
 			return
 		} else {
@@ -78,7 +83,12 @@ func main() {
 
 	// Validate files for CLI mode
 	if len(files) < 1 {
-		fmt.Println("Please supply some input files on the command line. \nExample: recovery-tool.exe [-flags] file1.json file2.json … \n\nOptional flags:")
+		fmt.Println("Please supply some input files on the command line. \nExamples:")
+		fmt.Println("- Individual JSON files: recovery-tool.exe [-flags] file1.json file2.json …")
+		fmt.Println("- ZIP archive containing JSON files: recovery-tool.exe [-flags] backup.zip")
+		fmt.Println("- Mixed formats: recovery-tool.exe [-flags] file1.json backup.zip file3.json")
+		fmt.Println("\nNOTE: ZIP files must contain only a flat hierarchy of JSON files (no nested directories)")
+		fmt.Println("\nOptional flags:")
 		flag.PrintDefaults()
 		return
 	}
@@ -106,10 +116,22 @@ func main() {
 	if err != nil {
 		// if err := f.Run(&vaultsDataFiles); err != nil {
 		fmt.Println(ui.ErrorBox(err))
+		
+		// Clean up any temporary directories from ZIP extraction
+		for _, dir := range appConfig.ZipExtractedDirs {
+			os.RemoveAll(dir)
+		}
+		
 		os.Exit(1)
 	}
 	if vaultsDataFiles == nil {
 		fmt.Println("No vaults data files were selected.")
+		
+		// Clean up any temporary directories from ZIP extraction
+		for _, dir := range appConfig.ZipExtractedDirs {
+			os.RemoveAll(dir)
+		}
+		
 		os.Exit(0)
 	}
 
@@ -122,6 +144,12 @@ func main() {
 		fmt.Println(ui.ErrorBox(err))
 		fmt.Println()
 		fmt.Println("Are the words you entered correct? Are you using the newest files?")
+		
+		// Clean up any temporary directories from ZIP extraction
+		for _, dir := range appConfig.ZipExtractedDirs {
+			os.RemoveAll(dir)
+		}
+		
 		os.Exit(1)
 	}
 
@@ -163,6 +191,12 @@ func main() {
 		fmt.Println(ui.ErrorBox(err))
 		fmt.Println()
 		fmt.Println("Are the words you entered correct? Are you using the newest files?")
+		
+		// Clean up any temporary directories from ZIP extraction
+		for _, dir := range appConfig.ZipExtractedDirs {
+			os.RemoveAll(dir)
+		}
+		
 		os.Exit(1)
 	}
 	defer func() {
@@ -237,6 +271,11 @@ func main() {
 		fmt.Println("\nNo EdDSA/Ed25519 private key found for this older vault.")
 	}
 	fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.\n")
+	
+	// Clean up any temporary directories from ZIP extraction
+	for _, dir := range appConfig.ZipExtractedDirs {
+		os.RemoveAll(dir)
+	}
 }
 
 // launchWebInterface starts the http server and optionally opens the browser

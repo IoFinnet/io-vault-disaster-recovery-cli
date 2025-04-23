@@ -5,9 +5,10 @@
 package config
 
 type AppConfig struct {
-	Filenames      []string
-	NonceOverride  int
-	QuorumOverride int
-	ExportKSFile   string
-	PasswordForKS  string
+	Filenames       []string
+	NonceOverride   int
+	QuorumOverride  int
+	ExportKSFile    string
+	PasswordForKS   string
+	ZipExtractedDirs []string // Tracks temporary directories created for ZIP extraction
 }

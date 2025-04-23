@@ -58,10 +58,11 @@ type RecoveryResult struct {
 
 // Server represents the http server for the disaster recovery tool
 type Server struct {
-	config   ServerConfig
-	tempDir  string
-	server   *http.Server
-	listener net.Listener
+	config          ServerConfig
+	tempDir         string
+	server          *http.Server
+	listener        net.Listener
+	zipExtractedDirs []string  // Tracks temporary directories created for ZIP extractions
 }
 
 // NewServer creates a new http server instance
@@ -73,8 +74,9 @@ func NewServer(config ServerConfig) (*Server, error) {
 	}
 
 	return &Server{
-		config:  config,
-		tempDir: tempDir,
+		config:          config,
+		tempDir:         tempDir,
+		zipExtractedDirs: make([]string, 0),
 	}, nil
 }
 
@@ -181,6 +183,11 @@ func (s *Server) Stop() error {
 		if err := s.server.Close(); err != nil {
 			return err
 		}
+	}
+
+	// Clean up any ZIP extracted directories
+	for _, dir := range s.zipExtractedDirs {
+		os.RemoveAll(dir)
 	}
 
 	// Clean up temporary files
@@ -378,18 +385,21 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 		}
 	}
 
-	// Ensure we have the right number of mnemonics
-	if len(mnemonicValues) < len(fileHeaders) {
-		return nil, fmt.Errorf("number of mnemonics (%d) does not match number of files (%d)", len(mnemonicValues), len(fileHeaders))
-	}
-
-	vaultsDataFiles := make([]ui.VaultsDataFile, 0, len(fileHeaders))
-
+	vaultsDataFiles := make([]ui.VaultsDataFile, 0)
+	zipExtractedDirs := make([]string, 0)
+	
+	// Process all files
+	jsonFileCount := 0 // Track actual JSON files (either direct or from ZIP)
+	
 	// Save each file to the temp directory
 	for i, fileHeader := range fileHeaders {
 		// Open the uploaded file
 		file, err := fileHeader.Open()
 		if err != nil {
+			// Clean up any temp directories we've created
+			for _, dir := range zipExtractedDirs {
+				os.RemoveAll(dir)
+			}
 			return nil, fmt.Errorf("failed to open file %s: %w", fileHeader.Filename, err)
 		}
 
@@ -398,6 +408,10 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 		outFile, err := os.Create(filePath)
 		if err != nil {
 			file.Close() // Close the file before returning on error
+			// Clean up any temp directories we've created
+			for _, dir := range zipExtractedDirs {
+				os.RemoveAll(dir)
+			}
 			return nil, fmt.Errorf("failed to create temporary file %s: %w", filePath, err)
 		}
 
@@ -405,6 +419,10 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 		if _, err := io.Copy(outFile, file); err != nil {
 			file.Close()    // Close the input file
 			outFile.Close() // Close the output file
+			// Clean up any temp directories we've created
+			for _, dir := range zipExtractedDirs {
+				os.RemoveAll(dir)
+			}
 			return nil, fmt.Errorf("failed to copy file content: %w", err)
 		}
 
@@ -412,24 +430,82 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 		file.Close()
 		outFile.Close()
 
-		// Clean the mnemonic input
-		mnemonicIndex := i
-		if mnemonicIndex >= len(mnemonicValues) {
-			mnemonicIndex = 0 // Fall back to first mnemonic if not enough
-		}
+		// Process the file based on its type
+		if ui.IsZipFile(filePath) {
+			// Extract JSON files from the ZIP
+			extractedFiles, err := ui.ProcessZipFile(filePath)
+			if err != nil {
+				// Clean up any temp directories we've created
+				for _, dir := range zipExtractedDirs {
+					os.RemoveAll(dir)
+				}
+				return nil, err
+			}
+			
+			// Track the extracted directory for cleanup
+			if len(extractedFiles) > 0 {
+				zipExtractedDirs = append(zipExtractedDirs, filepath.Dir(extractedFiles[0]))
+			}
+			
+			// For ZIP files, we'll use the same mnemonic for all files inside
+			mnemonicIndex := i
+			if mnemonicIndex >= len(mnemonicValues) {
+				mnemonicIndex = 0 // Fall back to first mnemonic if not enough
+			}
+			mnemonic := ui.CleanMnemonicInput(mnemonicValues[mnemonicIndex])
+			if err := ui.ValidateMnemonics(mnemonic); err != nil {
+				// Clean up any temp directories we've created
+				for _, dir := range zipExtractedDirs {
+					os.RemoveAll(dir)
+				}
+				return nil, fmt.Errorf("invalid mnemonic for ZIP file %s: %w", fileHeader.Filename, err)
+			}
+			
+			// Add each extracted file to vaultsDataFiles with the same mnemonic
+			for _, extractedFile := range extractedFiles {
+				vaultsDataFiles = append(vaultsDataFiles, ui.VaultsDataFile{
+					File:      extractedFile,
+					Mnemonics: mnemonic,
+				})
+				jsonFileCount++
+			}
+		} else {
+			// Handle regular JSON file
+			// Clean the mnemonic input
+			mnemonicIndex := i
+			if mnemonicIndex >= len(mnemonicValues) {
+				mnemonicIndex = 0 // Fall back to first mnemonic if not enough
+			}
 
-		mnemonic := ui.CleanMnemonicInput(mnemonicValues[mnemonicIndex])
-		if err := ui.ValidateMnemonics(mnemonic); err != nil {
-			return nil, fmt.Errorf("invalid mnemonic for file %s: %w", fileHeader.Filename, err)
-		}
+			mnemonic := ui.CleanMnemonicInput(mnemonicValues[mnemonicIndex])
+			if err := ui.ValidateMnemonics(mnemonic); err != nil {
+				// Clean up any temp directories we've created
+				for _, dir := range zipExtractedDirs {
+					os.RemoveAll(dir)
+				}
+				return nil, fmt.Errorf("invalid mnemonic for file %s: %w", fileHeader.Filename, err)
+			}
 
-		// Add the file to the vaultsDataFiles
-		vaultsDataFiles = append(vaultsDataFiles, ui.VaultsDataFile{
-			File:      filePath,
-			Mnemonics: mnemonic,
-		})
+			// Add the file to the vaultsDataFiles
+			vaultsDataFiles = append(vaultsDataFiles, ui.VaultsDataFile{
+				File:      filePath,
+				Mnemonics: mnemonic,
+			})
+			jsonFileCount++
+		}
+	}
+	
+	// Ensure we have at least one JSON file to process
+	if jsonFileCount == 0 {
+		// Clean up any temp directories we've created
+		for _, dir := range zipExtractedDirs {
+			os.RemoveAll(dir)
+		}
+		return nil, fmt.Errorf("no valid JSON files were uploaded (directly or in ZIP archives)")
 	}
 
+	// Store the list of extracted directories in the server for later cleanup
+	s.zipExtractedDirs = append(s.zipExtractedDirs, zipExtractedDirs...)
 	return vaultsDataFiles, nil
 }
 
