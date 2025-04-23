@@ -36,7 +36,7 @@ const (
 	tempDirPrefix = "vault-recovery-web-"
 )
 
-// ServerConfig holds the configuration for the web server
+// ServerConfig holds the configuration for the http server
 type ServerConfig struct {
 	Port int
 }
@@ -56,8 +56,7 @@ type RecoveryResult struct {
 	SolanaAddress    string `json:"solanaAddress,omitempty"`
 }
 
-
-// Server represents the web server for the disaster recovery tool
+// Server represents the http server for the disaster recovery tool
 type Server struct {
 	config   ServerConfig
 	tempDir  string
@@ -65,7 +64,7 @@ type Server struct {
 	listener net.Listener
 }
 
-// NewServer creates a new web server instance
+// NewServer creates a new http server instance
 func NewServer(config ServerConfig) (*Server, error) {
 	// Create a temporary directory to store uploaded files
 	tempDir, err := os.MkdirTemp("", tempDirPrefix)
@@ -79,7 +78,7 @@ func NewServer(config ServerConfig) (*Server, error) {
 	}, nil
 }
 
-// Start starts the web server
+// Start starts the http server
 func (s *Server) Start() (string, error) {
 	// Create a new mux for our server
 	mux := http.NewServeMux()
@@ -166,7 +165,7 @@ func (s *Server) Start() (string, error) {
 
 	// Start the server in a goroutine
 	go func() {
-		log.Printf("Starting web server on http://localhost:%d", port)
+		log.Printf("Starting http server on http://localhost:%d", port)
 		if err := s.server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			log.Printf("Server error: %v", err)
 		}
@@ -175,7 +174,7 @@ func (s *Server) Start() (string, error) {
 	return fmt.Sprintf("http://localhost:%d", port), nil
 }
 
-// Stop stops the web server and cleans up resources
+// Stop stops the http server and cleans up resources
 func (s *Server) Stop() error {
 	// Close the server
 	if s.server != nil {
@@ -404,7 +403,7 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 
 		// Copy the file content
 		if _, err := io.Copy(outFile, file); err != nil {
-			file.Close()  // Close the input file
+			file.Close()    // Close the input file
 			outFile.Close() // Close the output file
 			return nil, fmt.Errorf("failed to copy file content: %w", err)
 		}

@@ -10,10 +10,10 @@ You may be required to run another script located in the [scripts](./scripts) ar
 
 > [!IMPORTANT]
 > This app does not do ANY communication with any external host or service. It does not need an Internet connection at all.
-> 
+>
 > It is recommended that you run it on a non internet connected ("air gapped") device such as a laptop not connected to any network.
 >
-> The web interface and transaction tools are designed with a security-first approach:
+> The browser UI and transaction tools are designed with a security-first approach:
 > - All processing happens locally in your browser or terminal
 > - Command-line scripts run transaction operations offline
 > - Balance checking can be done using only public addresses
@@ -152,18 +152,18 @@ After syncing up the chain (may take a while), Electrum should show your balance
 
 Please use [TronLink](https://www.tronlink.org) to recover Tron and Tron assets. [Follow this guide](https://support.tronlink.org/hc/en-us/articles/5982285631769-How-to-Import-Your-Account-in-TronLink-Wallet-Extension) and import your vault's private key output by the tool.
 
-## Web Interface
+## Browser UI
 
-The recovery tool includes a web-based interface that provides a more user-friendly way to work with your recovered keys and blockchain assets. The web interface runs locally in your browser and requires no internet connection.
+The recovery tool includes a web-based interface that provides a more user-friendly way to work with your recovered keys and blockchain assets. The browser UI runs locally in your browser and requires no internet connection.
 
-To use the web interface, run the recovery tool and navigate to the provided local URL (typically http://localhost:8080):
+To use the browser UI, run the recovery tool and navigate to the provided local URL (typically http://localhost:8080):
 
 ```
 $ ./bin/recovery-tool -web
-Starting web server on http://localhost:8080
+Starting http server on http://localhost:8080
 ```
 
-The web interface provides:
+The browser UI provides:
 
 1. Step-by-step instructions for vault recovery
 2. Balance checking functionality for XRP, Solana, and Bittensor networks
@@ -195,7 +195,7 @@ For transaction operations, the tool generates commands for you to run in your t
 
 ### XRP Ledger Recovery & Transactions
 
-We use a specific key format for XRPL. You can use the web interface to generate the appropriate commands, or directly use the XRPL tool:
+We use a specific key format for XRPL. You can use the browser UI to generate the appropriate commands, or directly use the XRPL tool:
 
 ```
 # Check balance
@@ -208,7 +208,7 @@ npm start -- --private-key YourPrivateKey --public-key YourPublicKey --destinati
 
 ### TAO (Bittensor) Recovery & Transactions
 
-For Bittensor, the web interface will provide commands, or you can use the Bittensor tool directly:
+For Bittensor, the browser UI will provide commands, or you can use the Bittensor tool directly:
 
 ```
 # Check balance

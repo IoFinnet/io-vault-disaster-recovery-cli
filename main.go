@@ -35,29 +35,29 @@ func main() {
 	exportKSFile := flag.String("export", "wallet.json", "(Optional) Filename to export a Ethereum wallet v3 JSON to; use with -password.")
 
 	// Note: Transaction modes have been removed - use scripts in scripts/ directory instead
-	
+
 	// Web mode flags
-	webMode := flag.Bool("web", false, "Launch in web interface mode")
-	webPort := flag.Int("port", 8080, "Port to use for web interface (default: 8080)")
-	noBrowser := flag.Bool("nobrowser", false, "Start web server without launching browser")
+	webMode := flag.Bool("web", false, "Launch in browser UI mode")
+	webPort := flag.Int("port", 8080, "Port to use for browser UI (default: 8080)")
+	noBrowser := flag.Bool("nobrowser", false, "Start http server without launching browser")
 
 	flag.Parse()
 	files := flag.Args()
-	
+
 	// Display banner
 	fmt.Print(ui.Banner())
-	
+
 	// If no files provided, check if we should launch web mode
 	if len(files) < 1 && !*webMode {
-		// Ask the user if they want to use the web interface
+		// Ask the user if they want to use the browser UI
 		fmt.Println("\nHow would you like to use the recovery tool?")
-		fmt.Println("1. Launch web interface (browser-based)")
+		fmt.Println("1. Launch browser UI (browser-based)")
 		fmt.Println("2. Continue with command line interface")
 		fmt.Print("\nEnter your choice (1 or 2): ")
-		
+
 		var choice string
 		fmt.Scanln(&choice)
-		
+
 		if choice == "1" {
 			*webMode = true
 		} else if choice == "2" {
@@ -69,13 +69,13 @@ func main() {
 			return
 		}
 	}
-	
-	// Launch web interface if selected
+
+	// Launch browser UI if selected
 	if *webMode {
 		launchWebInterface(*webPort, *noBrowser)
 		return
 	}
-	
+
 	// Validate files for CLI mode
 	if len(files) < 1 {
 		fmt.Println("Please supply some input files on the command line. \nExample: recovery-tool.exe [-flags] file1.json file2.json … \n\nOptional flags:")
@@ -239,30 +239,30 @@ func main() {
 	fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.\n")
 }
 
-// launchWebInterface starts the web server and optionally opens the browser
+// launchWebInterface starts the http server and optionally opens the browser
 func launchWebInterface(port int, noBrowser bool) {
-	fmt.Println("Starting web interface mode...")
-	
-	// Create and start the web server
+	fmt.Println("Starting browser UI mode...")
+
+	// Create and start the http server
 	server, err := web.NewServer(web.ServerConfig{Port: port})
 	if err != nil {
-		fmt.Printf("Failed to create web server: %v\n", err)
+		fmt.Printf("Failed to create http server: %v\n", err)
 		return
 	}
-	
+
 	// Set up a clean shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	
+
 	// Start the server
 	url, err := server.Start()
 	if err != nil {
-		fmt.Printf("Failed to start web server: %v\n", err)
+		fmt.Printf("Failed to start http server: %v\n", err)
 		return
 	}
-	
-	fmt.Printf("Web interface started at: %s\n", url)
-	
+
+	fmt.Printf("Browser interface started at: %s\n", url)
+
 	// Open the browser unless nobrowser flag is set
 	if !noBrowser {
 		fmt.Println("Opening browser...")
@@ -272,13 +272,13 @@ func launchWebInterface(port int, noBrowser bool) {
 	} else {
 		fmt.Printf("Browser not launched (--nobrowser flag set). Please open %s in your browser.\n", url)
 	}
-	
-	fmt.Println("Web interface is running. Press Ctrl+C to stop.")
-	
+
+	fmt.Println("Browser interface is running. Press Ctrl+C to stop.")
+
 	// Wait for interrupt signal
 	<-sigChan
-	
-	fmt.Println("\nShutting down web interface...")
+
+	fmt.Println("\nShutting down browser UI...")
 	if err := server.Stop(); err != nil {
 		fmt.Printf("Error shutting down server: %v\n", err)
 	}
