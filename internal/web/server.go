@@ -131,6 +131,9 @@ func (s *Server) Start() (string, error) {
 	// API endpoint for listing vaults
 	mux.HandleFunc("POST /api/list-vaults", s.handleListVaults)
 
+	// API endpoint to list files in a ZIP archive
+	mux.HandleFunc("POST /api/list-zip-files", s.handleListZipFiles)
+
 	// No validation endpoints needed
 
 	// Find an available port
@@ -637,6 +640,82 @@ func getMapKeys(m interface{}) []string {
 	}
 
 	return keys
+}
+
+// handleListZipFiles extracts JSON files from a ZIP and returns their filenames
+func (s *Server) handleListZipFiles(w http.ResponseWriter, r *http.Request) {
+	// Parse the multipart form data
+	err := r.ParseMultipartForm(10 << 20) // 10 MB max size
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to parse form: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Get the ZIP file
+	files := r.MultipartForm.File["zipFile"]
+	if len(files) == 0 {
+		http.Error(w, "No ZIP file provided", http.StatusBadRequest)
+		return
+	}
+
+	// Open the uploaded file
+	file, err := files[0].Open()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to open file: %v", err), http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Create a file in the temp directory
+	filePath := filepath.Join(s.tempDir, files[0].Filename)
+	outFile, err := os.Create(filePath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create temporary file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Copy the file content
+	if _, err := io.Copy(outFile, file); err != nil {
+		outFile.Close()
+		http.Error(w, fmt.Sprintf("Failed to copy file content: %v", err), http.StatusInternalServerError)
+		return
+	}
+	outFile.Close()
+
+	// Process the ZIP file to extract JSON files
+	extractedFiles, err := ziputils.ProcessZipFile(filePath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to process ZIP file: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Track the extracted directory for cleanup
+	if len(extractedFiles) > 0 {
+		extractDir := filepath.Dir(extractedFiles[0])
+		s.zipExtractedDirs = append(s.zipExtractedDirs, extractDir)
+	}
+
+	// Check if any JSON files were found
+	if len(extractedFiles) == 0 {
+		// Clean up the temporary directory if we created one
+		os.RemoveAll(filePath)
+
+		http.Error(w, "No JSON files found in the ZIP archive", http.StatusBadRequest)
+		return
+	}
+
+	// Create a response with just the filenames
+	fileNames := make([]string, len(extractedFiles))
+	for i, file := range extractedFiles {
+		fileNames[i] = filepath.Base(file)
+	}
+
+	// Return the filenames as JSON
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(fileNames); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
+		return
+	}
 }
 
 // Validation handlers removed - unused in frontend

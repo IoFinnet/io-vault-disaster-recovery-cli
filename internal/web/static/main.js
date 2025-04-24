@@ -396,41 +396,66 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
-        // Now, we need to detect signers from the ZIP - this would be done server-side,
-        // but we'll simulate it for now by checking common signer names
+        // Show loading state
+        signersContainer.style.display = 'block';
+        signerMnemonics.innerHTML = '<div class="loading-signers">Loading signer files from ZIP...</div>';
         
-        // In a real implementation, we would upload the ZIP to the server first and get back
-        // the detected signers, but for now, we'll simulate a server response with complete filenames
-        // based on files in the test-files directory
-        const knownSignerFiles = ['new_bvn.json', 'new_u44.json', 'new_x2q.json'];
+        // Upload the ZIP file to the server to get the list of files
+        const formData = new FormData();
+        formData.append('zipFile', file);
         
-        // Clear previous signers
-        detectedSigners = [...knownSignerFiles]; // In a real implementation, this would come from the server
-        signerMnemonics.innerHTML = '';
-        
-        // Create mnemonic inputs for each detected signer
-        detectedSigners.forEach(signer => {
-            const signerGroup = document.createElement('div');
-            signerGroup.className = 'signer-mnemonic-group';
+        fetch('/api/list-zip-files', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.text().then(text => {
+                    throw new Error(text);
+                });
+            }
+            return response.json();
+        })
+        .then(files => {
+            // Clear previous signers
+            detectedSigners = files;
+            signerMnemonics.innerHTML = '';
             
-            // Extract the significant part for the ID
-            const signerId = signer.replace('.json', '');
+            if (files.length === 0) {
+                signerMnemonics.innerHTML = '<div class="no-signers-found">No JSON files found in ZIP archive.</div>';
+                return;
+            }
             
-            signerGroup.innerHTML = `
-                <div class="signer-file-name">${signer}</div>
-                <div class="mnemonic-input">
-                    <label for="mnemonic-${signerId}">24-word Mnemonic Phrase for ${signer}</label>
-                    <textarea id="mnemonic-${signerId}" class="mnemonic zip-mnemonic" rows="3" 
-                        placeholder="Enter the 24-word mnemonic phrase for ${signer}..."></textarea>
-                    <input type="hidden" name="filename-${signerId}" value="${signer}">
+            // Create mnemonic inputs for each detected signer
+            detectedSigners.forEach(signer => {
+                const signerGroup = document.createElement('div');
+                signerGroup.className = 'signer-mnemonic-group';
+                
+                // Extract the significant part for the ID
+                const signerId = signer.replace('.json', '');
+                
+                signerGroup.innerHTML = `
+                    <div class="signer-file-name">${signer}</div>
+                    <div class="mnemonic-input">
+                        <label for="mnemonic-${signerId}">24-word Mnemonic Phrase for ${signer}</label>
+                        <textarea id="mnemonic-${signerId}" class="mnemonic zip-mnemonic" rows="3" 
+                            placeholder="Enter the 24-word mnemonic phrase for ${signer}..."></textarea>
+                        <input type="hidden" name="filename-${signerId}" value="${signer}">
+                    </div>
+                `;
+                
+                signerMnemonics.appendChild(signerGroup);
+            });
+        })
+        .catch(error => {
+            // Show error in the signers container
+            signerMnemonics.innerHTML = `
+                <div class="zip-error">
+                    <div class="error-icon">⚠</div>
+                    <div class="error-message">${error.message}</div>
                 </div>
             `;
-            
-            signerMnemonics.appendChild(signerGroup);
         });
-        
-        // Show the signers container
-        signersContainer.style.display = 'block';
     }
 
     // Validate JSON files and mnemonics before proceeding

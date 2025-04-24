@@ -38,7 +38,8 @@ func ProcessZipFile(zipPath string) ([]string, error) {
 	extractedFiles := make([]string, 0, len(reader.File))
 	hasNestedDirs := false
 
-	// First pass: Validate ZIP structure (only allow flat hierarchy)
+	// First pass: Validate ZIP structure (only allow flat hierarchy and only JSON files)
+	hasNonJsonFiles := false
 	for _, f := range reader.File {
 		// Skip directories
 		if f.FileInfo().IsDir() {
@@ -53,7 +54,8 @@ func ProcessZipFile(zipPath string) ([]string, error) {
 
 		// Check file extension
 		if strings.ToLower(filepath.Ext(f.Name)) != ".json" {
-			continue
+			hasNonJsonFiles = true
+			break
 		}
 	}
 
@@ -63,15 +65,16 @@ func ProcessZipFile(zipPath string) ([]string, error) {
 		return nil, errors2.Errorf("ZIP file `%s` contains nested directories - only flat hierarchy of JSON files is supported", zipPath)
 	}
 
-	// Second pass: Extract JSON files
+	// Reject ZIPs containing non-JSON files
+	if hasNonJsonFiles {
+		os.RemoveAll(tempDir)
+		return nil, errors2.Errorf("ZIP file `%s` contains non-JSON files - only JSON files are supported", zipPath)
+	}
+
+	// Second pass: Extract JSON files (we've already validated that all files are JSON)
 	for _, f := range reader.File {
 		// Skip directories
 		if f.FileInfo().IsDir() {
-			continue
-		}
-
-		// Only process JSON files
-		if strings.ToLower(filepath.Ext(f.Name)) != ".json" {
 			continue
 		}
 
