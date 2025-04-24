@@ -54,7 +54,7 @@ func PromptXRPLTransaction() (TransactionDetails, error) {
 // PromptBittensorTransaction prompts the user for Bittensor transaction details
 func PromptBittensorTransaction() (TransactionDetails, error) {
 	var details TransactionDetails
-	
+
 	// Set default endpoint
 	details.Endpoint = "wss://entrypoint-finney.opentensor.ai:443"
 

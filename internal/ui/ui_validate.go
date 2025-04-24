@@ -91,7 +91,7 @@ func ValidateFiles(appConfig config.AppConfig) error {
 			return errors2.Errorf("⚠ invalid file format, expecting json. first char is %s", content[:1])
 		}
 	}
-	
+
 	return nil
 }
 
