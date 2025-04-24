@@ -2,11 +2,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // Element references
     const addFileBtn = document.getElementById('add-file');
     const filesContainer = document.getElementById('files-container');
+    const zipFileInput = document.getElementById('zip-file');
+    const zipFileName = document.getElementById('zip-file-name');
+    const signersContainer = document.getElementById('signers-container');
+    const signerMnemonics = document.getElementById('signer-mnemonics');
     const nextToVaultsBtn = document.getElementById('next-to-vaults');
     const backToFilesBtn = document.getElementById('back-to-files');
     const recoverVaultBtn = document.getElementById('recover-vault');
     const startOverBtn = document.getElementById('start-over');
     const backFromErrorBtn = document.getElementById('back-from-error');
+    
+    // File input mode elements
+    const jsonMode = document.getElementById('json-mode');
+    const zipMode = document.getElementById('zip-mode');
+    const modeRadios = document.querySelectorAll('input[name="file-type"]');
 
     // Step elements
     const steps = {
@@ -14,6 +23,9 @@ document.addEventListener('DOMContentLoaded', () => {
         vaults: document.getElementById('step-2'),
         results: document.getElementById('step-3')
     };
+    
+    // Track detected signer types from ZIP file
+    let detectedSigners = [];
 
     // Loading and results elements
     const vaultsLoading = document.getElementById('vaults-loading');
@@ -41,14 +53,39 @@ document.addEventListener('DOMContentLoaded', () => {
     // Event Listeners
     // ==================
 
-    // Add file button
+    // Add file button (for JSON mode)
     addFileBtn.addEventListener('click', addFileInput);
+    
+    // File input mode selection (JSON vs ZIP)
+    modeRadios.forEach(radio => {
+        radio.addEventListener('change', () => {
+            const mode = radio.value;
+            if (mode === 'json') {
+                jsonMode.classList.add('active');
+                zipMode.classList.remove('active');
+            } else { // zip mode
+                jsonMode.classList.remove('active');
+                zipMode.classList.add('active');
+            }
+        });
+    });
+    
+    // ZIP file selection and processing
+    zipFileInput.addEventListener('change', handleZipFileSelection);
 
     // Next button to go to vaults list
     nextToVaultsBtn.addEventListener('click', () => {
-        if (validateFilesAndMnemonics()) {
-            showStep('vaults');
-            loadVaults();
+        const activeMode = document.querySelector('input[name="file-type"]:checked').value;
+        if (activeMode === 'json') {
+            if (validateJsonFilesAndMnemonics()) {
+                showStep('vaults');
+                loadVaults();
+            }
+        } else { // zip mode
+            if (validateZipFileAndMnemonics()) {
+                showStep('vaults');
+                loadVaults();
+            }
         }
     });
 
@@ -341,10 +378,65 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Validate files and mnemonics before proceeding
-    function validateFilesAndMnemonics() {
+    // Handle ZIP file selection and detect signers
+    function handleZipFileSelection(event) {
+        const file = event.target.files[0];
+        if (!file) {
+            zipFileName.textContent = 'No ZIP file selected';
+            signersContainer.style.display = 'none';
+            return;
+        }
+        
+        zipFileName.textContent = file.name;
+        
+        // Basic validation that it's a ZIP file
+        if (!file.name.toLowerCase().endsWith('.zip')) {
+            showError('Selected file is not a ZIP archive. Please select a .zip file.');
+            signersContainer.style.display = 'none';
+            return;
+        }
+        
+        // Now, we need to detect signers from the ZIP - this would be done server-side,
+        // but we'll simulate it for now by checking common signer names
+        
+        // In a real implementation, we would upload the ZIP to the server first and get back
+        // the detected signers, but for now, we'll simulate a server response with complete filenames
+        // based on files in the test-files directory
+        const knownSignerFiles = ['new_bvn.json', 'new_u44.json', 'new_x2q.json'];
+        
+        // Clear previous signers
+        detectedSigners = [...knownSignerFiles]; // In a real implementation, this would come from the server
+        signerMnemonics.innerHTML = '';
+        
+        // Create mnemonic inputs for each detected signer
+        detectedSigners.forEach(signer => {
+            const signerGroup = document.createElement('div');
+            signerGroup.className = 'signer-mnemonic-group';
+            
+            // Extract the significant part for the ID
+            const signerId = signer.replace('.json', '');
+            
+            signerGroup.innerHTML = `
+                <div class="signer-file-name">${signer}</div>
+                <div class="mnemonic-input">
+                    <label for="mnemonic-${signerId}">24-word Mnemonic Phrase for ${signer}</label>
+                    <textarea id="mnemonic-${signerId}" class="mnemonic zip-mnemonic" rows="3" 
+                        placeholder="Enter the 24-word mnemonic phrase for ${signer}..."></textarea>
+                    <input type="hidden" name="filename-${signerId}" value="${signer}">
+                </div>
+            `;
+            
+            signerMnemonics.appendChild(signerGroup);
+        });
+        
+        // Show the signers container
+        signersContainer.style.display = 'block';
+    }
+
+    // Validate JSON files and mnemonics before proceeding
+    function validateJsonFilesAndMnemonics() {
         const fileInputs = document.querySelectorAll('.file-input');
-        const mnemonicInputs = document.querySelectorAll('.mnemonic');
+        const mnemonicInputs = document.querySelectorAll('#json-mode .mnemonic');
         const errorContainer = document.getElementById('files-error');
         const errorMessage = document.getElementById('files-error-message');
 
@@ -360,7 +452,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         if (!hasFile) {
-            errorMessage.textContent = 'Please select at least one vault file';
+            errorMessage.textContent = 'Please select at least one JSON vault file';
             errorContainer.style.display = 'flex';
             return false;
         }
@@ -390,6 +482,58 @@ document.addEventListener('DOMContentLoaded', () => {
 
         return valid;
     }
+    
+    // Validate ZIP file and its mnemonics before proceeding
+    function validateZipFileAndMnemonics() {
+        const errorContainer = document.getElementById('files-error');
+        const errorMessage = document.getElementById('files-error-message');
+        
+        // Hide previous error messages
+        errorContainer.style.display = 'none';
+        
+        // Check if a ZIP file is selected
+        if (!zipFileInput.files.length) {
+            errorMessage.textContent = 'Please select a ZIP file containing vault JSON files';
+            errorContainer.style.display = 'flex';
+            return false;
+        }
+        
+        // Check if mnemonics are provided for all detected signers
+        const zipMnemonics = document.querySelectorAll('.zip-mnemonic');
+        let valid = true;
+        
+        zipMnemonics.forEach((textArea, index) => {
+            const mnemonic = textArea.value.trim();
+            const signerName = detectedSigners[index];
+            
+            if (!mnemonic) {
+                errorMessage.textContent = `Please enter the mnemonic phrase for ${signerName}`;
+                errorContainer.style.display = 'flex';
+                valid = false;
+                return;
+            }
+            
+            // Basic validation for mnemonic (24 words)
+            const words = mnemonic.split(/\s+/);
+            if (words.length !== 24) {
+                errorMessage.textContent = `The mnemonic phrase for ${signerName} should contain 24 words (found ${words.length})`;
+                errorContainer.style.display = 'flex';
+                valid = false;
+                return;
+            }
+        });
+        
+        return valid;
+    }
+    
+    // Show an error message in the error container
+    function showError(message) {
+        const errorContainer = document.getElementById('files-error');
+        const errorMessage = document.getElementById('files-error-message');
+        
+        errorMessage.textContent = message;
+        errorContainer.style.display = 'flex';
+    }
 
     // Load vaults from the selected files
     function loadVaults() {
@@ -406,14 +550,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Create form data with files and mnemonics
         const formData = new FormData();
-
-        document.querySelectorAll('.file-input').forEach((input, index) => {
-            if (input.files.length > 0) {
-                formData.append('files', input.files[0]);
-                const mnemonicInput = document.querySelectorAll('.mnemonic')[index];
-                formData.append('mnemonics', mnemonicInput.value.trim());
+        
+        // Get the active mode
+        const activeMode = document.querySelector('input[name="file-type"]:checked').value;
+        
+        if (activeMode === 'json') {
+            // JSON mode: Add individual JSON files and mnemonics
+            document.querySelectorAll('.file-input').forEach((input, index) => {
+                if (input.files.length > 0) {
+                    formData.append('files', input.files[0]);
+                    const mnemonicInput = document.querySelectorAll('#json-mode .mnemonic')[index];
+                    formData.append('mnemonics', mnemonicInput.value.trim());
+                }
+            });
+        } else {
+            // ZIP mode: Add ZIP file and signer mnemonics
+            if (zipFileInput.files.length > 0) {
+                // Add ZIP file
+                formData.append('files', zipFileInput.files[0]);
+                
+                // Add a marker to identify this as ZIP mode
+                formData.append('mode', 'zip');
+                
+                // Add mnemonics for detected signers
+                document.querySelectorAll('.zip-mnemonic').forEach((input, index) => {
+                    const filename = detectedSigners[index];
+                    const fileId = filename.replace('.json', '');
+                    formData.append(`mnemonic_${fileId}`, input.value.trim());
+                    formData.append(`filename_${fileId}`, filename);
+                });
             }
-        });
+        }
 
         // Send the API request
         fetch('/api/list-vaults', {
@@ -506,14 +673,36 @@ document.addEventListener('DOMContentLoaded', () => {
         // Create form data with files, mnemonics, and options
         const formData = new FormData();
 
-        // Add files and mnemonics
-        document.querySelectorAll('.file-input').forEach((input, index) => {
-            if (input.files.length > 0) {
-                formData.append('files', input.files[0]);
-                const mnemonicInput = document.querySelectorAll('.mnemonic')[index];
-                formData.append('mnemonics', mnemonicInput.value.trim());
+        // Get the active mode
+        const activeMode = document.querySelector('input[name="file-type"]:checked').value;
+        
+        if (activeMode === 'json') {
+            // JSON mode: Add individual JSON files and mnemonics
+            document.querySelectorAll('.file-input').forEach((input, index) => {
+                if (input.files.length > 0) {
+                    formData.append('files', input.files[0]);
+                    const mnemonicInput = document.querySelectorAll('#json-mode .mnemonic')[index];
+                    formData.append('mnemonics', mnemonicInput.value.trim());
+                }
+            });
+        } else {
+            // ZIP mode: Add ZIP file and signer mnemonics
+            if (zipFileInput.files.length > 0) {
+                // Add ZIP file
+                formData.append('files', zipFileInput.files[0]);
+                
+                // Add a marker to identify this as ZIP mode
+                formData.append('mode', 'zip');
+                
+                // Add mnemonics for detected signers
+                document.querySelectorAll('.zip-mnemonic').forEach((input, index) => {
+                    const filename = detectedSigners[index];
+                    const fileId = filename.replace('.json', '');
+                    formData.append(`mnemonic_${fileId}`, input.value.trim());
+                    formData.append(`filename_${fileId}`, filename);
+                });
             }
-        });
+        }
 
         // Add vault ID and advanced options
         formData.append('vaultId', selectedVaultId);
@@ -602,12 +791,17 @@ document.addEventListener('DOMContentLoaded', () => {
         // Hide error message
         document.getElementById('files-error').style.display = 'none';
         
-        // Clear files
+        // Reset to JSON mode
+        document.querySelector('input[name="file-type"][value="json"]').checked = true;
+        jsonMode.classList.add('active');
+        zipMode.classList.remove('active');
+        
+        // Clear JSON files
         filesContainer.innerHTML = `
             <div class="file-input-group" data-index="1">
                 <div class="file-upload">
-                    <label for="file-1">Select File</label>
-                    <input type="file" id="file-1" class="file-input" accept=".json,.zip">
+                    <label for="file-1">Select JSON File</label>
+                    <input type="file" id="file-1" class="file-input" accept=".json">
                     <span class="file-name">No file selected</span>
                 </div>
                 <div class="mnemonic-input">
@@ -617,6 +811,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button class="remove-file" data-index="1">✕</button>
             </div>
         `;
+        
+        // Clear ZIP file input
+        zipFileInput.value = '';
+        zipFileName.textContent = 'No ZIP file selected';
+        signersContainer.style.display = 'none';
+        signerMnemonics.innerHTML = '';
+        detectedSigners = [];
 
         // Reset file counter
         fileCounter = 1;

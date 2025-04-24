@@ -94,12 +94,16 @@ func main() {
 	}
 
 	appConfig := config.AppConfig{
-		Filenames:      files,
-		NonceOverride:  *nonceOverride,
-		QuorumOverride: *quorumOverride,
-		ExportKSFile:   *exportKSFile,
-		PasswordForKS:  *passwordForKS,
+		Filenames:        files,
+		NonceOverride:    *nonceOverride,
+		QuorumOverride:   *quorumOverride,
+		ExportKSFile:     *exportKSFile,
+		PasswordForKS:    *passwordForKS,
+		ZipExtractedDirs: []string{}, // Initialize empty slice for tracking ZIP dirs
 	}
+
+	// Initialize the global config so ui_input can track ZIP dirs
+	config.GlobalConfig = appConfig
 
 	// First validate that files exist and are readable
 	if err := ui.ValidateFiles(appConfig); err != nil {
@@ -116,22 +120,28 @@ func main() {
 	if err != nil {
 		// if err := f.Run(&vaultsDataFiles); err != nil {
 		fmt.Println(ui.ErrorBox(err))
-		
+
 		// Clean up any temporary directories from ZIP extraction
-		for _, dir := range appConfig.ZipExtractedDirs {
+		// Include both directories from appConfig and also any added to GlobalConfig by ui_input
+		dirsToCleanup := append(appConfig.ZipExtractedDirs, config.GlobalConfig.ZipExtractedDirs...)
+		for _, dir := range dirsToCleanup {
+			fmt.Printf("Cleaning up temporary directory: %s\n", dir)
 			os.RemoveAll(dir)
 		}
-		
+
 		os.Exit(1)
 	}
 	if vaultsDataFiles == nil {
 		fmt.Println("No vaults data files were selected.")
-		
+
 		// Clean up any temporary directories from ZIP extraction
-		for _, dir := range appConfig.ZipExtractedDirs {
+		// Include both directories from appConfig and also any added to GlobalConfig by ui_input
+		dirsToCleanup := append(appConfig.ZipExtractedDirs, config.GlobalConfig.ZipExtractedDirs...)
+		for _, dir := range dirsToCleanup {
+			fmt.Printf("Cleaning up temporary directory: %s\n", dir)
 			os.RemoveAll(dir)
 		}
-		
+
 		os.Exit(0)
 	}
 
@@ -144,12 +154,15 @@ func main() {
 		fmt.Println(ui.ErrorBox(err))
 		fmt.Println()
 		fmt.Println("Are the words you entered correct? Are you using the newest files?")
-		
+
 		// Clean up any temporary directories from ZIP extraction
-		for _, dir := range appConfig.ZipExtractedDirs {
+		// Include both directories from appConfig and also any added to GlobalConfig by ui_input
+		dirsToCleanup := append(appConfig.ZipExtractedDirs, config.GlobalConfig.ZipExtractedDirs...)
+		for _, dir := range dirsToCleanup {
+			fmt.Printf("Cleaning up temporary directory: %s\n", dir)
 			os.RemoveAll(dir)
 		}
-		
+
 		os.Exit(1)
 	}
 
@@ -191,12 +204,15 @@ func main() {
 		fmt.Println(ui.ErrorBox(err))
 		fmt.Println()
 		fmt.Println("Are the words you entered correct? Are you using the newest files?")
-		
+
 		// Clean up any temporary directories from ZIP extraction
-		for _, dir := range appConfig.ZipExtractedDirs {
+		// Include both directories from appConfig and also any added to GlobalConfig by ui_input
+		dirsToCleanup := append(appConfig.ZipExtractedDirs, config.GlobalConfig.ZipExtractedDirs...)
+		for _, dir := range dirsToCleanup {
+			fmt.Printf("Cleaning up temporary directory: %s\n", dir)
 			os.RemoveAll(dir)
 		}
-		
+
 		os.Exit(1)
 	}
 	defer func() {
@@ -271,9 +287,12 @@ func main() {
 		fmt.Println("\nNo EdDSA/Ed25519 private key found for this older vault.")
 	}
 	fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.\n")
-	
+
 	// Clean up any temporary directories from ZIP extraction
-	for _, dir := range appConfig.ZipExtractedDirs {
+	// Include both directories from appConfig and also any added to GlobalConfig by ui_input
+	dirsToCleanup := append(appConfig.ZipExtractedDirs, config.GlobalConfig.ZipExtractedDirs...)
+	for _, dir := range dirsToCleanup {
+		fmt.Printf("Cleaning up temporary directory: %s\n", dir)
 		os.RemoveAll(dir)
 	}
 }

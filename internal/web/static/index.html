@@ -38,23 +38,54 @@
                 <p class="note">For ZIP files: Only flat hierarchies are supported (no nested directories), and all JSON files within a ZIP will use the same mnemonic phrase.</p>
             </div>
             
-            <div id="files-container">
-                <div class="file-input-group">
-                    <div class="file-upload">
-                        <label for="file-1">Select File</label>
-                        <input type="file" id="file-1" class="file-input" accept=".json,.zip">
-                        <span class="file-name">No file selected</span>
+            <div class="file-input-mode">
+                <div class="mode-selector">
+                    <label>
+                        <input type="radio" name="file-type" value="json" checked>
+                        Individual JSON Files
+                    </label>
+                    <label>
+                        <input type="radio" name="file-type" value="zip">
+                        ZIP Archive
+                    </label>
+                </div>
+                
+                <div id="json-mode" class="file-mode active">
+                    <div id="files-container">
+                        <div class="file-input-group">
+                            <div class="file-upload">
+                                <label for="file-1">Select JSON File</label>
+                                <input type="file" id="file-1" class="file-input" accept=".json">
+                                <span class="file-name">No file selected</span>
+                            </div>
+                            <div class="mnemonic-input">
+                                <label for="mnemonic-1">24-word Mnemonic Phrase</label>
+                                <textarea id="mnemonic-1" class="mnemonic" rows="3" placeholder="Enter your 24-word mnemonic phrase for this file..."></textarea>
+                            </div>
+                            <button class="remove-file" data-index="1">✕</button>
+                        </div>
                     </div>
-                    <div class="mnemonic-input">
-                        <label for="mnemonic-1">24-word Mnemonic Phrase</label>
-                        <textarea id="mnemonic-1" class="mnemonic" rows="3" placeholder="Enter your 24-word mnemonic phrase for this file..."></textarea>
+                    <button id="add-file" class="secondary">+ Add Another JSON File</button>
+                </div>
+                
+                <div id="zip-mode" class="file-mode">
+                    <div class="zip-upload-container">
+                        <div class="file-upload">
+                            <label for="zip-file">Select ZIP File</label>
+                            <input type="file" id="zip-file" accept=".zip">
+                            <span id="zip-file-name" class="file-name">No ZIP file selected</span>
+                        </div>
                     </div>
-                    <button class="remove-file" data-index="1">✕</button>
+                    
+                    <div id="signers-container" style="display: none;">
+                        <h3>Mnemonic Phrases for Signers</h3>
+                        <p class="note">Enter the 24-word mnemonic phrase for each signer file found in the ZIP archive.</p>
+                        <div id="signer-mnemonics"></div>
+                    </div>
                 </div>
             </div>
 
             <div class="actions">
-                <button id="add-file" class="secondary">+ Add Another File</button>
                 <button id="next-to-vaults" class="primary">Next: Select Vault</button>
             </div>
         </div>

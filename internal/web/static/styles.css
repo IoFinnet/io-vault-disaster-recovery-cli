@@ -107,6 +107,60 @@ h3 {
 }
 
 /* File upload styling */
+.mode-selector {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: var(--light-gray);
+}
+
+.mode-selector label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.file-mode {
+    display: none;
+    margin-bottom: 1.5rem;
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+.file-mode.active {
+    display: block;
+}
+
+.zip-upload-container {
+    margin-bottom: 1.5rem;
+    padding: 1.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: var(--light-gray);
+}
+
+#signer-mnemonics {
+    margin-top: 1rem;
+}
+
+.signer-mnemonic-group {
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: var(--light-gray);
+}
+
+.signer-file-name {
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    color: var(--primary-color);
+}
+
 .file-input-group {
     display: flex;
     margin-bottom: 1.5rem;
