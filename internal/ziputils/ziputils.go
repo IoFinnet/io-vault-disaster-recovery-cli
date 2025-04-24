@@ -6,7 +6,6 @@ package ziputils
 
 import (
 	"archive/zip"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -121,6 +120,6 @@ func ProcessZipFile(zipPath string) ([]string, error) {
 		return nil, errors2.Errorf("ZIP file `%s` does not contain any JSON files", zipPath)
 	}
 
-	fmt.Printf("Extracted %d JSON files from ZIP archive `%s`\n", len(extractedFiles), zipPath)
+	//fmt.Printf("Extracted %d JSON files from ZIP archive `%s`\n", len(extractedFiles), zipPath)
 	return extractedFiles, nil
 }
