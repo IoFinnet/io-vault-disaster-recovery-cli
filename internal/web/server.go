@@ -314,38 +314,53 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 
 		if edSK != nil {
 			result.EddsaPrivateKey = hex.EncodeToString(edSK)
+			log.Printf("EdDSA Private Key present: %d bytes", len(edSK))
 
 			// Get the EdDSA public key
 			_, edPK, err := edwards.PrivKeyFromScalar(edSK)
 			if err == nil {
 				edPKC := edPK.SerializeCompressed()
 				result.EddsaPublicKey = hex.EncodeToString(edPKC)
+				log.Printf("EdDSA Public Key: %s", result.EddsaPublicKey)
 
 				// Generate XRPL address
 				xrplAddress, err := xrpl.DeriveXRPLAddress(edPKC)
 				if err == nil {
 					result.XRPLAddress = xrplAddress
+					log.Printf("XRPL Address: %s", result.XRPLAddress)
+				} else {
+					log.Printf("Error deriving XRPL address: %v", err)
 				}
 
 				// Generate Bittensor address
 				bittensorAddress, err := bittensor.GenerateSS58Address(edPKC)
 				if err == nil {
 					result.BittensorAddress = bittensorAddress
+					log.Printf("Bittensor Address: %s", result.BittensorAddress)
+				} else {
+					log.Printf("Error deriving Bittensor address: %v", err)
 				}
 
 				// Generate Solana address
 				solanaAddress, err := solana.DeriveSolanaAddress(edPKC)
 				if err == nil {
 					result.SolanaAddress = solanaAddress
+					log.Printf("Solana Address: %s", result.SolanaAddress)
+				} else {
+					log.Printf("Error deriving Solana address: %v", err)
 				}
+			} else {
+				log.Printf("Error getting EdDSA public key: %v", err)
 			}
 
 			// Clear sensitive data
 			clear(ecSK)
 			clear(edSK)
+		} else {
+			log.Printf("No EdDSA private key present")
 		}
 
-		// Clear sensitive data
+		// Clear sensitive data again to be safe
 		clear(ecSK)
 		clear(edSK)
 	}

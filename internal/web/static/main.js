@@ -780,8 +780,18 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('xrpl-address').textContent = result.xrplAddress || 'N/A';
             document.getElementById('bittensor-address').textContent = result.bittensorAddress || 'N/A';
             document.getElementById('solana-address').textContent = result.solanaAddress || 'N/A';
+            
+            // Debug: Log what we're getting from the server
+            console.log("EdDSA information received:", {
+                publicKey: result.eddsaPublicKey,
+                xrplAddress: result.xrplAddress,
+                bittensorAddress: result.bittensorAddress,
+                solanaAddress: result.solanaAddress
+            });
+            
             eddsaSection.style.display = 'block';
         } else {
+            console.log("No EdDSA private key found in response");
             eddsaSection.style.display = 'none';
         }
     }
