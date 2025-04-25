@@ -281,7 +281,7 @@ func main() {
 
 		// Add wallet import instructions
 		fmt.Println("\nWallet Import Instructions:")
-		fmt.Println("- XRPL, TAO, SOL: Start this tool with the -web flag to enter the web-based UI recovery")
+		fmt.Println("- XRPL, TAO, SOL: Start this tool with the -web flag to enter the browser UI recovery")
 	} else {
 		fmt.Println("\nNo EdDSA/Ed25519 private key found for this older vault.")
 	}

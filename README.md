@@ -168,7 +168,7 @@ Please use [TronLink](https://www.tronlink.org) to recover Tron and Tron assets.
 
 ## Browser UI
 
-The recovery tool includes a web-based interface that provides a more user-friendly way to work with your recovered keys and blockchain assets. The browser UI runs locally in your browser and requires no internet connection.
+The recovery tool includes a browser UI that provides a more user-friendly way to work with your recovered keys and blockchain assets. The browser UI runs locally in your browser and requires no internet connection.
 
 To use the browser UI, run the recovery tool and navigate to the provided local URL (typically http://localhost:8080):
 
