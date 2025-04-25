@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const recoverVaultBtn = document.getElementById('recover-vault');
     const startOverBtn = document.getElementById('start-over');
     const backFromErrorBtn = document.getElementById('back-from-error');
+    const backToVaultsFromResultsBtn = document.getElementById('back-to-vaults-from-results');
     
     // File input mode elements
     const jsonMode = document.getElementById('json-mode');
@@ -114,6 +115,11 @@ document.addEventListener('DOMContentLoaded', () => {
     backFromErrorBtn.addEventListener('click', () => {
         showStep('vaults');
         recoveryError.style.display = 'none';
+    });
+    
+    // Back to vault selection from results
+    backToVaultsFromResultsBtn.addEventListener('click', () => {
+        showStep('vaults');
     });
 
     // Initialize copy buttons
