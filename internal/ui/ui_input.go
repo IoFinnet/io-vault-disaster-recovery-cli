@@ -25,29 +25,52 @@ type (
 
 	// MnemonicsFormModel is a struct that represents the model for the mnemonics entry.
 	MnemonicsFormModel struct {
-		filenames []string
+		filenames    []string
+		totalFiles   int
+		extractedAll bool
 	}
 )
 
 func NewMnemonicsForm(config config.AppConfig) MnemonicsFormModel {
 	return MnemonicsFormModel{
-		filenames: config.Filenames,
+		filenames:    config.Filenames,
+		totalFiles:   len(config.Filenames),
+		extractedAll: false,
 	}
 }
 
-func (m MnemonicsFormModel) Run() (*[]VaultsDataFile, error) {
+func (m *MnemonicsFormModel) Run() (*[]VaultsDataFile, error) {
 	filesWithMnemonics := make([]VaultsDataFile, 0, len(m.filenames))
 
-	// First, process the filenames to handle ZIP files specially
+	// Make a first pass to calculate the total number of files
+	totalJSONFiles := 0
+	var extractedFiles []string
+
+	// First, determine if we're dealing with ZIP files and get the total count
 	for _, pathname := range m.filenames {
-		// Check if this is a ZIP file
 		if strings.ToLower(filepath.Ext(pathname)) == ".zip" {
 			// Process ZIP file to get a list of JSON files inside
-			fmt.Printf("Processing ZIP file: %s\n", pathname)
-			extractedFiles, err := processZipFileForMnemonics(pathname)
+			files, err := processZipFileForMnemonics(pathname)
 			if err != nil {
 				return nil, err
 			}
+			totalJSONFiles += len(files)
+			extractedFiles = files
+		} else {
+			// For regular JSON files, just count them
+			totalJSONFiles++
+		}
+	}
+
+	// Update the total files count
+	m.totalFiles = totalJSONFiles
+
+	// Now process the files
+	for _, pathname := range m.filenames {
+		// Check if this is a ZIP file
+		if strings.ToLower(filepath.Ext(pathname)) == ".zip" {
+			m.extractedAll = true
+			fmt.Printf("Processing ZIP file: %s\n", pathname)
 
 			// For each JSON file in the ZIP, ask for a mnemonic
 			for _, extractedFile := range extractedFiles {
@@ -163,7 +186,7 @@ func processZipFileForMnemonics(zipPath string) ([]string, error) {
 	return extractedFiles, nil
 }
 
-func (m MnemonicsFormModel) fileList(filesWithMnemonics []VaultsDataFile) string {
+func (m *MnemonicsFormModel) fileList(filesWithMnemonics []VaultsDataFile) string {
 	if len(filesWithMnemonics) == 0 {
 		return ""
 	}
@@ -183,7 +206,8 @@ func (m MnemonicsFormModel) fileList(filesWithMnemonics []VaultsDataFile) string
 		EnumeratorStyleFunc(checklistEnumStyle)
 
 	for i, f := range filesWithMnemonics {
-		l = l.Item(fmt.Sprintf("%s (file %d of %d)", filepath.Base(f.File), i+1, len(filesWithMnemonics)))
+		// Always use the precalculated total files count
+		l = l.Item(fmt.Sprintf("%s (file %d of %d)", filepath.Base(f.File), i+1, m.totalFiles))
 	}
 
 	return l.String()
