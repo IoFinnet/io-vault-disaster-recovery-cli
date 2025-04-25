@@ -35,8 +35,12 @@ func ValidateFiles(appConfig config.AppConfig) error {
 	processedFiles := make([]string, 0)
 	zipExtractedDirs := make([]string, 0)
 
-	// First pass: check file existence and process ZIP files
+	// First pass: check file existence and validate no mixing of ZIP and JSON
 	uniqueFiles := make(map[string]struct{})
+	hasZip := false
+	hasJson := false
+	var firstZipFile, firstJsonFile string
+
 	for _, file := range files {
 		// Verify file exists
 		if _, err := os.Stat(file); err != nil {
@@ -49,6 +53,28 @@ func ValidateFiles(appConfig config.AppConfig) error {
 		}
 		uniqueFiles[file] = struct{}{}
 
+		// Track file types
+		if ziputils.IsZipFile(file) {
+			hasZip = true
+			if firstZipFile == "" {
+				firstZipFile = file
+			}
+		} else {
+			hasJson = true
+			if firstJsonFile == "" {
+				firstJsonFile = file
+			}
+		}
+	}
+
+	// Validate no mixing of formats
+	if hasZip && hasJson {
+		return errors2.Errorf("⚠ cannot mix ZIP and JSON files. Found ZIP file '%s' and JSON file '%s'. Please provide either all JSON files or a single ZIP file.",
+			firstZipFile, firstJsonFile)
+	}
+
+	// Process files
+	for _, file := range files {
 		// Process ZIP files
 		if ziputils.IsZipFile(file) {
 			extractedFiles, err := ziputils.ProcessZipFile(file)
