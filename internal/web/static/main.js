@@ -317,8 +317,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         fileGroup.innerHTML = `
             <div class="file-upload">
-                <label for="file-${fileCounter}">Select File</label>
-                <input type="file" id="file-${fileCounter}" class="file-input" accept=".json,.zip">
+                <label for="file-${fileCounter}">Select JSON File</label>
+                <input type="file" id="file-${fileCounter}" class="file-input" accept=".json">
                 <span class="file-name">No file selected</span>
             </div>
             <div class="mnemonic-input">
@@ -396,7 +396,8 @@ document.addEventListener('DOMContentLoaded', () => {
         zipFileName.textContent = file.name;
         
         // Basic validation that it's a ZIP file
-        if (!file.name.toLowerCase().endsWith('.zip')) {
+        const fileName = file.name.toLowerCase();
+        if (!fileName.endsWith('.zip')) {
             showError('Selected file is not a ZIP archive. Please select a .zip file.');
             signersContainer.style.display = 'none';
             return;
@@ -513,6 +514,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!hasFile) {
             errorMessage.textContent = 'Please select at least one JSON vault file';
+            errorContainer.style.display = 'flex';
+            return false;
+        }
+
+        // Check if all files are JSON files
+        let foundNonJsonFile = false;
+        let nonJsonFileName = '';
+        
+        fileInputs.forEach(input => {
+            if (input.files.length > 0) {
+                const fileName = input.files[0].name.toLowerCase();
+                if (!fileName.endsWith('.json')) {
+                    foundNonJsonFile = true;
+                    nonJsonFileName = input.files[0].name;
+                    return;
+                }
+            }
+        });
+        
+        if (foundNonJsonFile) {
+            errorMessage.textContent = `Only JSON files are allowed in this mode. Found non-JSON file: ${nonJsonFileName}`;
             errorContainer.style.display = 'flex';
             return false;
         }
