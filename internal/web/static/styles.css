@@ -185,16 +185,22 @@ h3 {
 
 .signer-mnemonic-group {
     margin-bottom: 1.5rem;
-    padding: 1rem;
+    padding: 1.2rem;
     border: 1px solid var(--border-color);
     border-radius: 8px;
     background-color: var(--light-gray);
+    overflow: hidden;
 }
 
 .signer-file-name {
     font-weight: 500;
     margin-bottom: 0.5rem;
     color: var(--primary-color);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    max-width: 100%;
+    font-size: 0.9rem;
+    line-height: 1.4;
 }
 
 .file-input-group {
@@ -264,6 +270,9 @@ h3 {
 .mnemonic-input label {
     display: block;
     margin-bottom: 0.5rem;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    line-height: 1.4;
 }
 
 .mnemonic {

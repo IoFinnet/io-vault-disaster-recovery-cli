@@ -434,12 +434,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Extract the significant part for the ID
                 const signerId = signer.replace('.json', '');
                 
+                // Truncate long filenames for the label (keeping full name in display)
+                const truncatedName = signer.length > 40 ? signer.substring(0, 37) + '...' : signer;
+                
                 signerGroup.innerHTML = `
                     <div class="signer-file-name">${signer}</div>
                     <div class="mnemonic-input">
-                        <label for="mnemonic-${signerId}">24-word Mnemonic Phrase for ${signer}</label>
+                        <label for="mnemonic-${signerId}">24-word Mnemonic Phrase for ${truncatedName}</label>
                         <textarea id="mnemonic-${signerId}" class="mnemonic zip-mnemonic" rows="3" 
-                            placeholder="Enter the 24-word mnemonic phrase for ${signer}..."></textarea>
+                            placeholder="Enter the 24-word mnemonic phrase..."></textarea>
                         <input type="hidden" name="filename-${signerId}" value="${signer}">
                     </div>
                 `;
