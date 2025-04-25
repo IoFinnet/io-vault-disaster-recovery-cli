@@ -438,16 +438,42 @@ document.addEventListener('DOMContentLoaded', () => {
                 const truncatedName = signer.length > 40 ? signer.substring(0, 37) + '...' : signer;
                 
                 signerGroup.innerHTML = `
-                    <div class="signer-file-name">${signer}</div>
+                    <div class="signer-header">
+                        <label class="signer-checkbox-label">
+                            <input type="checkbox" class="signer-checkbox" data-signer-id="${signerId}" checked>
+                            <div class="signer-file-name">${signer}</div>
+                        </label>
+                    </div>
                     <div class="mnemonic-input">
                         <label for="mnemonic-${signerId}">24-word Mnemonic Phrase for ${truncatedName}</label>
                         <textarea id="mnemonic-${signerId}" class="mnemonic zip-mnemonic" rows="3" 
                             placeholder="Enter the 24-word mnemonic phrase..."></textarea>
                         <input type="hidden" name="filename-${signerId}" value="${signer}">
+                        <input type="hidden" name="enabled-${signerId}" value="true" class="signer-enabled">
                     </div>
                 `;
                 
                 signerMnemonics.appendChild(signerGroup);
+                
+                // Add event listener for checkbox
+                const checkbox = signerGroup.querySelector('.signer-checkbox');
+                checkbox.addEventListener('change', function() {
+                    const signerId = this.getAttribute('data-signer-id');
+                    const textarea = document.getElementById(`mnemonic-${signerId}`);
+                    const enabledInput = signerGroup.querySelector('.signer-enabled');
+                    
+                    if (this.checked) {
+                        // Enable the textarea
+                        textarea.disabled = false;
+                        signerGroup.classList.remove('disabled');
+                        enabledInput.value = "true";
+                    } else {
+                        // Disable the textarea
+                        textarea.disabled = true;
+                        signerGroup.classList.add('disabled');
+                        enabledInput.value = "false";
+                    }
+                });
             });
         })
         .catch(error => {
@@ -526,13 +552,23 @@ document.addEventListener('DOMContentLoaded', () => {
             return false;
         }
         
-        // Check if mnemonics are provided for all detected signers
-        const zipMnemonics = document.querySelectorAll('.zip-mnemonic');
+        // Check if mnemonics are provided for all selected signers
+        const signerGroups = document.querySelectorAll('.signer-mnemonic-group');
         let valid = true;
+        let atLeastOneSelected = false;
         
-        zipMnemonics.forEach((textArea, index) => {
-            const mnemonic = textArea.value.trim();
-            const signerName = detectedSigners[index];
+        signerGroups.forEach((group) => {
+            const checkbox = group.querySelector('.signer-checkbox');
+            if (!checkbox.checked) {
+                return; // Skip unchecked signers
+            }
+            
+            atLeastOneSelected = true;
+            
+            const signerId = checkbox.getAttribute('data-signer-id');
+            const textarea = document.getElementById(`mnemonic-${signerId}`);
+            const mnemonic = textarea.value.trim();
+            const signerName = group.querySelector('.signer-file-name').textContent;
             
             if (!mnemonic) {
                 errorMessage.textContent = `Please enter the mnemonic phrase for ${signerName}`;
@@ -550,6 +586,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
         });
+        
+        if (!atLeastOneSelected) {
+            errorMessage.textContent = 'Please select at least one signer from the ZIP file';
+            errorContainer.style.display = 'flex';
+            return false;
+        }
         
         return valid;
     }
@@ -600,12 +642,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Add a marker to identify this as ZIP mode
                 formData.append('mode', 'zip');
                 
-                // Add mnemonics for detected signers
-                document.querySelectorAll('.zip-mnemonic').forEach((input, index) => {
-                    const filename = detectedSigners[index];
-                    const fileId = filename.replace('.json', '');
-                    formData.append(`mnemonic_${fileId}`, input.value.trim());
-                    formData.append(`filename_${fileId}`, filename);
+                // Add mnemonics for detected signers (only if enabled)
+                document.querySelectorAll('.signer-mnemonic-group').forEach((group) => {
+                    const checkbox = group.querySelector('.signer-checkbox');
+                    
+                    // Only include enabled signers
+                    if (checkbox.checked) {
+                        const signerId = checkbox.getAttribute('data-signer-id');
+                        const textarea = document.getElementById(`mnemonic-${signerId}`);
+                        const filename = detectedSigners.find(s => s.replace('.json', '') === signerId);
+                        
+                        formData.append(`mnemonic_${signerId}`, textarea.value.trim());
+                        formData.append(`filename_${signerId}`, filename);
+                    }
                 });
             }
         }
@@ -722,12 +771,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Add a marker to identify this as ZIP mode
                 formData.append('mode', 'zip');
                 
-                // Add mnemonics for detected signers
-                document.querySelectorAll('.zip-mnemonic').forEach((input, index) => {
-                    const filename = detectedSigners[index];
-                    const fileId = filename.replace('.json', '');
-                    formData.append(`mnemonic_${fileId}`, input.value.trim());
-                    formData.append(`filename_${fileId}`, filename);
+                // Add mnemonics for detected signers (only if enabled)
+                document.querySelectorAll('.signer-mnemonic-group').forEach((group) => {
+                    const checkbox = group.querySelector('.signer-checkbox');
+                    
+                    // Only include enabled signers
+                    if (checkbox.checked) {
+                        const signerId = checkbox.getAttribute('data-signer-id');
+                        const textarea = document.getElementById(`mnemonic-${signerId}`);
+                        const filename = detectedSigners.find(s => s.replace('.json', '') === signerId);
+                        
+                        formData.append(`mnemonic_${signerId}`, textarea.value.trim());
+                        formData.append(`filename_${signerId}`, filename);
+                    }
                 });
             }
         }

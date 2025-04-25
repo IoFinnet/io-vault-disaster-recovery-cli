@@ -190,6 +190,29 @@ h3 {
     border-radius: 8px;
     background-color: var(--light-gray);
     overflow: hidden;
+    transition: opacity 0.3s, background-color 0.3s;
+}
+
+.signer-mnemonic-group.disabled {
+    opacity: 0.7;
+    background-color: #f1f1f1;
+}
+
+.signer-header {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 0.5rem;
+}
+
+.signer-checkbox-label {
+    display: flex;
+    align-items: flex-start;
+    cursor: pointer;
+}
+
+.signer-checkbox {
+    margin-top: 0.2rem;
+    margin-right: 0.5rem;
 }
 
 .signer-file-name {
@@ -201,6 +224,12 @@ h3 {
     max-width: 100%;
     font-size: 0.9rem;
     line-height: 1.4;
+}
+
+.disabled .mnemonic-input textarea {
+    background-color: #eaeaea;
+    border-color: #ccc;
+    color: #888;
 }
 
 .file-input-group {
