@@ -69,7 +69,7 @@ func ValidateFiles(appConfig config.AppConfig) error {
 
 	// Validate no mixing of formats
 	if hasZip && hasJson {
-		return errors2.Errorf("⚠ cannot mix ZIP and JSON files. Found ZIP file '%s' and JSON file '%s'. Please provide either all JSON files or a single ZIP file.",
+		return errors2.Errorf("⚠ cannot mix ZIP and JSON files. Found ZIP file '%s' and JSON file '%s'. Please provide either all JSON files or all ZIP files.",
 			firstZipFile, firstJsonFile)
 	}
 

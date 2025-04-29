@@ -386,30 +386,46 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Handle ZIP file selection and detect signers
     function handleZipFileSelection(event) {
-        const file = event.target.files[0];
-        if (!file) {
-            zipFileName.textContent = 'No ZIP file selected';
+        const files = event.target.files;
+        if (!files || files.length === 0) {
+            zipFileName.textContent = 'No ZIP files selected';
             signersContainer.style.display = 'none';
             return;
         }
         
-        zipFileName.textContent = file.name;
+        const fileNames = Array.from(files).map(file => file.name).join(', ');
+        zipFileName.textContent = files.length === 1 ? fileNames : `${files.length} ZIP files selected`;
         
-        // Basic validation that it's a ZIP file
-        const fileName = file.name.toLowerCase();
-        if (!fileName.endsWith('.zip')) {
-            showError('Selected file is not a ZIP archive. Please select a .zip file.');
+        // Basic validation that all files are ZIP files
+        let allZips = true;
+        let nonZipFile = '';
+        
+        for (const file of files) {
+            const fileName = file.name.toLowerCase();
+            if (!fileName.endsWith('.zip')) {
+                allZips = false;
+                nonZipFile = file.name;
+                break;
+            }
+        }
+        
+        if (!allZips) {
+            showError(`Selected file '${nonZipFile}' is not a ZIP archive. Please select only .zip files.`);
             signersContainer.style.display = 'none';
             return;
         }
         
         // Show loading state
         signersContainer.style.display = 'block';
-        signerMnemonics.innerHTML = '<div class="loading-signers">Loading signer files from ZIP...</div>';
+        signerMnemonics.innerHTML = '<div class="loading-signers">Loading signer files from ZIP archives...</div>';
         
-        // Upload the ZIP file to the server to get the list of files
+        // Upload all ZIP files to the server to get the combined list of files
         const formData = new FormData();
-        formData.append('zipFile', file);
+        
+        // Add all ZIP files to the form data
+        for (const zipFile of files) {
+            formData.append('zipFile', zipFile);
+        }
         
         fetch('/api/list-zip-files', {
             method: 'POST',
@@ -565,7 +581,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return valid;
     }
     
-    // Validate ZIP file and its mnemonics before proceeding
+    // Validate ZIP files and their mnemonics before proceeding
     function validateZipFileAndMnemonics() {
         const errorContainer = document.getElementById('files-error');
         const errorMessage = document.getElementById('files-error-message');
@@ -573,9 +589,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Hide previous error messages
         errorContainer.style.display = 'none';
         
-        // Check if a ZIP file is selected
+        // Check if ZIP files are selected
         if (!zipFileInput.files.length) {
-            errorMessage.textContent = 'Please select a ZIP file containing vault JSON files';
+            errorMessage.textContent = 'Please select one or more ZIP files containing vault JSON files';
             errorContainer.style.display = 'flex';
             return false;
         }
@@ -662,10 +678,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         } else {
-            // ZIP mode: Add ZIP file and signer mnemonics
+            // ZIP mode: Add ZIP files and signer mnemonics
             if (zipFileInput.files.length > 0) {
-                // Add ZIP file
-                formData.append('files', zipFileInput.files[0]);
+                // Add all ZIP files
+                for (const zipFile of zipFileInput.files) {
+                    formData.append('files', zipFile);
+                }
                 
                 // Add a marker to identify this as ZIP mode
                 formData.append('mode', 'zip');
@@ -791,10 +809,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         } else {
-            // ZIP mode: Add ZIP file and signer mnemonics
+            // ZIP mode: Add ZIP files and signer mnemonics
             if (zipFileInput.files.length > 0) {
-                // Add ZIP file
-                formData.append('files', zipFileInput.files[0]);
+                // Add all ZIP files
+                for (const zipFile of zipFileInput.files) {
+                    formData.append('files', zipFile);
+                }
                 
                 // Add a marker to identify this as ZIP mode
                 formData.append('mode', 'zip');

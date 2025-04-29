@@ -110,10 +110,12 @@ You can also provide the vault ID you want to recover, which will skip the step 
 ./recovery-tool-mac -vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.json sandbox/file2.json
 ```
 
-Mix and match JSON files and ZIP archives as needed:
+Use multiple ZIP archives:
 ```bash
-./recovery-tool-mac sandbox/file1.json sandbox/backups.zip sandbox/file3.json
+./recovery-tool-mac sandbox/backups1.zip sandbox/backups2.zip sandbox/backups3.zip
 ```
+
+Note: You cannot mix JSON and ZIP files in the same command.
 
 Replace `mac` with one of the following depending on your computer's OS and architecture:
 - `linux-amd64` - For Linux on x86-64 processors

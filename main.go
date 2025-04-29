@@ -63,7 +63,7 @@ func main() {
 		} else if choice == "2" {
 			fmt.Println("\nPlease supply some input files on the command line. \nExamples:")
 			fmt.Println("- Individual JSON files: recovery-tool.exe [-flags] file1.json file2.json …")
-			fmt.Println("- ZIP archive containing JSON files: recovery-tool.exe [-flags] backup.zip")
+			fmt.Println("- ZIP archives containing JSON files: recovery-tool.exe [-flags] backup1.zip backup2.zip")
 			fmt.Println("\nNOTE: ZIP files must contain only a flat hierarchy of JSON files (no nested directories)")
 			fmt.Println("\nOptional flags:")
 			flag.PrintDefaults()
@@ -84,7 +84,8 @@ func main() {
 	if len(files) < 1 {
 		fmt.Println("Please supply some input files on the command line. \nExamples:")
 		fmt.Println("- Individual JSON files: recovery-tool.exe [-flags] file1.json file2.json …")
-		fmt.Println("- ZIP archive containing JSON files: recovery-tool.exe [-flags] backup.zip")
+		fmt.Println("- ZIP archives containing JSON files: recovery-tool.exe [-flags] backup1.zip backup2.zip")
+		fmt.Println("- Note: If duplicate filenames exist in multiple ZIPs, the last one processed will be used")
 		fmt.Println("\nNOTE: You cannot mix JSON and ZIP files in the same command")
 		fmt.Println("\nNOTE: ZIP files must contain only a flat hierarchy of JSON files (no nested directories)")
 		fmt.Println("\nOptional flags:")

@@ -360,7 +360,7 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 			clear(ecSK)
 			clear(edSK)
 		} else {
-			log.Printf("No EdDSA private key present")
+			log.Printf("No EdDSA private key present for vault `%s`", vaultID)
 		}
 
 		// Clear sensitive data again to be safe
@@ -651,63 +651,85 @@ func (s *Server) handleListZipFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the ZIP file
-	files := r.MultipartForm.File["zipFile"]
-	if len(files) == 0 {
-		http.Error(w, "No ZIP file provided", http.StatusBadRequest)
+	// Get the ZIP files
+	zipFiles := r.MultipartForm.File["zipFile"]
+	if len(zipFiles) == 0 {
+		http.Error(w, "No ZIP files provided", http.StatusBadRequest)
 		return
 	}
 
-	// Open the uploaded file
-	file, err := files[0].Open()
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to open file: %v", err), http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
+	// Track all extracted files
+	allExtractedFiles := []string{}
+	tempFilePaths := []string{} // Track temp files for cleanup
 
-	// Create a file in the temp directory
-	filePath := filepath.Join(s.tempDir, files[0].Filename)
-	outFile, err := os.Create(filePath)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to create temporary file: %v", err), http.StatusInternalServerError)
-		return
-	}
+	// Process each ZIP file
+	for _, fileHeader := range zipFiles {
+		// Open the uploaded file
+		file, err := fileHeader.Open()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to open file %s: %v", fileHeader.Filename, err), http.StatusBadRequest)
+			return
+		}
 
-	// Copy the file content
-	if _, err := io.Copy(outFile, file); err != nil {
+		// Create a file in the temp directory
+		filePath := filepath.Join(s.tempDir, fileHeader.Filename)
+		tempFilePaths = append(tempFilePaths, filePath)
+		outFile, err := os.Create(filePath)
+		if err != nil {
+			file.Close()
+			http.Error(w, fmt.Sprintf("Failed to create temporary file: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Copy the file content
+		if _, err := io.Copy(outFile, file); err != nil {
+			file.Close()
+			outFile.Close()
+			http.Error(w, fmt.Sprintf("Failed to copy file content: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		file.Close()
 		outFile.Close()
-		http.Error(w, fmt.Sprintf("Failed to copy file content: %v", err), http.StatusInternalServerError)
+
+		// Process the ZIP file to extract JSON files
+		extractedFiles, err := ziputils.ProcessZipFile(filePath)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to process ZIP file %s: %v", fileHeader.Filename, err), http.StatusBadRequest)
+			return
+		}
+
+		// Track the extracted directory for cleanup
+		if len(extractedFiles) > 0 {
+			extractDir := filepath.Dir(extractedFiles[0])
+			s.zipExtractedDirs = append(s.zipExtractedDirs, extractDir)
+			allExtractedFiles = append(allExtractedFiles, extractedFiles...)
+		}
+	}
+
+	// Check if any JSON files were found across all ZIPs
+	if len(allExtractedFiles) == 0 {
+		// Clean up the temporary files
+		for _, path := range tempFilePaths {
+			os.RemoveAll(path)
+		}
+
+		http.Error(w, "No JSON files found in any of the ZIP archives", http.StatusBadRequest)
 		return
 	}
-	outFile.Close()
 
-	// Process the ZIP file to extract JSON files
-	extractedFiles, err := ziputils.ProcessZipFile(filePath)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to process ZIP file: %v", err), http.StatusBadRequest)
-		return
-	}
+	// Use a map to handle duplicate filenames - last one wins
+	uniqueFiles := make(map[string]bool)
+	var fileNames []string
 
-	// Track the extracted directory for cleanup
-	if len(extractedFiles) > 0 {
-		extractDir := filepath.Dir(extractedFiles[0])
-		s.zipExtractedDirs = append(s.zipExtractedDirs, extractDir)
-	}
-
-	// Check if any JSON files were found
-	if len(extractedFiles) == 0 {
-		// Clean up the temporary directory if we created one
-		os.RemoveAll(filePath)
-
-		http.Error(w, "No JSON files found in the ZIP archive", http.StatusBadRequest)
-		return
-	}
-
-	// Create a response with just the filenames
-	fileNames := make([]string, len(extractedFiles))
-	for i, file := range extractedFiles {
-		fileNames[i] = filepath.Base(file)
+	// Process files in reverse order so first ZIP's files appear first in the list
+	// but duplicates from later ZIPs still override earlier ones
+	for i := len(allExtractedFiles) - 1; i >= 0; i-- {
+		baseName := filepath.Base(allExtractedFiles[i])
+		if _, exists := uniqueFiles[baseName]; !exists {
+			uniqueFiles[baseName] = true
+			fileNames = append([]string{baseName}, fileNames...) // Prepend to maintain order
+		}
 	}
 
 	// Return the filenames as JSON

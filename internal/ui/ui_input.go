@@ -47,6 +47,9 @@ func (m *MnemonicsFormModel) Run() (*[]VaultsDataFile, error) {
 	var extractedFiles []string
 
 	// First, determine if we're dealing with ZIP files and get the total count
+	// and collect all extracted files
+	extractedFilesMap := make(map[string]bool) // Use a map to deduplicate
+
 	for _, pathname := range m.filenames {
 		if strings.ToLower(filepath.Ext(pathname)) == ".zip" {
 			// Process ZIP file to get a list of JSON files inside
@@ -54,13 +57,24 @@ func (m *MnemonicsFormModel) Run() (*[]VaultsDataFile, error) {
 			if err != nil {
 				return nil, err
 			}
-			totalJSONFiles += len(files)
-			extractedFiles = files
+
+			// Add all extracted files to our map (handles duplicates automatically)
+			for _, file := range files {
+				extractedFilesMap[file] = true
+			}
 		} else {
 			// For regular JSON files, just count them
 			totalJSONFiles++
 		}
 	}
+
+	// Convert map keys to slice for easier processing
+	for file := range extractedFilesMap {
+		extractedFiles = append(extractedFiles, file)
+	}
+
+	// Add extracted files count to total
+	totalJSONFiles += len(extractedFiles)
 
 	// Update the total files count
 	m.totalFiles = totalJSONFiles
@@ -72,61 +86,68 @@ func (m *MnemonicsFormModel) Run() (*[]VaultsDataFile, error) {
 			m.extractedAll = true
 			fmt.Printf("Processing ZIP file: %s\n", pathname)
 
-			// For each JSON file in the ZIP, ask for a mnemonic
-			for _, extractedFile := range extractedFiles {
-				// Use the full filename from the ZIP
-				fileName := filepath.Base(extractedFile)
-				displayFileName := fileName
+			// Skip processing ZIPs here - we'll process all extracted files together below
+			continue
+		}
 
-				// Get the base name just for the description
-				baseName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+		// Process regular JSON files
+		displayFileName := filepath.Base(pathname)
 
-				input := huh.NewText().
-					Key("phrase").
-					Title(fmt.Sprintf("Mnemonics for %s (from ZIP)", displayFileName)).
-					Description(fmt.Sprintf("Enter the %d word phrase for %s signer", WORDS, baseName)).
-					Validate(func(input string) error {
-						fileWithMnemonic := VaultsDataFile{File: extractedFile, Mnemonics: input}
-						return fileWithMnemonic.ValidateMnemonics()
-					})
+		input := huh.NewText().
+			Key("phrase").
+			Title(fmt.Sprintf("Mnemonics for %s", displayFileName)).
+			Description(fmt.Sprintf("Enter the %d word phrase", WORDS)).
+			Validate(func(input string) error {
+				fileWithMnemonic := VaultsDataFile{File: pathname, Mnemonics: input}
+				return fileWithMnemonic.ValidateMnemonics()
+			})
 
-				var form *huh.Form
+		var form *huh.Form
 
-				// Show the list of files added if there are more than one
-				if len(filesWithMnemonics) > 0 {
-					form = huh.NewForm(
-						huh.NewGroup(
-							huh.NewNote().Description(m.fileList(filesWithMnemonics)),
-							input,
-						),
-					).WithTheme(huh.ThemeBase16())
-				} else {
-					form = huh.NewForm(huh.NewGroup(input)).WithTheme(huh.ThemeBase16())
-				}
-
-				err := form.Run()
-				if err != nil {
-					return nil, err
-				}
-
-				mnemonics := form.GetString("phrase")
-				if mnemonics == "" {
-					return nil, fmt.Errorf("phrase for %s is empty", displayFileName)
-				}
-
-				f := VaultsDataFile{File: extractedFile, Mnemonics: mnemonics}
-				filesWithMnemonics = append(filesWithMnemonics, f)
-			}
+		// Show the list of files added if there are more than one
+		if len(filesWithMnemonics) > 0 {
+			form = huh.NewForm(
+				huh.NewGroup(
+					huh.NewNote().Description(m.fileList(filesWithMnemonics)),
+					input,
+				),
+			).WithTheme(huh.ThemeBase16())
 		} else {
-			// Regular JSON file processing
-			displayFileName := filepath.Base(pathname)
+			form = huh.NewForm(huh.NewGroup(input)).WithTheme(huh.ThemeBase16())
+		}
+
+		err := form.Run()
+		if err != nil {
+			return nil, err
+		}
+
+		mnemonics := form.GetString("phrase")
+		if mnemonics == "" {
+			return nil, fmt.Errorf("phrase for %s is empty", displayFileName)
+		}
+
+		f := VaultsDataFile{File: pathname, Mnemonics: mnemonics}
+		filesWithMnemonics = append(filesWithMnemonics, f)
+	}
+
+	// Process all extracted files from ZIPs
+	if len(extractedFiles) > 0 {
+		fmt.Printf("Processing %d extracted JSON files from ZIP archives\n", len(extractedFiles))
+
+		for _, extractedFile := range extractedFiles {
+			// Use the full filename from the ZIP
+			fileName := filepath.Base(extractedFile)
+			displayFileName := fileName
+
+			// Get the base name just for the description
+			baseName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
 
 			input := huh.NewText().
 				Key("phrase").
-				Title(fmt.Sprintf("Mnemonics for %s", displayFileName)).
-				Description(fmt.Sprintf("Enter the %d word phrase", WORDS)).
+				Title(fmt.Sprintf("Mnemonics for %s (from ZIP)", displayFileName)).
+				Description(fmt.Sprintf("Enter the %d word phrase for %s signer", WORDS, baseName)).
 				Validate(func(input string) error {
-					fileWithMnemonic := VaultsDataFile{File: pathname, Mnemonics: input}
+					fileWithMnemonic := VaultsDataFile{File: extractedFile, Mnemonics: input}
 					return fileWithMnemonic.ValidateMnemonics()
 				})
 
@@ -154,7 +175,7 @@ func (m *MnemonicsFormModel) Run() (*[]VaultsDataFile, error) {
 				return nil, fmt.Errorf("phrase for %s is empty", displayFileName)
 			}
 
-			f := VaultsDataFile{File: pathname, Mnemonics: mnemonics}
+			f := VaultsDataFile{File: extractedFile, Mnemonics: mnemonics}
 			filesWithMnemonics = append(filesWithMnemonics, f)
 		}
 	}
@@ -197,6 +218,7 @@ func (m *MnemonicsFormModel) fileList(filesWithMnemonics []VaultsDataFile) strin
 			Foreground(special).
 			PaddingRight(1)
 	}
+
 	checklistEnum := func(items list.Items, index int) string {
 		return "✓"
 	}
