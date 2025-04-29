@@ -30,10 +30,15 @@ func ValidateMnemonics(mnemonic string) error {
 	return nil
 }
 
-func ValidateFiles(appConfig config.AppConfig) error {
+func ValidateFiles(appConfig *config.AppConfig) error {
 	files := appConfig.Filenames
 	processedFiles := make([]string, 0)
 	zipExtractedDirs := make([]string, 0)
+
+	// If appConfig already has extracted dirs from a previous run, keep them
+	if len(appConfig.ZipExtractedDirs) > 0 {
+		zipExtractedDirs = append(zipExtractedDirs, appConfig.ZipExtractedDirs...)
+	}
 
 	// First pass: check file existence and validate no mixing of ZIP and JSON
 	uniqueFiles := make(map[string]struct{})
@@ -84,7 +89,8 @@ func ValidateFiles(appConfig config.AppConfig) error {
 
 			// Track temp directory for cleanup (extract path from any file)
 			if len(extractedFiles) > 0 {
-				zipExtractedDirs = append(zipExtractedDirs, filepath.Dir(extractedFiles[0]))
+				extractDir := filepath.Dir(extractedFiles[0])
+				zipExtractedDirs = append(zipExtractedDirs, extractDir)
 			}
 
 			// Add extracted files to the processed list

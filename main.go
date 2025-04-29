@@ -106,7 +106,7 @@ func main() {
 	config.GlobalConfig = appConfig
 
 	// First validate that files exist and are readable
-	if err := ui.ValidateFiles(appConfig); err != nil {
+	if err := ui.ValidateFiles(&appConfig); err != nil {
 		fmt.Print(ui.ErrorBox(err))
 		os.Exit(1)
 	}
