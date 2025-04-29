@@ -90,7 +90,7 @@ func TestProcessZipFile(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			extractedFiles, err := ProcessZipFile(tt.zipFile)
-			
+
 			// Clean up extracted files after test
 			if len(extractedFiles) > 0 {
 				defer os.RemoveAll(filepath.Dir(extractedFiles[0]))
