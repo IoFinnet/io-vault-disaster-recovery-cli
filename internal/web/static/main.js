@@ -685,8 +685,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     formData.append('files', zipFile);
                 }
                 
-                // Add a marker to identify this as ZIP mode
-                formData.append('mode', 'zip');
+                // Each JSON file in a ZIP needs its own mnemonic
                 
                 // Add mnemonics for detected signers (only if enabled)
                 document.querySelectorAll('.signer-mnemonic-group').forEach((group) => {
@@ -816,8 +815,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     formData.append('files', zipFile);
                 }
                 
-                // Add a marker to identify this as ZIP mode
-                formData.append('mode', 'zip');
+                // Each JSON file in a ZIP needs its own mnemonic
                 
                 // Add mnemonics for detected signers (only if enabled)
                 document.querySelectorAll('.signer-mnemonic-group').forEach((group) => {

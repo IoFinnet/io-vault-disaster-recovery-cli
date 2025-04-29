@@ -389,12 +389,6 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 		return nil, fmt.Errorf("no files uploaded")
 	}
 
-	// Check if we're in ZIP mode (handle signers differently)
-	isZipMode := false
-	if mode, ok := r.MultipartForm.Value["mode"]; ok && len(mode) > 0 && mode[0] == "zip" {
-		isZipMode = true
-	}
-
 	vaultsDataFiles := make([]ui.VaultsDataFile, 0)
 	zipExtractedDirs := make([]string, 0)
 
@@ -457,88 +451,36 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 				zipExtractedDirs = append(zipExtractedDirs, filepath.Dir(extractedFiles[0]))
 			}
 
-			if isZipMode {
-				// ZIP mode: each signer JSON has its own mnemonic
-				for _, extractedFile := range extractedFiles {
-					// Get complete filename and base name without extension
-					fileName := filepath.Base(extractedFile)
-					baseName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+			// Each signer JSON has its own mnemonic
+			for _, extractedFile := range extractedFiles {
+				// Get complete filename and base name without extension
+				fileName := filepath.Base(extractedFile)
+				baseName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
 
-					// Look for mnemonic specific to this signer type
-					// We use baseName for the key as that's what the frontend is sending
-					mnemonicKey := fmt.Sprintf("mnemonic_%s", baseName)
+				// Look for mnemonic specific to this signer type
+				// We use baseName for the key as that's what the frontend is sending
+				mnemonicKey := fmt.Sprintf("mnemonic_%s", baseName)
 
-					// Check if we have a mnemonic for this signer
-					if mnemonicValues, ok := r.MultipartForm.Value[mnemonicKey]; ok && len(mnemonicValues) > 0 {
-						mnemonic := ui.CleanMnemonicInput(mnemonicValues[0])
-						if err := ui.ValidateMnemonics(mnemonic); err != nil {
-							// Clean up any temp directories we've created
-							for _, dir := range zipExtractedDirs {
-								os.RemoveAll(dir)
-							}
-							return nil, fmt.Errorf("invalid mnemonic for signer %s: %w", baseName, err)
+				// Check if we have a mnemonic for this signer
+				if mnemonicValues, ok := r.MultipartForm.Value[mnemonicKey]; ok && len(mnemonicValues) > 0 {
+					mnemonic := ui.CleanMnemonicInput(mnemonicValues[0])
+					if err := ui.ValidateMnemonics(mnemonic); err != nil {
+						// Clean up any temp directories we've created
+						for _, dir := range zipExtractedDirs {
+							os.RemoveAll(dir)
 						}
-
-						// Add the file with its specific mnemonic
-						vaultsDataFiles = append(vaultsDataFiles, ui.VaultsDataFile{
-							File:      extractedFile,
-							Mnemonics: mnemonic,
-						})
-						jsonFileCount++
-					} else {
-						// Skip files we don't have mnemonics for
-						fmt.Printf("Skipping file %s - no mnemonic provided\n", extractedFile)
+						return nil, fmt.Errorf("invalid mnemonic for signer %s: %w", baseName, err)
 					}
-				}
-			} else {
-				// Legacy ZIP handling: use same mnemonic for all files
-				// Get mnemonics list for legacy handling
-				var mnemonicValues []string
-				for key, values := range r.MultipartForm.Value {
-					if strings.Contains(key, "mnemonic") && !strings.Contains(key, "mnemonic_") {
-						mnemonicValues = append(mnemonicValues, values...)
-					}
-				}
 
-				// If we couldn't find mnemonic fields by name, try using all form values except known ones
-				if len(mnemonicValues) == 0 {
-					for key, values := range r.MultipartForm.Value {
-						if key != "mode" && key != "vaultId" && !strings.HasPrefix(key, "mnemonic_") {
-							mnemonicValues = append(mnemonicValues, values...)
-						}
-					}
-				}
-
-				// For ZIP files, we'll use the same mnemonic for all files inside
-				mnemonicIndex := i
-				if mnemonicIndex >= len(mnemonicValues) {
-					mnemonicIndex = 0 // Fall back to first mnemonic if not enough
-				}
-
-				if len(mnemonicValues) == 0 {
-					// Clean up any temp directories we've created
-					for _, dir := range zipExtractedDirs {
-						os.RemoveAll(dir)
-					}
-					return nil, fmt.Errorf("no mnemonics provided for ZIP file %s", fileHeader.Filename)
-				}
-
-				mnemonic := ui.CleanMnemonicInput(mnemonicValues[mnemonicIndex])
-				if err := ui.ValidateMnemonics(mnemonic); err != nil {
-					// Clean up any temp directories we've created
-					for _, dir := range zipExtractedDirs {
-						os.RemoveAll(dir)
-					}
-					return nil, fmt.Errorf("invalid mnemonic for ZIP file %s: %w", fileHeader.Filename, err)
-				}
-
-				// Add each extracted file to vaultsDataFiles with the same mnemonic
-				for _, extractedFile := range extractedFiles {
+					// Add the file with its specific mnemonic
 					vaultsDataFiles = append(vaultsDataFiles, ui.VaultsDataFile{
 						File:      extractedFile,
 						Mnemonics: mnemonic,
 					})
 					jsonFileCount++
+				} else {
+					// Skip files we don't have mnemonics for
+					fmt.Printf("Skipping file %s - no mnemonic provided\n", extractedFile)
 				}
 			}
 		} else {
