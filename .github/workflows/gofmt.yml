@@ -3,10 +3,9 @@ on: push
 jobs:
   gofmt:
     name: Run Gofmt
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     env:
-      HOME: "/opt/actions-runner"
       GOPRIVATE: github.com/iofinnet
 
     steps:
