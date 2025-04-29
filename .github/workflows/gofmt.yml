@@ -1,0 +1,19 @@
+name: Go-fmt
+on: push
+jobs:
+  gofmt:
+    name: Run Gofmt
+    runs-on: self-hosted
+
+    env:
+      HOME: "/opt/actions-runner"
+      GOPRIVATE: github.com/iofinnet
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      - uses: Jerome1337/gofmt-action@v1.0.5
+
