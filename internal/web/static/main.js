@@ -13,6 +13,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const backFromErrorBtn = document.getElementById('back-from-error');
     const backToVaultsFromResultsBtn = document.getElementById('back-to-vaults-from-results');
     
+    // Export options elements
+    const exportWalletCheckbox = document.getElementById('export-wallet-checkbox');
+    const exportOptionsContainer = document.getElementById('export-options');
+    const exportFileInput = document.getElementById('export-file');
+    const exportPasswordInput = document.getElementById('export-password');
+    
     // File input mode elements
     const jsonMode = document.getElementById('json-mode');
     const zipMode = document.getElementById('zip-mode');
@@ -53,6 +59,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==================
     // Event Listeners
     // ==================
+
+    // Export wallet checkbox
+    exportWalletCheckbox.addEventListener('change', function() {
+        if (this.checked) {
+            exportOptionsContainer.style.display = 'block';
+            // Set focus to the filename field
+            exportFileInput.focus();
+        } else {
+            exportOptionsContainer.style.display = 'none';
+            // Clear fields when unchecked
+            exportFileInput.value = '';
+            exportPasswordInput.value = '';
+        }
+    });
 
     // Add file button (for JSON mode)
     addFileBtn.addEventListener('click', addFileInput);
@@ -97,12 +117,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Recover vault button
     recoverVaultBtn.addEventListener('click', () => {
-        if (selectedVaultId) {
-            showStep('results');
-            recoverVault();
-        } else {
+        if (!selectedVaultId) {
             alert('Please select a vault to recover');
+            return;
         }
+        
+        // Validate export fields if checkbox is checked
+        if (exportWalletCheckbox.checked) {
+            if (!exportFileInput.value.trim()) {
+                alert('Please enter a filename for the exported wallet file');
+                exportFileInput.focus();
+                return;
+            }
+            
+            if (!exportPasswordInput.value) {
+                alert('Please enter a complex password for the exported wallet file');
+                exportPasswordInput.focus();
+                return;
+            }
+        }
+        
+        showStep('results');
+        recoverVault();
     });
 
     // Start over button
@@ -924,6 +960,19 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log("No EdDSA private key found in response");
             eddsaSection.style.display = 'none';
         }
+
+        // Check if a wallet file was exported
+        const exportConfirmation = document.getElementById('wallet-export-confirmation');
+        const exportedFilename = document.getElementById('exported-filename');
+        
+        // If the wallet export checkbox was checked and the filename was provided
+        const exportFile = document.getElementById('export-file').value;
+        if (exportWalletCheckbox.checked && exportFile) {
+            exportedFilename.textContent = exportFile;
+            exportConfirmation.style.display = 'flex';
+        } else {
+            exportConfirmation.style.display = 'none';
+        }
     }
 
     // Reset the application state
@@ -981,6 +1030,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('quorum-override').value = '';
         document.getElementById('export-password').value = '';
         document.getElementById('export-file').value = '';
+        document.getElementById('export-wallet-checkbox').checked = false;
+        document.getElementById('export-options').style.display = 'none';
 
         // Initialize file input event listeners
         initializeFileInputs();

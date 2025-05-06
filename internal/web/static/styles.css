@@ -463,6 +463,18 @@ button:active {
     font-weight: 500;
 }
 
+.export-option-checkbox label {
+    width: auto;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+}
+
+.export-option-checkbox input[type="checkbox"] {
+    margin-right: 8px;
+    width: auto;
+}
+
 .option-group input {
     width: 250px;
     padding: 0.5rem;
@@ -474,6 +486,50 @@ button:active {
 .hint {
     color: var(--text-light);
     font-size: 0.9rem;
+}
+
+.required {
+    color: var(--danger-color);
+    font-weight: bold;
+}
+
+#export-options {
+    background-color: #f7f7f7;
+    border-left: 3px solid var(--primary-color);
+    padding: 10px;
+    margin-top: 10px;
+    margin-bottom: 20px;
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+.success-message {
+    display: flex;
+    background-color: #d4edda;
+    border: 1px solid rgba(40, 167, 69, 0.3);
+    border-left: 4px solid var(--success-color);
+    padding: 1rem;
+    margin: 1rem 0 1.5rem;
+    border-radius: 4px;
+    align-items: flex-start;
+}
+
+.success-icon {
+    font-size: 1.5rem;
+    color: var(--success-color);
+    margin-right: 1rem;
+}
+
+.success-content {
+    flex: 1;
+}
+
+.success-content h4 {
+    margin: 0 0 0.5rem;
+    color: #155724;
+}
+
+.success-content p {
+    margin: 0;
 }
 
 /* Loading spinner */

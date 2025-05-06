@@ -126,15 +126,23 @@
                     <input type="number" id="quorum-override" placeholder="(Optional)" min="0">
                     <span class="hint">Only provide if advised to do so</span>
                 </div>
-                <div class="option-group">
-                    <label for="export-password">Export Password:</label>
-                    <input type="password" id="export-password" placeholder="(Optional for wallet export)">
-                    <span class="hint">Required to export Ethereum wallet file</span>
+                <div class="option-group export-option-checkbox">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="export-wallet-checkbox"> 
+                        Export an Ethereum wallet file?
+                    </label>
                 </div>
-                <div class="option-group">
-                    <label for="export-file">Export Filename:</label>
-                    <input type="text" id="export-file" placeholder="(Optional)">
-                    <span class="hint">Ethereum wallet file name</span>
+                <div id="export-options" style="display: none;">
+                    <div class="option-group">
+                        <label for="export-file">Export Filename: <span class="required">*</span></label>
+                        <input type="text" id="export-file" placeholder="Enter filename (e.g., wallet.json)">
+                        <span class="hint">Ethereum wallet file name</span>
+                    </div>
+                    <div class="option-group">
+                        <label for="export-password">Export Password: <span class="required">*</span></label>
+                        <input type="password" id="export-password" placeholder="Enter password for wallet file">
+                        <span class="hint">Required to secure Ethereum wallet file</span>
+                    </div>
                 </div>
             </div>
 
@@ -232,6 +240,14 @@
                                 <button class="transaction-btn" data-blockchain="solana">Create Transaction</button>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <div id="wallet-export-confirmation" style="display: none;" class="success-message">
+                    <div class="success-icon">✓</div>
+                    <div class="success-content">
+                        <h4>Ethereum Wallet File Exported Successfully</h4>
+                        <p>Your wallet file has been exported as <span id="exported-filename"></span></p>
                     </div>
                 </div>
 
