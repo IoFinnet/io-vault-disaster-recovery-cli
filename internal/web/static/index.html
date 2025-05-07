@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vault Disaster Recovery Tool</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="/static/main.js" defer></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>io.finnet Disaster Recovery Tool</h1>
+            <div class="sub-header">Securely recover private keys from your vault backup files</div>
+        </header>
+
+        <div class="notice">
+            <strong>Important Security Notice:</strong>
+            <p>This app does not communicate with any external hosts or services.
+            It runs entirely in your local browser and does not require an internet connection.</p>
+            <p>For maximum security, always disconnect your device from the internet during recovery, and use a disposable virtual machine (VM).</p>
+        </div>
+
+        <div id="step-1" class="step active">
+            <h2>Step 1: Upload Vault Files</h2>
+            <p>Please upload your vault backup files and enter the corresponding mnemonics.</p>
+
+            <div id="files-error" class="error-message" style="display: none;">
+                <div class="error-icon">⚠</div>
+                <div class="error-content">
+                    <h4>Error</h4>
+                    <p id="files-error-message"></p>
+                </div>
+            </div>
+
+            <div class="file-info-note">
+                <p>You can upload individual JSON files, or multiple ZIP archives containing JSON files.</p>
+                <p class="note">For ZIP files: Only flat hierarchies are supported (no nested directories). Each JSON file in a ZIP requires its own mnemonic phrase. If duplicate filenames exist in multiple ZIPs, the last one processed will be used.</p>
+            </div>
+            
+            <div class="file-input-mode">
+                <div class="mode-selector">
+                    <label>
+                        <input type="radio" name="file-type" value="json" checked>
+                        Individual JSON Files
+                    </label>
+                    <label>
+                        <input type="radio" name="file-type" value="zip">
+                        ZIP Archives
+                    </label>
+                </div>
+                
+                <div id="json-mode" class="file-mode active">
+                    <div id="files-container">
+                        <div class="file-input-group">
+                            <div class="file-upload">
+                                <label for="file-1">Select JSON File</label>
+                                <input type="file" id="file-1" class="file-input" accept=".json">
+                                <span class="file-name">No file selected</span>
+                            </div>
+                            <div class="mnemonic-input">
+                                <label for="mnemonic-1">24-word Mnemonic Phrase</label>
+                                <textarea id="mnemonic-1" class="mnemonic" rows="3" placeholder="Enter your 24-word mnemonic phrase for this file..."></textarea>
+                            </div>
+                            <button class="remove-file" data-index="1">✕</button>
+                        </div>
+                    </div>
+                    <button id="add-file" class="secondary">+ Add Another JSON File</button>
+                </div>
+                
+                <div id="zip-mode" class="file-mode">
+                    <div class="zip-upload-container">
+                        <div class="file-upload">
+                            <label for="zip-file">Select ZIP Files</label>
+                            <input type="file" id="zip-file" accept=".zip" name="zipFile" multiple>
+                            <span id="zip-file-name" class="file-name">No ZIP files selected</span>
+                        </div>
+                    </div>
+                    
+                    <div id="signers-container" style="display: none;">
+                        <h3>Mnemonic Phrases for Signers</h3>
+                        <p class="note">Enter the 24-word mnemonic phrase for each signer file found in the ZIP archives.</p>
+                        <div id="signer-mnemonics"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button id="next-to-vaults" class="primary">Next: Select Vault</button>
+            </div>
+        </div>
+
+        <div id="step-2" class="step">
+            <h2>Step 2: Select Vault</h2>
+            <div id="vaults-loading" class="loading">
+                <div class="spinner"></div>
+                <p>Processing vault files...</p>
+            </div>
+
+            <div id="vaults-container">
+                <table id="vaults-table">
+                    <thead>
+                        <tr>
+                            <th>Vault Name</th>
+                            <th>Vault ID</th>
+                            <th>Threshold</th>
+                            <th>Shares</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="vaults-list">
+                        <!-- Vault entries will be added here dynamically -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="advanced-options">
+                <h3>Advanced Options</h3>
+                <div class="option-group">
+                    <label for="nonce-override">Reshare Nonce Override:</label>
+                    <input type="number" id="nonce-override" placeholder="(Optional)" min="-1">
+                    <span class="hint">Only provide if advised to do so</span>
+                </div>
+                <div class="option-group">
+                    <label for="quorum-override">Threshold Override:</label>
+                    <input type="number" id="quorum-override" placeholder="(Optional)" min="0">
+                    <span class="hint">Only provide if advised to do so</span>
+                </div>
+                <div class="option-group export-option-checkbox">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="export-wallet-checkbox"> 
+                        Export an Ethereum wallet file?
+                    </label>
+                </div>
+                <div id="export-options" style="display: none;">
+                    <div class="option-group">
+                        <label for="export-file">Export Filename: <span class="required">*</span></label>
+                        <input type="text" id="export-file" placeholder="Enter filename (e.g., wallet.json)">
+                        <span class="hint">Ethereum wallet file name</span>
+                    </div>
+                    <div class="option-group">
+                        <label for="export-password">Export Password: <span class="required">*</span></label>
+                        <input type="password" id="export-password" placeholder="Enter password for wallet file">
+                        <span class="hint">Required to secure Ethereum wallet file</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button id="back-to-files" class="secondary">Back</button>
+                <button id="recover-vault" class="primary">Recover Selected Vault</button>
+            </div>
+        </div>
+
+        <div id="step-3" class="step">
+            <h2>Step 3: Recovery Results</h2>
+
+            <div id="recovery-loading" class="loading">
+                <div class="spinner"></div>
+                <p>Recovering your vault keys...</p>
+                <p class="hint">This may take a few moments</p>
+            </div>
+
+            <div id="recovery-error" class="error-box">
+                <h3>Recovery Failed</h3>
+                <p id="error-message">Error message will appear here</p>
+                <button id="back-from-error" class="secondary">Back to Vault Selection</button>
+            </div>
+
+            <div id="recovery-results">
+                <div class="vault-info">
+                    <h3>Recovered Vault: <span id="vault-name"></span></h3>
+                    <p>Vault ID: <span id="vault-id"></span></p>
+                </div>
+                
+                <div class="result-section">
+                    <h3>Ethereum Address</h3>
+                    <p>Make sure this matches your vault's Ethereum address:</p>
+                    <div class="key-display" id="eth-address"></div>
+                </div>
+
+                <div class="result-section">
+                    <h3>ECDSA Private Key</h3>
+                    <p>For Ethereum, Tron, and other ECDSA-based assets:</p>
+                    <div class="key-display sensitive" id="ecdsa-private-key"></div>
+                    <button class="copy-btn" data-target="ecdsa-private-key">Copy</button>
+                </div>
+
+                <div class="result-section">
+                    <h3>Bitcoin WIF Keys</h3>
+                    <p>For Bitcoin wallet recovery:</p>
+                    <div class="sub-section">
+                        <label>Testnet WIF (for tb1 addresses):</label>
+                        <div class="key-display sensitive" id="testnet-wif"></div>
+                        <button class="copy-btn" data-target="testnet-wif">Copy</button>
+                    </div>
+                    <div class="sub-section">
+                        <label>Mainnet WIF (for bc1 addresses):</label>
+                        <div class="key-display sensitive" id="mainnet-wif"></div>
+                        <button class="copy-btn" data-target="mainnet-wif">Copy</button>
+                    </div>
+                </div>
+
+                <div id="eddsa-section" class="result-section">
+                    <h3>EdDSA Private Key</h3>
+                    <p>For EdDSA-based assets like Solana, XRPL, and Bittensor:</p>
+                    <div class="key-display sensitive" id="eddsa-private-key"></div>
+                    <button class="copy-btn" data-target="eddsa-private-key">Copy</button>
+
+                    <div id="additional-addresses">
+                        <div class="sub-section">
+                            <label>EdDSA Public Key:</label>
+                            <div class="key-display" id="eddsa-public-key"></div>
+                            <button class="copy-btn" data-target="eddsa-public-key">Copy</button>
+                        </div>
+
+                        <div class="sub-section">
+                            <label>XRPL Address:</label>
+                            <div class="key-display" id="xrpl-address"></div>
+                            <div class="action-buttons">
+                                <button class="copy-btn" data-target="xrpl-address">Copy</button>
+                                <button class="transaction-btn" data-blockchain="xrpl">Create Transaction</button>
+                            </div>
+                        </div>
+
+                        <div class="sub-section">
+                            <label>Bittensor Address (SS58):</label>
+                            <div class="key-display" id="bittensor-address"></div>
+                            <div class="action-buttons">
+                                <button class="copy-btn" data-target="bittensor-address">Copy</button>
+                                <button class="transaction-btn" data-blockchain="bittensor">Create Transaction</button>
+                            </div>
+                        </div>
+
+                        <div class="sub-section">
+                            <label>Solana Address:</label>
+                            <div class="key-display" id="solana-address"></div>
+                            <div class="action-buttons">
+                                <button class="copy-btn" data-target="solana-address">Copy</button>
+                                <button class="transaction-btn" data-blockchain="solana">Create Transaction</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="wallet-export-confirmation" style="display: none;" class="success-message">
+                    <div class="success-icon">✓</div>
+                    <div class="success-content">
+                        <h4>Ethereum Wallet File Exported Successfully</h4>
+                        <p>Your wallet file has been exported as <span id="exported-filename"></span></p>
+                    </div>
+                </div>
+
+                <div class="wallet-instructions">
+                    <h3>Wallet Import Instructions</h3>
+                    <ul>
+                        <li><strong>Ethereum & MetaMask:</strong> Import using the hex ECDSA private key or the exported wallet.json file</li>
+                        <li><strong>Bitcoin & Electrum:</strong> Import using WIF with p2wpkh: prefix</li>
+                        <li><strong>XRPL:</strong> Click the "Create Transaction" button next to the XRPL address to send XRP tokens</li>
+                        <li><strong>Bittensor:</strong> Click the "Create Transaction" button next to the Bittensor address to send TAO tokens</li>
+                        <li><strong>Solana:</strong> Click the "Create Transaction" button next to the Solana address to send SOL tokens</li>
+                        <li><strong>Others:</strong> Some wallets may require you to prefix hex strings with 0x</li>
+                    </ul>
+                </div>
+
+                <div class="security-notice">
+                    <p><strong>Important:</strong> Keep these keys safe and do not share them with anyone.</p>
+                    <p>For maximum security, always disconnect your device from the internet during recovery, and use a disposable virtual machine (VM).</p>
+                </div>
+
+                <div class="actions">
+                    <button id="start-over" class="secondary">Start Over</button>
+                    <button id="back-to-vaults-from-results" class="secondary">Back to Vault Selection</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Transaction Dialogs -->
+        <div id="xrpl-transaction-dialog" class="transaction-dialog">
+            <div class="transaction-dialog-content">
+                <span class="close-dialog">&times;</span>
+                <h3>XRPL Transaction</h3>
+
+                <div class="transaction-form">
+                    <div class="network-selection">
+                        <label>Network:</label>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="xrpl-network" value="testnet" checked>
+                                Testnet
+                            </label>
+                            <label>
+                                <input type="radio" name="xrpl-network" value="mainnet">
+                                Mainnet
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Tabs for different actions -->
+                    <div class="transaction-tabs">
+                        <div class="tab-header">
+                            <button class="tab-button active" data-tab="xrpl-balance-tab">Check Balance</button>
+                            <button class="tab-button" data-tab="xrpl-transaction-tab">Create Transaction</button>
+                        </div>
+                        
+                        <!-- Check Balance Tab -->
+                        <div id="xrpl-balance-tab" class="tab-content active">
+                            <p class="tab-description">Check the balance of your XRPL account using the address from your recovered key.</p>
+                            <div class="transaction-actions">
+                                <button id="xrpl-check-balance" class="primary">Check Balance</button>
+                            </div>
+                        </div>
+                        
+                        <!-- Create Transaction Tab -->
+                        <div id="xrpl-transaction-tab" class="tab-content">
+                            <div class="form-group">
+                                <label for="xrpl-destination">Destination Address:</label>
+                                <input type="text" id="xrpl-destination" placeholder="Enter XRP destination address" 
+                                       pattern="^r[1-9A-HJ-NP-Za-km-z]{25,34}$" 
+                                       title="XRPL address must start with 'r' and be 25-35 characters long" required>
+                                <small class="form-hint">Must be a valid XRPL address (starts with 'r')</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="xrpl-amount">Amount (XRP):</label>
+                                <input type="number" id="xrpl-amount" placeholder="Enter amount to send" 
+                                       min="0.000001" max="100000000000" step="0.000001" required>
+                                <small class="form-hint">Must be greater than 0 and less than 100 billion</small>
+                            </div>
+
+                            <div class="transaction-actions">
+                                <button id="xrpl-create-tx" class="primary">Create Transaction</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Command display for transaction execution -->
+                    <div id="xrpl-terminal-container" class="terminal-container" style="display: none;">
+                        <div class="terminal-header">
+                            <div class="terminal-controls">
+                                <div class="terminal-control terminal-close" id="xrpl-terminal-close"></div>
+                            </div>
+                            <div class="terminal-title">XRPL Transaction Command</div>
+                        </div>
+                        <div id="xrpl-terminal" class="terminal"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="bittensor-transaction-dialog" class="transaction-dialog">
+            <div class="transaction-dialog-content">
+                <span class="close-dialog">&times;</span>
+                <h3>Bittensor Transaction</h3>
+
+                <div class="transaction-form">
+                    <div class="network-selection">
+                        <label>Network:</label>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="bittensor-network" value="mainnet" checked>
+                                Mainnet (Finney)
+                            </label>
+                            <label>
+                                <input type="radio" name="bittensor-network" value="testnet">
+                                Testnet
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Tabs for different actions -->
+                    <div class="transaction-tabs">
+                        <div class="tab-header">
+                            <button class="tab-button active" data-tab="bittensor-balance-tab">Check Balance</button>
+                            <button class="tab-button" data-tab="bittensor-transaction-tab">Create Transaction</button>
+                        </div>
+                        
+                        <!-- Check Balance Tab -->
+                        <div id="bittensor-balance-tab" class="tab-content active">
+                            <p class="tab-description">Check the balance of your Bittensor account using the address from your recovered key.</p>
+                            <div class="transaction-actions">
+                                <button id="bittensor-check-balance" class="primary">Check Balance</button>
+                            </div>
+                        </div>
+                        
+                        <!-- Create Transaction Tab -->
+                        <div id="bittensor-transaction-tab" class="tab-content">
+                            <div class="form-group">
+                                <label for="bittensor-destination">Destination Address:</label>
+                                <input type="text" id="bittensor-destination" placeholder="Enter Bittensor destination address" 
+                                       pattern="^[1-9A-HJ-NP-Za-km-z]{48}$" 
+                                       title="Bittensor address must be 48 characters long" required>
+                                <small class="form-hint">Must be a valid 48-character Bittensor address</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="bittensor-amount">Amount (TAO):</label>
+                                <input type="number" id="bittensor-amount" placeholder="Enter amount to send" 
+                                       min="0.000001" step="0.000001" required>
+                                <small class="form-hint">Must be greater than 0</small>
+                            </div>
+
+                            <div class="transaction-actions">
+                                <button id="bittensor-create-tx" class="primary">Create Transaction</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Command display for transaction execution -->
+                    <div id="bittensor-terminal-container" class="terminal-container" style="display: none;">
+                        <div class="terminal-header">
+                            <div class="terminal-controls">
+                                <div class="terminal-control terminal-close" id="bittensor-terminal-close"></div>
+                            </div>
+                            <div class="terminal-title">Bittensor Transaction Command</div>
+                        </div>
+                        <div id="bittensor-terminal" class="terminal"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="solana-transaction-dialog" class="transaction-dialog">
+            <div class="transaction-dialog-content">
+                <span class="close-dialog">&times;</span>
+                <h3>Solana Transaction</h3>
+
+                <div class="transaction-form">
+                    <div class="network-selection">
+                        <label>Network:</label>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="solana-network" value="mainnet">
+                                Mainnet
+                            </label>
+                            <label>
+                                <input type="radio" name="solana-network" value="testnet">
+                                Testnet
+                            </label>
+                            <label>
+                                <input type="radio" name="solana-network" value="devnet" checked>
+                                Devnet
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Tabs for different actions -->
+                    <div class="transaction-tabs">
+                        <div class="tab-header">
+                            <button class="tab-button active" data-tab="solana-balance-tab">Check Balance</button>
+                            <button class="tab-button" data-tab="solana-transaction-tab">Create Transaction</button>
+                        </div>
+                        
+                        <!-- Check Balance Tab -->
+                        <div id="solana-balance-tab" class="tab-content active">
+                            <p class="tab-description">Check the balance of your Solana account using the address from your recovered key.</p>
+                            <div class="transaction-actions">
+                                <button id="solana-check-balance" class="primary">Check Balance</button>
+                            </div>
+                        </div>
+                        
+                        <!-- Create Transaction Tab -->
+                        <div id="solana-transaction-tab" class="tab-content">
+                            <div class="form-group">
+                                <label for="solana-destination">Destination Address:</label>
+                                <input type="text" id="solana-destination" placeholder="Enter Solana destination address" 
+                                       pattern="^[1-9A-HJ-NP-Za-km-z]{32,44}$" 
+                                       title="Solana address must be 32-44 characters long" required>
+                                <small class="form-hint">Must be a valid Solana address (32-44 characters)</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="solana-amount">Amount (SOL):</label>
+                                <input type="number" id="solana-amount" placeholder="Enter amount to send" 
+                                       min="0.000001" step="0.000001" required>
+                                <small class="form-hint">Must be greater than 0</small>
+                            </div>
+
+                            <div class="transaction-actions">
+                                <button id="solana-create-tx" class="primary">Create Transaction</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Command display for transaction execution -->
+                    <div id="solana-terminal-container" class="terminal-container" style="display: none;">
+                        <div class="terminal-header">
+                            <div class="terminal-controls">
+                                <div class="terminal-control terminal-close" id="solana-terminal-close"></div>
+                            </div>
+                            <div class="terminal-title">Solana Transaction Command</div>
+                        </div>
+                        <div id="solana-terminal" class="terminal"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

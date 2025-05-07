@@ -6,6 +6,7 @@ toolchain go1.24.1
 
 require (
 	github.com/binance-chain/tss-lib v1.3.3
+	github.com/btcsuite/btcd/btcutil v1.1.6
 	github.com/cdfmlr/ellipsis v0.0.1
 	github.com/charmbracelet/huh v0.6.0
 	github.com/charmbracelet/lipgloss v0.13.0

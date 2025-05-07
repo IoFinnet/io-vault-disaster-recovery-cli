@@ -1,17 +1,23 @@
 # io.finnet Key Recovery Tool for io.vault
 ![Screenshot](https://github.com/user-attachments/assets/d1ab307a-6059-44d1-828a-be27d0fb9944)
 
-This terminal app recovers the private keys of vaults by combining the shares of each TSS app backup file.
+This offline terminal app recovers the private keys of vaults by combining the shares of each io.finnet app backup file.
 
-It exports a WIF for Bitcoin key import to Electrum Wallet. It will also create a wallet V3 file for importing to MetaMask and other Ethereum wallets.
+It exports a WIF for Bitcoin key import to Electrum and will also create a wallet V3 file for importing to MetaMask, Phantom and other Ethereum wallets.
 
 For other coins and wallets, please see the specific recovery information below or on our [guides page](https://docs.iofinnet.com/docs/disaster-recovery).
-You may be required to run another script contained in the [scripts](./scripts) area of this repository.
+You may be required to run another script located in the [scripts](./scripts) area of this repository.
 
 > [!IMPORTANT]
 > This app does not do ANY communication with any external host or service. It does not need an Internet connection at all.
-> 
+>
 > It is recommended that you run it on a non internet connected ("air gapped") device such as a laptop not connected to any network.
+>
+> The browser UI and transaction tools are designed with a security-first approach:
+> - All processing happens locally in your browser or terminal
+> - Command-line scripts run transaction operations offline
+> - Balance checking can be done using only public addresses
+> - Two-step transaction process allows you to disconnect from the internet before executing transactions
 
 ## Build from Source
 
@@ -85,15 +91,31 @@ Unblock-File -Path "recovery-tool.exe"
 
 ## Usage
 
-Run the recovery tool.
+Run the recovery tool with your backup JSON files or ZIP archives containing JSON files.
 ``` bash
 ./recovery-tool-mac sandbox/file1.json sandbox/file2.json
 ```
 
-You can also provide the vault ID you want to recover, this will skip the step of choosing a vault.
+You can also use ZIP archives that contain multiple JSON files:
 ```bash
-./recovery-tool-mac -vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.bin sandbox/file2.bin
+./recovery-tool-mac sandbox/backup.zip
 ```
+
+> [!NOTE]
+> When using ZIP files, ensure they contain only a flat hierarchy of JSON files with no nested directories.
+> Each ZIP file will be treated as a batch of JSON files, all using the same mnemonic phrase.
+
+You can also provide the vault ID you want to recover, which will skip the step of choosing a vault:
+```bash
+./recovery-tool-mac -vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.json sandbox/file2.json
+```
+
+Use multiple ZIP archives:
+```bash
+./recovery-tool-mac sandbox/backups1.zip sandbox/backups2.zip sandbox/backups3.zip
+```
+
+Note: You cannot mix JSON and ZIP files in the same command.
 
 Replace `mac` with one of the following depending on your computer's OS and architecture:
 - `linux-amd64` - For Linux on x86-64 processors
@@ -146,14 +168,86 @@ After syncing up the chain (may take a while), Electrum should show your balance
 
 Please use [TronLink](https://www.tronlink.org) to recover Tron and Tron assets. [Follow this guide](https://support.tronlink.org/hc/en-us/articles/5982285631769-How-to-Import-Your-Account-in-TronLink-Wallet-Extension) and import your vault's private key output by the tool.
 
-### XRP Ledger Recovery
+## Browser UI
 
-We use a different key format than XRPL usually uses, so there is a separate script that we must use after running the DR tool. Head to [scripts/xrpl-tool](./scripts/xrpl-tool); run `npm i` and `npm start` in that directory to start running the interactive tool.
+The recovery tool includes a browser UI that provides a more user-friendly way to work with your recovered keys and blockchain assets. The browser UI runs locally in your browser and requires no internet connection.
 
-### TAO Recovery
+To use the browser UI, run the recovery tool and navigate to the provided local URL (typically http://localhost:8080):
 
-Similar to the XRPL recovery procedure above, use the [scripts/bittensor-tool](./scripts/bittensor-tool); run `npm i` and `npm start` in that directory to start running the interactive tool.
+```
+$ ./bin/recovery-tool -web
+Starting http server on http://localhost:8080
+```
 
-### Others (SOL, TON, ATOM, etc.)
+The browser UI provides:
+
+1. Step-by-step instructions for vault recovery
+2. Balance checking functionality for XRP, Solana, and Bittensor networks
+3. Command generation for secure transactions
+4. Address validation and key management
+
+### Checking Balances
+
+For security, you can check balances using just the public address without exposing your private key:
+
+```
+# XRP balance check
+scripts/xrpl-tool/npm start -- --address rXXXYourAddressXXX --check-balance --network mainnet
+
+# Solana balance check
+scripts/solana-tool/npm start -- --address XXXYourAddressXXX --check-balance --network mainnet
+
+# Bittensor balance check
+scripts/bittensor-tool/npm start -- --address XXXYourAddressXXX --check-balance --network mainnet
+```
+
+### Transaction Security
+
+For transaction operations, the tool generates commands for you to run in your terminal. This approach provides several security benefits:
+
+1. Private keys never leave your local machine
+2. Transaction details are transparent and visible before signing
+3. You can run the transaction steps in a completely offline environment until the point of broadcasting the transaction to the chain
+
+### XRP Ledger Recovery & Transactions
+
+We use a specific key format for XRPL. You can use the browser UI to generate the appropriate commands, or directly use the XRPL tool:
+
+```
+# Check balance
+cd scripts/xrpl-tool && npm install
+npm start -- --address rXXXYourAddressXXX --check-balance --network mainnet
+
+# Create transaction
+npm start -- --private-key YourPrivateKey --public-key YourPublicKey --destination rXXX... --amount 10 --network mainnet
+```
+
+### TAO (Bittensor) Recovery & Transactions
+
+For Bittensor, the browser UI will provide commands, or you can use the Bittensor tool directly:
+
+```
+# Check balance
+cd scripts/bittensor-tool && npm install
+npm start -- --address XXXYourAddressXXX --check-balance --network mainnet
+
+# Create transaction
+npm start -- --private-key YourPrivateKey --destination XXX... --amount 10 --network mainnet
+```
+
+### Solana Recovery & Transactions
+
+For Solana (SOL) recovery and transactions:
+
+```
+# Check balance
+cd scripts/solana-tool && npm install
+npm start -- --address XXXYourAddressXXX --check-balance --network mainnet
+
+# Create transaction
+npm start -- --private-key YourPrivateKey --destination XXX... --amount 10 --network mainnet
+```
+
+### Others (TON, ATOM, etc.)
 
 Use the EdDSA key output for these chains that use EdDSA (Edwards / Ed25519) keys.

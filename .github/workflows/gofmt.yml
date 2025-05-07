@@ -1,16 +1,8 @@
-name: Go Test
-on:
-  push:
-    branches:
-      - master
-      - release/*
-  pull_request:
-    branches:
-      - master
-
+name: Go-fmt
+on: push
 jobs:
-  test:
-    name: Run Tests
+  gofmt:
+    name: Run Gofmt
     runs-on: ubuntu-latest
 
     env:
@@ -21,6 +13,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: 'stable'
-      - name: Run Tests
-        run: make test
+
+      - uses: Jerome1337/gofmt-action@v1.0.5
 

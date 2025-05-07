@@ -5,7 +5,7 @@
   "type": "module",
   "main": "main.ts",
   "scripts": {
-    "start": "tsx main.ts"
+    "start": "npx tsx main.ts"
   },
   "dependencies": {
     "@noble/ed25519": "^2.1.0",

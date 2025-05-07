@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Full license text available in LICENSE file in repository root.
 
-package main
+package web
 
 import (
 	"crypto/aes"
@@ -35,18 +35,51 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
+const (
+	v2MagicPrefix = "_V2_"
+)
+
+// Copied from main package
+type (
+	SavedData struct {
+		Vaults map[string]CipheredVaultMap `json:"vaults"`
+	}
+
+	CipheredVaultMap map[int]CipheredVault
+
+	CipheredVault struct {
+		CipherTextB64 string       `json:"ciphertext"`
+		CipherParams  CipherParams `json:"cipherparams"`
+		Cipher        string       `json:"cipher"`
+		Hash          string       `json:"hash"`
+	}
+	CipherParams struct {
+		IV  string `json:"iv"`
+		Tag string `json:"tag"`
+	}
+
+	ClearVaultMap   map[string]*ClearVault
+	ClearVaultCurve struct {
+		Algorithm string   `json:"algorithm"`
+		Shares    []string `json:"shares"`
+	}
+	ClearVault struct {
+		Name             string            `json:"name"`
+		Quroum           int               `json:"threshold"`
+		SharesLegacy     []string          `json:"shares"`
+		LastReShareNonce int               `json:"-"`
+		Curves           []ClearVaultCurve `json:"curves"`
+	}
+
+	VaultAllSharesECDSA map[string][]*ecdsa_keygen.LocalPartySaveData
+	VaultAllSharesEdDSA map[string][]*eddsa_keygen.LocalPartySaveData
+
+	SaveData interface{}
+)
+
+// Implementation of runTool for the web package
 func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride, quorumOverride *int, exportKSFile, passwordForKS *string) (
 	address string, ecdsaSK, eddsaSK []byte, orderedVaults []ui.VaultPickerItem, welp error) {
-
-	if nonceOverride != nil && *nonceOverride > -1 {
-		fmt.Printf("\n⚠ Using reshare nonce override: %d. Be sure to set the threshold of the vault at this reshare point with -threshold, or recovery will produce incorrect data.\n", *nonceOverride)
-	}
-	if quorumOverride != nil && *quorumOverride > 0 {
-		fmt.Printf("\n⚠ Using vault quorum override: %d.\n", *quorumOverride)
-	}
-	if (nonceOverride != nil && *nonceOverride > -1) || (quorumOverride != nil && *quorumOverride > 0) {
-		println()
-	}
 
 	justListingVaults := vaultID == nil || *vaultID == ""
 
@@ -57,7 +90,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 	vaultHasEDDSA := make(map[string]bool, len(vaultsDataFile)*16)
 	vaultLastNonces := make(map[string]int, len(vaultsDataFile)*16)
 
-	// // Do the main routine
+	// Process each vault data file
 	for _, file := range vaultsDataFile {
 		saveData := new(SavedData)
 
@@ -150,7 +183,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 			}
 			expHash := sha512.Sum512(plainload)
 			if hex.EncodeToString(expHash[:]) != cipheredVault.Hash {
-				welp = errors2.Errorf("⚠ failed to decrypt vault %s: %s (hash mismatch)", vID, err)
+				welp = errors2.Errorf("⚠ failed to decrypt vault %s: hash mismatch", vID)
 				return
 			}
 
@@ -168,14 +201,10 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 				for _, curve := range clearVaults[vID].Curves {
 					if strings.ToUpper(curve.Algorithm) == "ECDSA" {
 						sharesECDSA = curve.Shares
-						//fmt.Printf("Processing new vault \"%s\" (ECDSA) (%s).\n", clearVaults[vID].Name, vID)
 					} else if strings.ToUpper(curve.Algorithm) == "EDDSA" {
 						sharesEDDSA = curve.Shares
-						//fmt.Printf("Processing new vault \"%s\" (EdDSA) (%s).\n", clearVaults[vID].Name, vID)
 					}
 				}
-			} else {
-				// fmt.Printf("Processing legacy vault \"%s\" (%s).\n", clearVaults[vID].Name, vID)
 			}
 
 			// Build up shares lists
@@ -232,7 +261,6 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 		return "", nil, nil, orderedVaults, nil
 	}
 
-	println()
 	if _, ok := vaultAllSharesECDSA[*vaultID]; !ok {
 		welp = fmt.Errorf("⚠ provided files do not contain data for vault `%s` with the expected reshare nonce", *vaultID)
 		return
@@ -250,8 +278,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 	vssSharesECDSA := make(vss.Shares, len(vaultAllSharesECDSA[*vaultID]))
 	vssSharesEDDSA := make(vss.Shares, len(vaultAllSharesEDDSA[*vaultID]))
 	if len(vaultAllSharesECDSA[*vaultID]) < tPlus1 {
-		welp = fmt.Errorf("⚠ not enough shares. are you using the newest files? (need %d, have %d)",
-			tPlus1, len(vaultAllSharesECDSA[*vaultID]))
+		welp = fmt.Errorf("⚠ not enough shares to recover the key for vault %s (need %d, have %d)", *vaultID, tPlus1, len(vaultAllSharesECDSA[*vaultID]))
 		return
 	}
 	var share0ECDSAPubKey, share0EDDSAPubKey *crypto.ECPoint
@@ -356,6 +383,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 	return address, ecdsaSK, eddsaSK, orderedVaults, nil
 }
 
+// inflateSharesForCurve inflates shares for a specific curve
 func inflateSharesForCurve[T SaveData](shares []string, justListingVaults bool) ([]*T, error) {
 	shareDatas := make([]*T, len(shares))
 	for j, strShare := range shares {
@@ -373,7 +401,7 @@ func inflateSharesForCurve[T SaveData](shares []string, justListingVaults bool) 
 				err2 := errors2.Wrapf(err, "failed to decode base64 part of V2 save data")
 				return nil, err2
 			}
-			inflated, err := data.InflateSaveDataJSON(deflated)
+			inflated, err := inflateDataJSON(deflated)
 			if err != nil {
 				return nil, err
 			}
@@ -408,6 +436,7 @@ func inflateSharesForCurve[T SaveData](shares []string, justListingVaults bool) 
 	return shareDatas, nil
 }
 
+// getTSSPubKeyForEthereum derives an Ethereum address from public key coordinates
 func getTSSPubKeyForEthereum(x, y *big.Int) (*secp256k1.PublicKey, string, error) {
 	if x == nil || y == nil {
 		return nil, "", errors.New("invalid public key coordinates")
@@ -441,4 +470,18 @@ func leftPadTo32Bytes(i *big.Int) []byte {
 	}
 	copy(padded[32-len(bytes):], bytes)
 	return padded
+}
+
+// inflateDataJSON inflates compressed JSON data
+func inflateDataJSON(dataBytes []byte) ([]byte, error) {
+	// Use the actual implementation from the data package
+	return data.InflateSaveDataJSON(dataBytes)
+}
+
+// Helper function for getting the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

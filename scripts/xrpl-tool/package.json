@@ -5,7 +5,7 @@
   "type": "module",
   "main": "main.ts",
   "scripts": {
-    "start": "tsx main.ts"
+    "start": "npx tsx main.ts"
   },
   "dependencies": {
     "@noble/ed25519": "^2.1.0",
@@ -16,6 +16,7 @@
   "author": "io finnet group, inc.",
   "description": "Loads in a scalar format EDDSA keypair for onchain recovery of XRPL assets.",
   "devDependencies": {
-    "@types/node": "^22.10.2"
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.3"
   }
 }
