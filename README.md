@@ -186,6 +186,8 @@ The browser UI provides:
 3. Command generation for secure transactions
 4. Address validation and key management
 
+## Command Line Tools
+
 ### Checking Balances
 
 For security, you can check balances using just the public address without exposing your private key:
@@ -200,14 +202,6 @@ scripts/solana-tool/npm start -- --address XXXYourAddressXXX --check-balance --n
 # Bittensor balance check
 scripts/bittensor-tool/npm start -- --address XXXYourAddressXXX --check-balance --network mainnet
 ```
-
-### Transaction Security
-
-For transaction operations, the tool generates commands for you to run in your terminal. This approach provides several security benefits:
-
-1. Private keys never leave your local machine
-2. Transaction details are transparent and visible before signing
-3. You can run the transaction steps in a completely offline environment until the point of broadcasting the transaction to the chain
 
 ### XRP Ledger Recovery & Transactions
 
