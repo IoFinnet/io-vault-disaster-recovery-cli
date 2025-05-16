@@ -1,5 +1,12 @@
 # io.finnet Key Recovery Tool for io.vault
+[![AGPL-3.0 License][1]][2] [![Go Report Card][5]][6]
+
 ![Screenshot](https://github.com/user-attachments/assets/d1ab307a-6059-44d1-828a-be27d0fb9944)
+
+[1]: https://img.shields.io/github/license/iofinnet/io-vault-disaster-recovery-cli
+[2]: LICENSE
+[5]: https://goreportcard.com/badge/github.com/iofinnet/io-vault-disaster-recovery-cli
+[6]: https://goreportcard.com/report/github.com/iofinnet/io-vault-disaster-recovery-cli
 
 This offline terminal app recovers the private keys of vaults by combining the shares of each io.finnet app backup file.
 
