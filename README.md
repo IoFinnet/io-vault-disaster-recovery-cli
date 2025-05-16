@@ -146,6 +146,8 @@ The browser UI provides:
 3. Command generation for secure transactions
 4. Address validation and key management
 
+## Key Recovery
+
 ### Ethereum & Ethereum-Like Recovery
 
 The tool is able to export a wallet v3 JSON file for import into MetaMask. Set the `-password` flag on the command line to export the `wallet.json`, and make sure it's saved somewhere safe.
@@ -186,22 +188,9 @@ After syncing up the chain (may take a while), Electrum should show your balance
 
 Please use [TronLink](https://www.tronlink.org) to recover Tron and Tron assets. [Follow this guide](https://support.tronlink.org/hc/en-us/articles/5982285631769-How-to-Import-Your-Account-in-TronLink-Wallet-Extension) and import your vault's private key output by the tool.
 
-## Command Line Tools
+## Scripts for Other Chains
 
-### Checking Balances
-
-For security, you can check balances using just the public address without exposing your private key:
-
-```
-# XRP balance check
-scripts/xrpl-tool/npm start -- --address rXXXYourAddressXXX --check-balance --network mainnet
-
-# Solana balance check
-scripts/solana-tool/npm start -- --address XXXYourAddressXXX --check-balance --network mainnet
-
-# Bittensor balance check
-scripts/bittensor-tool/npm start -- --address XXXYourAddressXXX --check-balance --network mainnet
-```
+Some other chains require the use of a node.js script which we have included.
 
 ### XRP Ledger Recovery & Transactions
 
