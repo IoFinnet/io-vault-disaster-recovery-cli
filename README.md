@@ -128,6 +128,24 @@ Replace `mac` with one of the following depending on your computer's OS and arch
 > The tool will try to auto-detect the optimal "reshare nonce" and "threshold/quroum" of the vault you are trying to recover.
 > However, if you would like to override this behavior, you may specify custom values with `-nonce` and `-threshold` flags respectively.
 
+## Browser UI
+
+The recovery tool includes a browser UI that provides a more user-friendly way to work with your recovered keys and blockchain assets. The browser UI runs locally in your browser and requires no internet connection.
+
+To use the browser UI, run the recovery tool and navigate to the provided local URL (typically http://localhost:8080):
+
+```
+$ ./bin/recovery-tool -web
+Starting http server on http://localhost:8080
+```
+
+The browser UI provides:
+
+1. Step-by-step instructions for vault recovery
+2. Balance checking functionality for XRP, Solana, and Bittensor networks
+3. Command generation for secure transactions
+4. Address validation and key management
+
 ### Ethereum & Ethereum-Like Recovery
 
 The tool is able to export a wallet v3 JSON file for import into MetaMask. Set the `-password` flag on the command line to export the `wallet.json`, and make sure it's saved somewhere safe.
@@ -167,24 +185,6 @@ After syncing up the chain (may take a while), Electrum should show your balance
 ### Tron Recovery
 
 Please use [TronLink](https://www.tronlink.org) to recover Tron and Tron assets. [Follow this guide](https://support.tronlink.org/hc/en-us/articles/5982285631769-How-to-Import-Your-Account-in-TronLink-Wallet-Extension) and import your vault's private key output by the tool.
-
-## Browser UI
-
-The recovery tool includes a browser UI that provides a more user-friendly way to work with your recovered keys and blockchain assets. The browser UI runs locally in your browser and requires no internet connection.
-
-To use the browser UI, run the recovery tool and navigate to the provided local URL (typically http://localhost:8080):
-
-```
-$ ./bin/recovery-tool -web
-Starting http server on http://localhost:8080
-```
-
-The browser UI provides:
-
-1. Step-by-step instructions for vault recovery
-2. Balance checking functionality for XRP, Solana, and Bittensor networks
-3. Command generation for secure transactions
-4. Address validation and key management
 
 ## Command Line Tools
 
