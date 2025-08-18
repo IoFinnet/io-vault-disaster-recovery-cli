@@ -78,3 +78,4 @@ require (
 replace github.com/binance-chain/tss-lib => github.com/IoFinnet/threshlib v0.0.0-20240412064341-f3e687f63ba4
 
 replace github.com/agl/ed25519 => github.com/bnb-chain/edwards25519 v0.0.0-20200305024217-f36fc4b53d43
+
