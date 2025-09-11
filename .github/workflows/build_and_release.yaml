@@ -42,7 +42,7 @@ jobs:
 
       - name: Release
         id: release
-        uses: dev-build-deploy/release-me@v0.17.0
+        uses: dev-build-deploy/release-me@2cdc1871ff54247a5b7445e3b9c00a946787c98a # v0.17.0
         with:
           token: ${{ github.token }}
           prefix: v
