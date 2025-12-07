@@ -1107,6 +1107,95 @@ button:active {
     overflow-y: auto;
 }
 
+/* HD Addresses Section */
+.hd-addresses-option {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.hd-csv-upload {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.hd-addresses-table-container {
+    overflow-x: auto;
+    margin: 1rem 0;
+}
+
+#hd-addresses-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+#hd-addresses-table th,
+#hd-addresses-table td {
+    padding: 0.75rem 0.5rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+#hd-addresses-table th {
+    background-color: var(--light-gray);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+#hd-addresses-table td.hd-pubkey,
+#hd-addresses-table td.hd-privkey {
+    max-width: 200px;
+}
+
+.key-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.key-cell .key-value {
+    font-family: monospace;
+    font-size: 0.75rem;
+    word-break: break-all;
+    flex: 1;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.key-cell.sensitive .key-value {
+    filter: blur(3px);
+    transition: filter 0.2s ease;
+}
+
+.key-cell.sensitive:hover .key-value {
+    filter: none;
+}
+
+.copy-btn-small {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.7rem;
+    background-color: var(--light-gray);
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.2s ease;
+}
+
+.copy-btn-small:hover {
+    background-color: var(--border-color);
+}
+
+.hd-addresses-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 1rem;
+}
+
 @media (max-width: 768px) {
     .container {
         padding: 1rem;
