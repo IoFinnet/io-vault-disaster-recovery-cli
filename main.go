@@ -71,6 +71,7 @@ func main() {
 			fmt.Println("\nNOTE: ZIP files must contain only a flat hierarchy of JSON files (no nested directories)")
 			fmt.Println("\nOptional flags:")
 			flag.PrintDefaults()
+			fmt.Println("\n" + ui.HDAddressesUsage())
 			return
 		} else {
 			fmt.Println("\nInvalid choice. Please run the tool again and select 1 or 2.")

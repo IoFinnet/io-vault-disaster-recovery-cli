@@ -41,3 +41,29 @@ func ErrorBox(err error) string {
 	b += "\n"
 	return b
 }
+
+// HDAddressesUsage returns usage information for the HD addresses CSV feature
+func HDAddressesUsage() string {
+	b := fmt.Sprintf("%sHD Address Recovery:%s\n", AnsiCodes["bold"], AnsiCodes["reset"])
+	b += "  The -addresses-csv flag enables recovery of derived HD wallet addresses.\n"
+	b += "  The CSV file can be exported through the io.finnet API or, in the future,\n"
+	b += "  through the io.vault dashboard interface.\n"
+	b += "\n"
+	b += fmt.Sprintf("  %sCSV Format:%s\n", AnsiCodes["bold"], AnsiCodes["reset"])
+	b += "    address,xpub,path,algorithm,curve,flags\n"
+	b += "\n"
+	b += fmt.Sprintf("  %sColumns:%s\n", AnsiCodes["bold"], AnsiCodes["reset"])
+	b += "    address   - Label/identifier for the address\n"
+	b += "    xpub      - Extended public key with chain code\n"
+	b += "    path      - BIP32 derivation path (e.g., m/44/60/0/0/0)\n"
+	b += "    algorithm - ECDSA, EDDSA, or SCHNORR\n"
+	b += "    curve     - secp256k1, P-256, or Edwards25519\n"
+	b += "    flags     - Reserved (set to 0)\n"
+	b += "\n"
+	b += fmt.Sprintf("  %sExample:%s\n", AnsiCodes["bold"], AnsiCodes["reset"])
+	b += "    ./recovery-tool -addresses-csv addresses.csv backup1.json backup2.json\n"
+	b += "\n"
+	b += fmt.Sprintf("  %sOutput:%s\n", AnsiCodes["bold"], AnsiCodes["reset"])
+	b += "    Creates addresses_recovered.csv with derived public and private keys.\n"
+	return b
+}
