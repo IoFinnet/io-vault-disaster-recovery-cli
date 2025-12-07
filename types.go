@@ -5,8 +5,8 @@
 package main
 
 import (
-	ecdsa_keygen "github.com/binance-chain/tss-lib/ecdsa/keygen"
-	eddsa_keygen "github.com/binance-chain/tss-lib/eddsa/keygen"
+	ecdsa_keygen "github.com/iofinnet/tss-lib/v3/tss/ecdsa/keygen"
+	eddsa_keygen "github.com/iofinnet/tss-lib/v3/tss/schnorr/keygen"
 )
 
 type (

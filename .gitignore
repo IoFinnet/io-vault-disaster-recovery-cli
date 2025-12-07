@@ -2,5 +2,7 @@
 .idea
 bin/*
 **/node_modules
+vendor/
+CLAUDE.md
 
 .aider*
