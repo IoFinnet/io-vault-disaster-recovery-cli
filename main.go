@@ -356,6 +356,7 @@ func run() int {
 func printInputHelp() {
 	fmt.Print(inputHelpText)
 	flag.PrintDefaults()
+	fmt.Println("\n" + ui.HDAddressesUsage())
 }
 
 const inputHelpText = `Usage: recovery-tool [flags] <file>...
