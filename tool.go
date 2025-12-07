@@ -13,14 +13,14 @@ import (
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/fileutils"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/recoverypipeline"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
-	"github.com/binance-chain/tss-lib/crypto"
-	"github.com/binance-chain/tss-lib/crypto/vss"
-	"github.com/binance-chain/tss-lib/tss"
 	"github.com/decred/dcrd/dcrec/edwards/v2"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
+	"github.com/iofinnet/tss-lib/v3/crypto"
+	"github.com/iofinnet/tss-lib/v3/crypto/vss"
+	"github.com/iofinnet/tss-lib/v3/tss"
 	"golang.org/x/crypto/sha3"
 )
 
