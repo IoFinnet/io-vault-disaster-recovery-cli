@@ -65,5 +65,10 @@ func HDAddressesUsage() string {
 	b += "\n"
 	b += fmt.Sprintf("  %sOutput:%s\n", AnsiCodes["bold"], AnsiCodes["reset"])
 	b += "    Creates addresses_recovered.csv with derived public and private keys.\n"
+	b += "\n"
+	b += fmt.Sprintf("  %sSecurity:%s\n", AnsiCodes["bold"], AnsiCodes["reset"])
+	b += "    - Input CSV: Contains xpubs which reveal your vault's balance. Do not share.\n"
+	b += "    - Output CSV: Contains private keys. Generate ONLY on an air-gapped machine.\n"
+	b += "      NEVER share this file. Anyone with these keys can steal your funds.\n"
 	return b
 }
