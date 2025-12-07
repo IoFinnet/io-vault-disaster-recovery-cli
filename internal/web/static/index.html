@@ -144,6 +144,14 @@
                         <span class="hint">Required to secure Ethereum wallet file</span>
                     </div>
                 </div>
+                <div class="option-group hd-addresses-option">
+                    <label for="hd-addresses-csv">HD Addresses CSV (Optional):</label>
+                    <div class="file-upload hd-csv-upload">
+                        <input type="file" id="hd-addresses-csv" accept=".csv">
+                        <span id="hd-csv-file-name" class="file-name">No CSV file selected</span>
+                    </div>
+                    <span class="hint">CSV file with HD addresses to derive child keys. Columns: address, xpub, path, algorithm, curve, flags</span>
+                </div>
             </div>
 
             <div class="actions">
@@ -240,6 +248,31 @@
                                 <button class="transaction-btn" data-blockchain="solana">Create Transaction</button>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <div id="hd-addresses-section" class="result-section" style="display: none;">
+                    <h3>HD Derived Addresses</h3>
+                    <p>Child keys derived from your master key using the provided HD paths:</p>
+                    <div class="hd-addresses-table-container">
+                        <table id="hd-addresses-table">
+                            <thead>
+                                <tr>
+                                    <th>Address</th>
+                                    <th>Path</th>
+                                    <th>Algorithm</th>
+                                    <th>Curve</th>
+                                    <th>Public Key</th>
+                                    <th>Private Key</th>
+                                </tr>
+                            </thead>
+                            <tbody id="hd-addresses-list">
+                                <!-- HD addresses will be added here dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="hd-addresses-actions">
+                        <button id="copy-hd-addresses" class="secondary">Copy All HD Addresses</button>
                     </div>
                 </div>
 
