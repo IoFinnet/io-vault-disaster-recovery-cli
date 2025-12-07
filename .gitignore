@@ -3,6 +3,8 @@
 bin/*
 **/node_modules
 .vscode
+vendor/
+CLAUDE.md
 
 .aider*
 
