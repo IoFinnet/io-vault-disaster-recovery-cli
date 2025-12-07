@@ -1309,3 +1309,122 @@ func base58Encode(data []byte) string {
 
 	return string(result)
 }
+
+// TestHDAddressRecovery_GenerateTestVectors outputs test vectors for web UI testing.
+// Run with: go test -v -run TestHDAddressRecovery_GenerateTestVectors
+func TestHDAddressRecovery_GenerateTestVectors(t *testing.T) {
+	// Recover keys from the test vault (lqns has both ECDSA and EdDSA keys)
+	vaultID := "yz5x2a7zhwwt7r0lv4gklqns"
+	files := []ui.VaultsDataFile{
+		{File: "./test-files/new_bvn.json", Mnemonics: mmNewBvn},
+		{File: "./test-files/new_x2q.json", Mnemonics: mmNewX2q},
+		{File: "./test-files/new_u44.json", Mnemonics: mmNewU44},
+	}
+
+	_, ecSK, edSK, _, err := runTool(files, &vaultID, nil, nil, nil, nil)
+	require.NoError(t, err)
+	require.NotNil(t, ecSK, "ECDSA key should be recovered")
+	require.NotNil(t, edSK, "EdDSA key should be recovered")
+
+	// Compute public keys
+	ecdsaPrivKey, _ := btcec.PrivKeyFromBytes(ecSK)
+	ecdsaPubKey := ecdsaPrivKey.PubKey().SerializeCompressed()
+
+	ec := edwards.Edwards()
+	scalar := new(big.Int).SetBytes(edSK)
+	scalar.Mod(scalar, ec.N)
+	scalarBytes := make([]byte, 32)
+	scalar.FillBytes(scalarBytes)
+	_, edPubKeyObj, _ := edwards.PrivKeyFromScalar(scalarBytes)
+	eddsaPubKey := edPubKeyObj.Serialize()
+
+	// Generate xpubs
+	ecdsaXpub := generateTestXpub(t, ecSK, "secp256k1")
+	eddsaXpub := generateTestXpub(t, edSK, "edwards25519")
+
+	t.Log("=== HD ADDRESS RECOVERY TEST VECTORS ===")
+	t.Log("")
+	t.Log("## Master Keys (from lqns vault)")
+	t.Logf("ECDSA Master Private Key: %s", hex.EncodeToString(ecSK))
+	t.Logf("ECDSA Master Public Key:  %s", hex.EncodeToString(ecdsaPubKey))
+	t.Logf("ECDSA xpub: %s", ecdsaXpub)
+	t.Log("")
+	t.Logf("EdDSA Master Private Key: %s", hex.EncodeToString(edSK))
+	t.Logf("EdDSA Master Public Key:  %s", hex.EncodeToString(eddsaPubKey))
+	t.Logf("EdDSA xpub: %s", eddsaXpub)
+	t.Log("")
+
+	// Create test CSV and run derivation
+	tmpDir := t.TempDir()
+	inputCSV := filepath.Join(tmpDir, "hd_addresses.csv")
+
+	csvContent := `address,xpub,path,algorithm,curve,flags
+eth_wallet,` + ecdsaXpub + `,m/0,ECDSA,secp256k1,0
+eth_account_1,` + ecdsaXpub + `,m/44/60/0/0/0,ECDSA,secp256k1,0
+eth_account_2,` + ecdsaXpub + `,m/44/60/0/0/1,ECDSA,secp256k1,0
+btc_wallet,` + ecdsaXpub + `,m/44/0/0/0/0,ECDSA,secp256k1,0
+xrpl_wallet,` + eddsaXpub + `,m/0,EDDSA,Edwards25519,0
+solana_wallet,` + eddsaXpub + `,m/44/501/0/0,EDDSA,Edwards25519,0
+taproot_wallet,` + ecdsaXpub + `,m/86/0/0/0/0,SCHNORR,secp256k1,0
+`
+	err = os.WriteFile(inputCSV, []byte(csvContent), 0644)
+	require.NoError(t, err)
+
+	t.Log("## Input CSV Content")
+	t.Log("```csv")
+	t.Log(csvContent)
+	t.Log("```")
+
+	// Run HD recovery
+	err = processHDAddressRecovery(inputCSV, ecSK, edSK)
+	require.NoError(t, err)
+
+	// Read output
+	outputCSV := filepath.Join(tmpDir, "hd_addresses_recovered.csv")
+	outputContent, err := os.ReadFile(outputCSV)
+	require.NoError(t, err)
+
+	t.Log("## Output CSV Content (Derived Keys)")
+	t.Log("```csv")
+	t.Log(string(outputContent))
+	t.Log("```")
+
+	// Parse and display in a more readable format
+	t.Log("")
+	t.Log("## Derived Keys Summary")
+	lines := strings.Split(string(outputContent), "\n")
+	if len(lines) > 1 {
+		headers := strings.Split(lines[0], ",")
+		addrIdx, pathIdx, algIdx, pubIdx, privIdx := -1, -1, -1, -1, -1
+		for i, h := range headers {
+			switch strings.ToLower(h) {
+			case "address":
+				addrIdx = i
+			case "path":
+				pathIdx = i
+			case "algorithm":
+				algIdx = i
+			case "publickey":
+				pubIdx = i
+			case "privatekey":
+				privIdx = i
+			}
+		}
+
+		for i := 1; i < len(lines); i++ {
+			line := strings.TrimSpace(lines[i])
+			if line == "" {
+				continue
+			}
+			cols := strings.Split(line, ",")
+			if len(cols) > privIdx {
+				t.Logf("")
+				t.Logf("### %s", cols[addrIdx])
+				t.Logf("  Path:       %s", cols[pathIdx])
+				t.Logf("  Algorithm:  %s", cols[algIdx])
+				t.Logf("  Public Key: %s", cols[pubIdx])
+				t.Logf("  Private Key: %s", cols[privIdx])
+			}
+		}
+	}
+}
