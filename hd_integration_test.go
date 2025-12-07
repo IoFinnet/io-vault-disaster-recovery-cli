@@ -68,83 +68,114 @@ func TestHDIntegration_DeriveECDSA(t *testing.T) {
 	deriver, err := hd.NewDeriver(testMasterECDSASK, nil)
 	require.NoError(t, err)
 
-	// Test ECDSA/secp256k1 derivation
-	records := []hd.AddressRecord{
+	// Test ECDSA/secp256k1 derivation with expected values from tss-lib
+	tests := []struct {
+		address    string
+		path       string
+		expectedSK string
+		expectedPK string
+	}{
 		{
-			Address:   "test_ecdsa_1",
-			Xpub:      "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8",
-			Path:      "m/0",
-			Algorithm: hd.AlgorithmECDSA,
-			Curve:     hd.CurveSecp256k1,
-			Flags:     0,
+			address:    "test_ecdsa_m0",
+			path:       "m/0",
+			expectedSK: "4e2cdcf2f14e802810e878cf9e6411fc4e712edf19a06bcfcc5d5572e489a3b7",
+			expectedPK: "027c4b09ffb985c298afe7e5813266cbfcb7780b480ac294b0b43dc21f2be3d13c",
 		},
 		{
-			Address:   "test_ecdsa_2",
-			Xpub:      "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8",
-			Path:      "m/44/0/0",
-			Algorithm: hd.AlgorithmECDSA,
-			Curve:     hd.CurveSecp256k1,
-			Flags:     0,
+			address:    "test_ecdsa_m44_0_0",
+			path:       "m/44/0/0",
+			expectedSK: "c95ea3f7d9e32d8356eb630d77ede8c1e8a7578ed0b61ec9c4915b0dca96c217",
+			expectedPK: "02b41ee4dfdf05264b0eaad3c8e271b973ff225e1e81ab0585b23cad4de0c4a1e6",
+		},
+		{
+			address:    "test_ecdsa_eth",
+			path:       "m/44/60/0/0/0",
+			expectedSK: "70d32e0e32025fdf1f41cafbe3ae21d78134e9f3a639c4a889336eb4b2b4a605",
+			expectedPK: "0389988f76588819d77d0a639a962fee68e94441878d01121d65c602f28d5e17a4",
 		},
 	}
 
-	derived, err := deriver.DeriveAll(records)
-	require.NoError(t, err)
-	require.Len(t, derived, 2)
+	for _, tc := range tests {
+		t.Run(tc.path, func(t *testing.T) {
+			records := []hd.AddressRecord{
+				{
+					Address:   tc.address,
+					Xpub:      "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8",
+					Path:      tc.path,
+					Algorithm: hd.AlgorithmECDSA,
+					Curve:     hd.CurveSecp256k1,
+					Flags:     0,
+				},
+			}
 
-	for i, d := range derived {
-		t.Logf("Record %d: path=%s, pubkey=%s", i, d.Path, d.PublicKey)
+			derived, err := deriver.DeriveAll(records)
+			require.NoError(t, err)
+			require.Len(t, derived, 1)
 
-		// Verify output is hex-encoded and correct length
-		assert.Len(t, d.PrivateKey, 64, "Private key should be 32 bytes hex (64 chars)")
-		assert.Len(t, d.PublicKey, 66, "secp256k1 compressed public key should be 33 bytes hex (66 chars)")
-
-		// Verify public key starts with 02 or 03 (compressed format)
-		assert.True(t, d.PublicKey[:2] == "02" || d.PublicKey[:2] == "03",
-			"Compressed public key should start with 02 or 03")
+			d := derived[0]
+			assert.Equal(t, tc.expectedSK, d.PrivateKey, "Private key mismatch for %s", tc.path)
+			assert.Equal(t, tc.expectedPK, d.PublicKey, "Public key mismatch for %s", tc.path)
+		})
 	}
-
-	// Verify different paths produce different keys
-	assert.NotEqual(t, derived[0].PrivateKey, derived[1].PrivateKey)
-	assert.NotEqual(t, derived[0].PublicKey, derived[1].PublicKey)
 }
 
 func TestHDIntegration_DeriveEdDSA(t *testing.T) {
 	deriver, err := hd.NewDeriver(nil, testMasterEdDSASK)
 	require.NoError(t, err)
 
-	// Test EdDSA/Edwards25519 derivation (xpub matches testMasterEdDSASK)
-	records := []hd.AddressRecord{
+	// Test EdDSA/Edwards25519 derivation with expected values from tss-lib
+	tests := []struct {
+		address    string
+		path       string
+		expectedSK string
+		expectedPK string
+	}{
 		{
-			Address:   "test_eddsa_1",
-			Xpub:      "xpub661MyMwAqRbcEZ6F7ZYpZTTdD8ToN2UCzBt5jjXxBm3y4jwbUJncoqTbB4zY28NpWEvDswPSAoYigFG6PAhzMZ3SMDz4KNaQvKzUtaEqJuL",
-			Path:      "m/0",
-			Algorithm: hd.AlgorithmEDDSA,
-			Curve:     hd.CurveEdwards25519,
-			Flags:     0,
+			address:    "test_eddsa_m0",
+			path:       "m/0",
+			expectedSK: "0a4f1b3e9c9b6703326323221740da1c9b6c315f212837ba6c3435edfdd7c295",
+			expectedPK: "f0668f57fe91dd5ef7c83ef38754831e37116aedcaaaeb248e3c90005e6ea51c",
+		},
+		{
+			address:    "test_eddsa_solana",
+			path:       "m/44/501/0/0",
+			expectedSK: "0cb845b159035c3285e5a08fc2980221270745affc74e952d71764da41240722",
+			expectedPK: "9531744deb5d0128ad55a3bc544dc89e6bf6e2ea359f56eaae604fc4eb2536ff",
 		},
 	}
 
-	derived, err := deriver.DeriveAll(records)
-	require.NoError(t, err)
-	require.Len(t, derived, 1)
+	for _, tc := range tests {
+		t.Run(tc.path, func(t *testing.T) {
+			records := []hd.AddressRecord{
+				{
+					Address:   tc.address,
+					Xpub:      "xpub661MyMwAqRbcEZ6F7ZYpZTTdD8ToN2UCzBt5jjXxBm3y4jwbUJncoqTbB4zY28NpWEvDswPSAoYigFG6PAhzMZ3SMDz4KNaQvKzUtaEqJuL",
+					Path:      tc.path,
+					Algorithm: hd.AlgorithmEDDSA,
+					Curve:     hd.CurveEdwards25519,
+					Flags:     0,
+				},
+			}
 
-	d := derived[0]
-	t.Logf("EdDSA: path=%s, pubkey=%s", d.Path, d.PublicKey)
+			derived, err := deriver.DeriveAll(records)
+			require.NoError(t, err)
+			require.Len(t, derived, 1)
 
-	// EdDSA keys are 32 bytes
-	assert.Len(t, d.PrivateKey, 64, "Private key should be 32 bytes hex (64 chars)")
-	assert.Len(t, d.PublicKey, 64, "Edwards25519 public key should be 32 bytes hex (64 chars)")
+			d := derived[0]
+			assert.Equal(t, tc.expectedSK, d.PrivateKey, "Private key mismatch for %s", tc.path)
+			assert.Equal(t, tc.expectedPK, d.PublicKey, "Public key mismatch for %s", tc.path)
+		})
+	}
 }
 
 func TestHDIntegration_DeriveSchnorr(t *testing.T) {
 	deriver, err := hd.NewDeriver(testMasterECDSASK, nil)
 	require.NoError(t, err)
 
-	// Test Schnorr/secp256k1 derivation
+	// Test Schnorr/secp256k1 derivation with expected values from tss-lib
 	records := []hd.AddressRecord{
 		{
-			Address:   "test_schnorr_1",
+			Address:   "test_schnorr_taproot",
 			Xpub:      "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8",
 			Path:      "m/86/0/0/0/0",
 			Algorithm: hd.AlgorithmSCHNORR,
@@ -158,21 +189,23 @@ func TestHDIntegration_DeriveSchnorr(t *testing.T) {
 	require.Len(t, derived, 1)
 
 	d := derived[0]
-	t.Logf("Schnorr: path=%s, pubkey=%s", d.Path, d.PublicKey)
 
-	// Schnorr uses secp256k1, same as ECDSA
-	assert.Len(t, d.PrivateKey, 64, "Private key should be 32 bytes hex (64 chars)")
-	assert.Len(t, d.PublicKey, 66, "secp256k1 compressed public key should be 33 bytes hex (66 chars)")
+	// Expected values from tss-lib
+	expectedSK := "989ad7fcd714e2ffed41e287422e96e39df6225e4145bc45dc0cbc024c4641fb"
+	expectedPK := "0258387941128a0f18720ff2ba08416015dca2603a86a9a62b98dfbc1130b291e7"
+
+	assert.Equal(t, expectedSK, d.PrivateKey, "Schnorr private key mismatch")
+	assert.Equal(t, expectedPK, d.PublicKey, "Schnorr public key mismatch")
 }
 
 func TestHDIntegration_DeriveP256(t *testing.T) {
 	deriver, err := hd.NewDeriver(testMasterECDSASK, nil)
 	require.NoError(t, err)
 
-	// Test ECDSA/P-256 derivation (xpub encodes P-256 public key from same master SK)
+	// Test ECDSA/P-256 derivation with expected values from tss-lib
 	records := []hd.AddressRecord{
 		{
-			Address:   "test_p256_1",
+			Address:   "test_p256_m0",
 			Xpub:      "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ1rxaVqyxRSgbLorQN2Q1RJiLfHtqHqAcK8WosMpL4tCGungDyV",
 			Path:      "m/0",
 			Algorithm: hd.AlgorithmECDSA,
@@ -186,11 +219,13 @@ func TestHDIntegration_DeriveP256(t *testing.T) {
 	require.Len(t, derived, 1)
 
 	d := derived[0]
-	t.Logf("P-256: path=%s, pubkey=%s", d.Path, d.PublicKey)
 
-	// P-256 compressed keys are 33 bytes
-	assert.Len(t, d.PrivateKey, 64, "Private key should be 32 bytes hex (64 chars)")
-	assert.Len(t, d.PublicKey, 66, "P-256 compressed public key should be 33 bytes hex (66 chars)")
+	// Expected values from tss-lib
+	expectedSK := "aa99fd5bdbefd92f802f278e0c8998ac0408b8afab8a77e695dcb9dc3addcc81"
+	expectedPK := "02d3cbd426c052a03c9027eafcb4b13873163ad24680b0cc58c76d3762fbc6cebf"
+
+	assert.Equal(t, expectedSK, d.PrivateKey, "P-256 private key mismatch")
+	assert.Equal(t, expectedPK, d.PublicKey, "P-256 public key mismatch")
 }
 
 func TestHDIntegration_FullCSVFlow(t *testing.T) {
