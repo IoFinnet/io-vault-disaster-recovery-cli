@@ -1140,6 +1140,24 @@ taproot_derived,` + ecdsaXpub + `,m/86/0/0/0/0,SCHNORR,secp256k1,0
 					"Schnorr master at path 'm' must return exact master public key")
 			}
 			t.Logf("Verified %s at path 'm': SK=%s PK=%s", addr, privKey, pubKey)
+		} else {
+			// For derived paths, verify keys are DIFFERENT from master (proving derivation happened)
+			switch addr {
+			case "eth_derived", "taproot_derived":
+				// These use ECDSA/Schnorr master key
+				assert.NotEqual(t, ecdsaMasterSKHex, privKey,
+					"%s at path '%s' must be different from master private key", addr, path)
+				assert.NotEqual(t, ecdsaMasterPKHex, pubKey,
+					"%s at path '%s' must be different from master public key", addr, path)
+				t.Logf("Verified %s at path '%s' differs from master: SK=%s", addr, path, privKey)
+			case "xrpl_derived":
+				// This uses EdDSA master key
+				assert.NotEqual(t, eddsaMasterSKHex, privKey,
+					"%s at path '%s' must be different from master private key", addr, path)
+				assert.NotEqual(t, eddsaMasterPKHex, pubKey,
+					"%s at path '%s' must be different from master public key", addr, path)
+				t.Logf("Verified %s at path '%s' differs from master: SK=%s", addr, path, privKey)
+			}
 		}
 	}
 
