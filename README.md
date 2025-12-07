@@ -305,3 +305,8 @@ The tool generates a `*_recovered.csv` file containing all original columns plus
 > - Path `m` returns the master key unchanged (useful for verification)
 > - The ECDSA master key is used for both ECDSA and Schnorr derivation
 > - The EdDSA master key is used for EdDSA derivation
+
+> [!CAUTION]
+> **Input CSV Security**: The input CSV contains extended public keys (xpubs) which allow anyone to view your vault's total balance and transaction history. While it does not contain private keys, you should avoid sharing this file publicly.
+>
+> **Output CSV Security**: The recovered CSV file contains private keys and must be treated as highly confidential. Only generate this file on an air-gapped machine with no network connection. Never share this file with anyone, ever. Anyone with access to the private keys can steal your funds.
