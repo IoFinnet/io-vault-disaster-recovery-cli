@@ -273,6 +273,34 @@ h3 {
     word-break: break-all;
 }
 
+.clear-file-btn {
+    background: none;
+    border: none;
+    color: var(--error-color);
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    margin-left: 0.5rem;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+    vertical-align: middle;
+}
+
+.clear-file-btn:hover {
+    background-color: rgba(220, 53, 69, 0.1);
+}
+
+.hd-csv-upload {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.hd-csv-upload .file-name {
+    display: inline;
+}
+
 .file-info-note {
     background-color: #f8f9fa;
     border-left: 4px solid var(--primary-color);
@@ -1144,6 +1172,11 @@ button:active {
     white-space: nowrap;
 }
 
+#hd-addresses-table td.hd-address {
+    font-family: monospace;
+    cursor: help;
+}
+
 #hd-addresses-table td.hd-pubkey,
 #hd-addresses-table td.hd-privkey {
     max-width: 200px;
@@ -1153,6 +1186,7 @@ button:active {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    cursor: help;
 }
 
 .key-cell .key-value {

@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // HD addresses elements
     const hdAddressesCSVInput = document.getElementById('hd-addresses-csv');
     const hdCSVFileName = document.getElementById('hd-csv-file-name');
+    const hdCSVClearBtn = document.getElementById('hd-csv-clear');
     
     // File input mode elements
     const jsonMode = document.getElementById('json-mode');
@@ -102,9 +103,18 @@ document.addEventListener('DOMContentLoaded', () => {
     hdAddressesCSVInput.addEventListener('change', () => {
         if (hdAddressesCSVInput.files.length > 0) {
             hdCSVFileName.textContent = hdAddressesCSVInput.files[0].name;
+            hdCSVClearBtn.style.display = 'inline-block';
         } else {
             hdCSVFileName.textContent = 'No CSV file selected';
+            hdCSVClearBtn.style.display = 'none';
         }
+    });
+
+    // HD addresses CSV clear button
+    hdCSVClearBtn.addEventListener('click', () => {
+        hdAddressesCSVInput.value = '';
+        hdCSVFileName.textContent = 'No CSV file selected';
+        hdCSVClearBtn.style.display = 'none';
     });
 
     // Next button to go to vaults list
@@ -1017,20 +1027,21 @@ document.addEventListener('DOMContentLoaded', () => {
             const row = document.createElement('tr');
 
             // Create cells with copy functionality for sensitive data
+            // Truncate long values for display, with full value in title for hover
             row.innerHTML = `
-                <td class="hd-address">${escapeHTML(addr.address)}</td>
+                <td class="hd-address" title="${escapeHTML(addr.address)}">${escapeHTML(truncateMiddle(addr.address, 4, 4))}</td>
                 <td class="hd-path">${escapeHTML(addr.path)}</td>
                 <td class="hd-algorithm">${escapeHTML(addr.algorithm)}</td>
                 <td class="hd-curve">${escapeHTML(addr.curve)}</td>
                 <td class="hd-pubkey">
-                    <div class="key-cell">
-                        <span class="key-value">${escapeHTML(addr.publicKey)}</span>
+                    <div class="key-cell" title="${escapeHTML(addr.publicKey)}">
+                        <span class="key-value">${escapeHTML(truncateMiddle(addr.publicKey, 6, 6))}</span>
                         <button class="copy-btn-small" data-value="${escapeHTML(addr.publicKey)}">Copy</button>
                     </div>
                 </td>
                 <td class="hd-privkey">
-                    <div class="key-cell sensitive">
-                        <span class="key-value">${escapeHTML(addr.privateKey)}</span>
+                    <div class="key-cell sensitive" title="${escapeHTML(addr.privateKey)}">
+                        <span class="key-value">${escapeHTML(truncateMiddle(addr.privateKey, 6, 6))}</span>
                         <button class="copy-btn-small" data-value="${escapeHTML(addr.privateKey)}">Copy</button>
                     </div>
                 </td>
@@ -1132,6 +1143,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Clear HD addresses CSV
         hdAddressesCSVInput.value = '';
         hdCSVFileName.textContent = 'No CSV file selected';
+        hdCSVClearBtn.style.display = 'none';
 
         // Initialize file input event listeners
         initializeFileInputs();
@@ -1155,6 +1167,14 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
+    }
+
+    // Truncate long strings to show first N and last N characters with ellipsis
+    function truncateMiddle(str, startChars = 4, endChars = 4) {
+        if (!str || str.length <= startChars + endChars + 3) {
+            return str;
+        }
+        return str.slice(0, startChars) + '…' + str.slice(-endChars);
     }
 
     // ==================

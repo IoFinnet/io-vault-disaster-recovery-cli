@@ -398,8 +398,12 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile, error) {
 	// Debug logging to help diagnose form issues
 	// Get file uploads - the frontend might use "files" or file input specific IDs
+	// Skip the hdAddressesCSV key - that's handled separately by processHDAddresses
 	var fileHeaders []*multipart.FileHeader
-	for _, uploadedFiles := range r.MultipartForm.File {
+	for key, uploadedFiles := range r.MultipartForm.File {
+		if key == "hdAddressesCSV" {
+			continue // Skip HD addresses CSV - not a backup file
+		}
 		fileHeaders = append(fileHeaders, uploadedFiles...)
 	}
 
