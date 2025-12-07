@@ -1004,11 +1004,15 @@ func TestHDAddressRecovery_EndToEnd(t *testing.T) {
 	ecdsaXpub := generateTestXpub(t, ecSK, "secp256k1")
 	eddsaXpub := generateTestXpub(t, edSK, "edwards25519")
 
+	// Test vectors with path "m" verify master key is returned unchanged
+	// Also include derived paths to test actual derivation
 	csvContent := `address,xpub,path,algorithm,curve,flags
-eth_address_1,` + ecdsaXpub + `,m/0,ECDSA,secp256k1,0
-eth_address_2,` + ecdsaXpub + `,m/44/60/0/0/0,ECDSA,secp256k1,0
-xrpl_address_1,` + eddsaXpub + `,m/0,EDDSA,Edwards25519,0
-schnorr_address_1,` + ecdsaXpub + `,m/86/0/0/0/0,SCHNORR,secp256k1,0
+ecdsa_master,` + ecdsaXpub + `,m,ECDSA,secp256k1,0
+eddsa_master,` + eddsaXpub + `,m,EDDSA,Edwards25519,0
+schnorr_master,` + ecdsaXpub + `,m,SCHNORR,secp256k1,0
+eth_derived,` + ecdsaXpub + `,m/44/60/0/0/0,ECDSA,secp256k1,0
+xrpl_derived,` + eddsaXpub + `,m/44/144/0/0,EDDSA,Edwards25519,0
+taproot_derived,` + ecdsaXpub + `,m/86/0/0/0/0,SCHNORR,secp256k1,0
 `
 	err = os.WriteFile(inputCSV, []byte(csvContent), 0644)
 	require.NoError(t, err)
@@ -1033,23 +1037,27 @@ schnorr_address_1,` + ecdsaXpub + `,m/86/0/0/0/0,SCHNORR,secp256k1,0
 	assert.Contains(t, outputStr, "privatekey")
 	assert.Contains(t, outputStr, "publickey")
 
-	// Verify all addresses are present
-	assert.Contains(t, outputStr, "eth_address_1")
-	assert.Contains(t, outputStr, "eth_address_2")
-	assert.Contains(t, outputStr, "xrpl_address_1")
-	assert.Contains(t, outputStr, "schnorr_address_1")
+	// Verify all addresses are present (one for each algo/curve combo)
+	assert.Contains(t, outputStr, "ecdsa_master")
+	assert.Contains(t, outputStr, "eddsa_master")
+	assert.Contains(t, outputStr, "schnorr_master")
+	assert.Contains(t, outputStr, "eth_derived")
+	assert.Contains(t, outputStr, "xrpl_derived")
+	assert.Contains(t, outputStr, "taproot_derived")
 
 	// Parse output and verify key formats
 	lines := strings.Split(outputStr, "\n")
-	require.GreaterOrEqual(t, len(lines), 5, "Should have header + 4 data rows")
+	require.GreaterOrEqual(t, len(lines), 7, "Should have header + 6 data rows")
 
 	// Find column indices
 	headers := strings.Split(lines[0], ",")
-	privKeyIdx := -1
-	pubKeyIdx := -1
-	algIdx := -1
+	addrIdx, pathIdx, privKeyIdx, pubKeyIdx, algIdx := -1, -1, -1, -1, -1
 	for i, h := range headers {
 		switch strings.ToLower(h) {
+		case "address":
+			addrIdx = i
+		case "path":
+			pathIdx = i
 		case "privatekey":
 			privKeyIdx = i
 		case "publickey":
@@ -1058,42 +1066,84 @@ schnorr_address_1,` + ecdsaXpub + `,m/86/0/0/0/0,SCHNORR,secp256k1,0
 			algIdx = i
 		}
 	}
+	require.NotEqual(t, -1, addrIdx, "Should have address column")
+	require.NotEqual(t, -1, pathIdx, "Should have path column")
 	require.NotEqual(t, -1, privKeyIdx, "Should have privatekey column")
 	require.NotEqual(t, -1, pubKeyIdx, "Should have publickey column")
 	require.NotEqual(t, -1, algIdx, "Should have algorithm column")
 
-	// Verify each data row has valid hex keys
+	// Expected master keys from recovered vault
+	ecdsaMasterSKHex := hex.EncodeToString(ecSK)
+	eddsaMasterSKHex := hex.EncodeToString(edSK)
+
+	// Compute expected master public keys
+	ecdsaPrivKey, _ := btcec.PrivKeyFromBytes(ecSK)
+	ecdsaMasterPKHex := hex.EncodeToString(ecdsaPrivKey.PubKey().SerializeCompressed())
+
+	ec := edwards.Edwards()
+	scalar := new(big.Int).SetBytes(edSK)
+	scalar.Mod(scalar, ec.N)
+	scalarBytes := make([]byte, 32)
+	scalar.FillBytes(scalarBytes)
+	_, edPubKeyObj, _ := edwards.PrivKeyFromScalar(scalarBytes)
+	eddsaMasterPKHex := hex.EncodeToString(edPubKeyObj.Serialize())
+
+	// Verify each data row
 	for i := 1; i < len(lines); i++ {
 		line := strings.TrimSpace(lines[i])
 		if line == "" {
 			continue
 		}
 		cols := strings.Split(line, ",")
-		require.GreaterOrEqual(t, len(cols), pubKeyIdx+1, "Row should have enough columns")
+		require.GreaterOrEqual(t, len(cols), privKeyIdx+1, "Row should have enough columns")
 
+		addr := cols[addrIdx]
+		path := cols[pathIdx]
 		privKey := cols[privKeyIdx]
 		pubKey := cols[pubKeyIdx]
 		alg := cols[algIdx]
 
 		// Verify private key is 64 hex chars (32 bytes)
-		assert.Len(t, privKey, 64, "Private key should be 32 bytes hex for row %d", i)
+		assert.Len(t, privKey, 64, "Private key should be 32 bytes hex for %s", addr)
 		_, err := hex.DecodeString(privKey)
-		assert.NoError(t, err, "Private key should be valid hex for row %d", i)
+		assert.NoError(t, err, "Private key should be valid hex for %s", addr)
 
 		// Verify public key length based on algorithm
 		if strings.ToUpper(alg) == "EDDSA" {
-			assert.Len(t, pubKey, 64, "EdDSA public key should be 32 bytes hex for row %d", i)
+			assert.Len(t, pubKey, 64, "EdDSA public key should be 32 bytes hex for %s", addr)
 		} else {
-			assert.Len(t, pubKey, 66, "ECDSA/Schnorr public key should be 33 bytes hex for row %d", i)
-			// Compressed public key should start with 02 or 03
+			assert.Len(t, pubKey, 66, "ECDSA/Schnorr public key should be 33 bytes hex for %s", addr)
 			assert.True(t, pubKey[:2] == "02" || pubKey[:2] == "03",
-				"Compressed public key should start with 02 or 03 for row %d", i)
+				"Compressed public key should start with 02 or 03 for %s", addr)
 		}
 		_, err = hex.DecodeString(pubKey)
-		assert.NoError(t, err, "Public key should be valid hex for row %d", i)
+		assert.NoError(t, err, "Public key should be valid hex for %s", addr)
+
+		// For path "m", verify exact match with master keys
+		if path == "m" {
+			switch addr {
+			case "ecdsa_master":
+				assert.Equal(t, ecdsaMasterSKHex, privKey,
+					"ECDSA master at path 'm' must return exact master private key")
+				assert.Equal(t, ecdsaMasterPKHex, pubKey,
+					"ECDSA master at path 'm' must return exact master public key")
+			case "eddsa_master":
+				assert.Equal(t, eddsaMasterSKHex, privKey,
+					"EdDSA master at path 'm' must return exact master private key")
+				assert.Equal(t, eddsaMasterPKHex, pubKey,
+					"EdDSA master at path 'm' must return exact master public key")
+			case "schnorr_master":
+				// Schnorr uses same key as ECDSA on secp256k1
+				assert.Equal(t, ecdsaMasterSKHex, privKey,
+					"Schnorr master at path 'm' must return exact master private key")
+				assert.Equal(t, ecdsaMasterPKHex, pubKey,
+					"Schnorr master at path 'm' must return exact master public key")
+			}
+			t.Logf("Verified %s at path 'm': SK=%s PK=%s", addr, privKey, pubKey)
+		}
 	}
 
-	t.Log("HD address recovery end-to-end test passed")
+	t.Log("HD address recovery end-to-end test passed - all master keys verified")
 }
 
 // TestHDAddressRecovery_ECDSAOnly tests HD recovery with only ECDSA key available
@@ -1358,14 +1408,15 @@ func TestHDAddressRecovery_GenerateTestVectors(t *testing.T) {
 	tmpDir := t.TempDir()
 	inputCSV := filepath.Join(tmpDir, "hd_addresses.csv")
 
+	// Test vectors with path "m" return master key unchanged (for verification)
+	// Also include derived paths to test actual derivation
 	csvContent := `address,xpub,path,algorithm,curve,flags
-eth_wallet,` + ecdsaXpub + `,m/0,ECDSA,secp256k1,0
-eth_account_1,` + ecdsaXpub + `,m/44/60/0/0/0,ECDSA,secp256k1,0
-eth_account_2,` + ecdsaXpub + `,m/44/60/0/0/1,ECDSA,secp256k1,0
-btc_wallet,` + ecdsaXpub + `,m/44/0/0/0/0,ECDSA,secp256k1,0
-xrpl_wallet,` + eddsaXpub + `,m/0,EDDSA,Edwards25519,0
-solana_wallet,` + eddsaXpub + `,m/44/501/0/0,EDDSA,Edwards25519,0
-taproot_wallet,` + ecdsaXpub + `,m/86/0/0/0/0,SCHNORR,secp256k1,0
+ecdsa_master,` + ecdsaXpub + `,m,ECDSA,secp256k1,0
+eddsa_master,` + eddsaXpub + `,m,EDDSA,Edwards25519,0
+schnorr_master,` + ecdsaXpub + `,m,SCHNORR,secp256k1,0
+eth_derived,` + ecdsaXpub + `,m/44/60/0/0/0,ECDSA,secp256k1,0
+xrpl_derived,` + eddsaXpub + `,m/44/144/0/0,EDDSA,Edwards25519,0
+taproot_derived,` + ecdsaXpub + `,m/86/0/0/0/0,SCHNORR,secp256k1,0
 `
 	err = os.WriteFile(inputCSV, []byte(csvContent), 0644)
 	require.NoError(t, err)
