@@ -20,6 +20,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const exportOptionsContainer = document.getElementById('export-options');
     const exportFileInput = document.getElementById('export-file');
     const exportPasswordInput = document.getElementById('export-password');
+
+    // HD addresses elements
+    const hdAddressesCSVInput = document.getElementById('hd-addresses-csv');
+    const hdCSVFileName = document.getElementById('hd-csv-file-name');
     
     // File input mode elements
     const jsonMode = document.getElementById('json-mode');
@@ -101,6 +105,15 @@ document.addEventListener('DOMContentLoaded', () => {
         privateKeyFileName.textContent = privateKeyFileInput.files.length > 0
             ? privateKeyFileInput.files[0].name
             : 'No file selected';
+    });
+
+    // HD addresses CSV file selection
+    hdAddressesCSVInput.addEventListener('change', () => {
+        if (hdAddressesCSVInput.files.length > 0) {
+            hdCSVFileName.textContent = hdAddressesCSVInput.files[0].name;
+        } else {
+            hdCSVFileName.textContent = 'No CSV file selected';
+        }
     });
 
     // Next button to go to vaults list
@@ -933,6 +946,11 @@ document.addEventListener('DOMContentLoaded', () => {
             formData.append('exportFile', exportFile);
         }
 
+        // Add HD addresses CSV if provided
+        if (hdAddressesCSVInput.files.length > 0) {
+            formData.append('hdAddressesCSV', hdAddressesCSVInput.files[0]);
+        }
+
         // Send the API request
         fetch('/api/recover', {
             method: 'POST',
@@ -1013,6 +1031,84 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             exportConfirmation.style.display = 'none';
         }
+
+        // Display HD addresses if present
+        displayHDAddresses(result.hdAddresses);
+    }
+
+    // Display HD derived addresses in the results table
+    function displayHDAddresses(hdAddresses) {
+        const hdSection = document.getElementById('hd-addresses-section');
+        const hdList = document.getElementById('hd-addresses-list');
+        const copyBtn = document.getElementById('copy-hd-addresses');
+
+        // Clear previous entries
+        hdList.innerHTML = '';
+
+        if (!hdAddresses || hdAddresses.length === 0) {
+            hdSection.style.display = 'none';
+            return;
+        }
+
+        // Show the section and populate the table
+        hdSection.style.display = 'block';
+
+        hdAddresses.forEach(addr => {
+            const row = document.createElement('tr');
+
+            // Create cells with copy functionality for sensitive data
+            row.innerHTML = `
+                <td class="hd-address">${escapeHTML(addr.address)}</td>
+                <td class="hd-path">${escapeHTML(addr.path)}</td>
+                <td class="hd-algorithm">${escapeHTML(addr.algorithm)}</td>
+                <td class="hd-curve">${escapeHTML(addr.curve)}</td>
+                <td class="hd-pubkey">
+                    <div class="key-cell">
+                        <span class="key-value">${escapeHTML(addr.publicKey)}</span>
+                        <button class="copy-btn-small" data-value="${escapeHTML(addr.publicKey)}">Copy</button>
+                    </div>
+                </td>
+                <td class="hd-privkey">
+                    <div class="key-cell sensitive">
+                        <span class="key-value">${escapeHTML(addr.privateKey)}</span>
+                        <button class="copy-btn-small" data-value="${escapeHTML(addr.privateKey)}">Copy</button>
+                    </div>
+                </td>
+            `;
+
+            hdList.appendChild(row);
+        });
+
+        // Add click handlers for copy buttons in HD table
+        hdList.querySelectorAll('.copy-btn-small').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const value = btn.getAttribute('data-value');
+                copyToClipboard(value);
+
+                const originalText = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                }, 1500);
+            });
+        });
+
+        // Add click handler for "Copy All" button
+        copyBtn.onclick = () => {
+            // Create CSV-style output
+            let csvContent = 'address,path,algorithm,curve,publicKey,privateKey\n';
+            hdAddresses.forEach(addr => {
+                csvContent += `${addr.address},${addr.path},${addr.algorithm},${addr.curve},${addr.publicKey},${addr.privateKey}\n`;
+            });
+
+            copyToClipboard(csvContent);
+
+            const originalText = copyBtn.textContent;
+            copyBtn.textContent = 'Copied to Clipboard!';
+            setTimeout(() => {
+                copyBtn.textContent = originalText;
+            }, 1500);
+        };
     }
 
     // Reset the application state
@@ -1076,6 +1172,10 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('export-file').value = '';
         document.getElementById('export-wallet-checkbox').checked = false;
         document.getElementById('export-options').style.display = 'none';
+
+        // Clear HD addresses CSV
+        hdAddressesCSVInput.value = '';
+        hdCSVFileName.textContent = 'No CSV file selected';
 
         // Initialize file input event listeners
         initializeFileInputs();
