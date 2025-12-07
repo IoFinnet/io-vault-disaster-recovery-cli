@@ -241,3 +241,67 @@ npm start -- --private-key YourPrivateKey --destination XXX... --amount 10 --net
 ### Others (TON, ATOM, etc.)
 
 Use the EdDSA key output for these chains that use EdDSA (Edwards / Ed25519) keys.
+
+## HD Address Recovery
+
+The recovery tool supports deriving child keys from recovered master keys using BIP32-style hierarchical deterministic (HD) derivation. This is useful when your vault has multiple derived addresses (e.g., multiple Ethereum accounts, Bitcoin addresses, etc.).
+
+### HD Addresses CSV
+
+The HD addresses CSV file contains information about derived addresses that need their private keys recovered. This file can be exported through:
+
+- **io.finnet API** - Available now for programmatic access
+- **io.vault Dashboard** - Coming soon through the web interface
+
+#### CSV Format
+
+The CSV file must contain the following columns:
+
+| Column | Description |
+|--------|-------------|
+| `address` | A label/identifier for the address |
+| `xpub` | The extended public key (xpub) encoding the master public key and chain code |
+| `path` | BIP32 derivation path (e.g., `m/44/60/0/0/0` for Ethereum, `m/0` for master key) |
+| `algorithm` | Signing algorithm: `ECDSA`, `EDDSA`, or `SCHNORR` |
+| `curve` | Elliptic curve: `secp256k1`, `P-256`, or `Edwards25519` |
+| `flags` | Reserved for future use (set to `0`) |
+
+Example CSV content:
+```csv
+address,xpub,path,algorithm,curve,flags
+eth_account_1,xpub661MyMwAqRbcF...,m/44/60/0/0/0,ECDSA,secp256k1,0
+eth_account_2,xpub661MyMwAqRbcF...,m/44/60/0/0/1,ECDSA,secp256k1,0
+xrpl_account,xpub661MyMwAqRbcE...,m/44/144/0/0,EDDSA,Edwards25519,0
+btc_taproot,xpub661MyMwAqRbcF...,m/86/0/0/0/0,SCHNORR,secp256k1,0
+```
+
+#### Supported Algorithm/Curve Combinations
+
+| Algorithm | Curve | Use Case |
+|-----------|-------|----------|
+| ECDSA | secp256k1 | Ethereum, Bitcoin (legacy/segwit), Tron |
+| ECDSA | P-256 | Some enterprise applications |
+| EDDSA | Edwards25519 | XRP Ledger, Solana, Bittensor |
+| SCHNORR | secp256k1 | Bitcoin Taproot |
+
+#### Usage
+
+**CLI Mode:**
+```bash
+./recovery-tool-mac -addresses-csv hd_addresses.csv file1.json file2.json file3.json
+```
+
+**Browser UI Mode:**
+Upload the CSV file in the "HD Addresses CSV" field alongside your backup files.
+
+#### Output
+
+The tool generates a `*_recovered.csv` file containing all original columns plus:
+- `publickey` - The derived public key (hex-encoded)
+- `privatekey` - The derived private key (hex-encoded)
+
+> [!NOTE]
+> - Only non-hardened derivation paths are supported (no `'` or `h` suffix)
+> - Path `m` returns the master key unchanged (useful for verification)
+> - The ECDSA master key is used for both ECDSA and Schnorr derivation
+> - The EdDSA master key is used for EdDSA derivation
