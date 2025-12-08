@@ -269,10 +269,10 @@ The CSV file must contain the following columns:
 Example CSV content:
 ```csv
 address,xpub,path,algorithm,curve,flags
-eth_account_1,xpub661MyMwAqRbcF...,m/44/60/0/0/0,ECDSA,secp256k1,0
-eth_account_2,xpub661MyMwAqRbcF...,m/44/60/0/0/1,ECDSA,secp256k1,0
-xrpl_account,xpub661MyMwAqRbcE...,m/44/144/0/0,EDDSA,Edwards25519,0
-btc_taproot,xpub661MyMwAqRbcF...,m/86/0/0/0/0,SCHNORR,secp256k1,0
+0x...,xpub661MyMwAqRbcF...,m/44/60/0/0/0,ECDSA,secp256k1,0
+0x...,xpub661MyMwAqRbcF...,m/44/60/0/0/1,ECDSA,secp256k1,0
+0x...,xpub661MyMwAqRbcE...,m/44/144/0/0,EDDSA,Edwards25519,0
+bc1...,xpub661MyMwAqRbcF...,m/86/0/0/0/0,SCHNORR,secp256k1,0
 ```
 
 #### Supported Algorithm/Curve Combinations
