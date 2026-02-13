@@ -105,12 +105,6 @@ func main() {
 	// Initialize the global config so ui_input can track ZIP dirs
 	config.GlobalConfig = appConfig
 
-	// Validate user inputs are safe
-	if err := ui.ValidateUserInputsAreSafe(&appConfig); err != nil {
-		fmt.Println(ui.ErrorBox(err))
-		os.Exit(1)
-	}
-
 	// First validate that files exist and are readable
 	if err := ui.ValidateFiles(&appConfig); err != nil {
 		fmt.Print(ui.ErrorBox(err))
@@ -131,7 +125,7 @@ func main() {
 		// Include both directories from appConfig and also any added to GlobalConfig by ui_input
 		dirsToCleanup := append(appConfig.ZipExtractedDirs, config.GlobalConfig.ZipExtractedDirs...)
 		for _, dir := range dirsToCleanup {
-			fmt.Printf("Cleaning up temporary directory: %s\n", dir)
+			fmt.Println(ui.PlainTextf("Cleaning up temporary directory: %s", dir))
 			os.RemoveAll(dir)
 		}
 
@@ -144,7 +138,7 @@ func main() {
 		// Include both directories from appConfig and also any added to GlobalConfig by ui_input
 		dirsToCleanup := append(appConfig.ZipExtractedDirs, config.GlobalConfig.ZipExtractedDirs...)
 		for _, dir := range dirsToCleanup {
-			fmt.Printf("Cleaning up temporary directory: %s\n", dir)
+			fmt.Println(ui.PlainTextf("Cleaning up temporary directory: %s", dir))
 			os.RemoveAll(dir)
 		}
 
@@ -165,7 +159,7 @@ func main() {
 		// Include both directories from appConfig and also any added to GlobalConfig by ui_input
 		dirsToCleanup := append(appConfig.ZipExtractedDirs, config.GlobalConfig.ZipExtractedDirs...)
 		for _, dir := range dirsToCleanup {
-			fmt.Printf("Cleaning up temporary directory: %s\n", dir)
+			fmt.Println(ui.PlainTextf("Cleaning up temporary directory: %s", dir))
 			os.RemoveAll(dir)
 		}
 
@@ -202,7 +196,7 @@ func main() {
 	 * Run the recovery for the chosen vault
 	 */
 	fmt.Println(
-		lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("RECOVERING VAULT \"%s\" WITH ID %s\n", selectedVault.Name, selectedVault.VaultID)),
+		lipgloss.NewStyle().Bold(true).Render(ui.PlainTextf("RECOVERING VAULT %s WITH ID %s\n", selectedVault.Name, selectedVault.VaultID)),
 	)
 
 	address, ecSK, edSK, _, err := runTool(*vaultsDataFiles, &selectedVault.VaultID, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
@@ -215,7 +209,7 @@ func main() {
 		// Include both directories from appConfig and also any added to GlobalConfig by ui_input
 		dirsToCleanup := append(appConfig.ZipExtractedDirs, config.GlobalConfig.ZipExtractedDirs...)
 		for _, dir := range dirsToCleanup {
-			fmt.Printf("Cleaning up temporary directory: %s\n", dir)
+			fmt.Println(ui.PlainTextf("Cleaning up temporary directory: %s", dir))
 			os.RemoveAll(dir)
 		}
 
@@ -231,27 +225,21 @@ func main() {
 		return
 	}
 
-	fmt.Printf("%s%s                %s\n", ui.AnsiCodes["darkGreenBG"], ui.AnsiCodes["bold"], ui.AnsiCodes["reset"])
-	fmt.Printf("%s%s    Success!    %s\n", ui.AnsiCodes["darkGreenBG"], ui.AnsiCodes["bold"], ui.AnsiCodes["reset"])
-	fmt.Printf("%s%s                %s\n", ui.AnsiCodes["darkGreenBG"], ui.AnsiCodes["bold"], ui.AnsiCodes["reset"])
+	fmt.Println(ui.SuccessBox())
 
 	fmt.Printf("\nYour vault has been recovered. Make sure this address matches your vault's Ethereum address.\n")
-	fmt.Printf("%s%s%s\n", ui.AnsiCodes["bold"], address, ui.AnsiCodes["reset"])
+	fmt.Println(ui.Bold(address))
 
 	fmt.Printf("\nHere is your private key for Ethereum and Tron assets. Keep safe and do not share.\n")
-	fmt.Printf("Recovered ECDSA private key (for MetaMask, Phantom, TronLink): %s%s%s\n",
-		ui.AnsiCodes["bold"], hex.EncodeToString(ecSK), ui.AnsiCodes["reset"])
+	fmt.Println(ui.Boldf("Recovered ECDSA private key (for MetaMask, Phantom, TronLink): %s", hex.EncodeToString(ecSK)))
 
 	fmt.Printf("\nHere are your private keys for Bitcoin assets. Keep safe and do not share.\n")
-	fmt.Printf("Recovered testnet WIF (for BTC/Electrum Wallet): %s%s%s\n", ui.AnsiCodes["bold"],
-		wif.ToBitcoinWIF(ecSK, true, true), ui.AnsiCodes["reset"])
-	fmt.Printf("Recovered mainnet WIF (for BTC/Electrum Wallet): %s%s%s\n", ui.AnsiCodes["bold"],
-		wif.ToBitcoinWIF(ecSK, false, true), ui.AnsiCodes["reset"])
+	fmt.Println(ui.Boldf("Recovered testnet WIF (for BTC/Electrum Wallet): %s", wif.ToBitcoinWIF(ecSK, true, true)))
+	fmt.Println(ui.Boldf("Recovered mainnet WIF (for BTC/Electrum Wallet): %s", wif.ToBitcoinWIF(ecSK, false, true)))
 
 	if edSK != nil {
 		fmt.Printf("\nHere is your private key for EdDSA based assets. Keep safe and do not share.\n")
-		fmt.Printf("Recovered EdDSA private key: %s%s%s\n",
-			ui.AnsiCodes["bold"], hex.EncodeToString(edSK), ui.AnsiCodes["reset"])
+		fmt.Println(ui.Boldf("Recovered EdDSA private key: %s", hex.EncodeToString(edSK)))
 
 		// load the eddsa private key in edSK and output the public key
 		_, edPK, err2 := edwards.PrivKeyFromScalar(edSK)
@@ -259,31 +247,27 @@ func main() {
 			panic("ed25519: internal error: setting scalar failed")
 		}
 		edPKC := edPK.SerializeCompressed()
-		fmt.Printf("Recovered EdDSA public key: %s%s%s\n",
-			ui.AnsiCodes["bold"], hex.EncodeToString(edPKC), ui.AnsiCodes["reset"])
+		fmt.Println(ui.Boldf("Recovered EdDSA public key: %s", hex.EncodeToString(edPKC)))
 
 		// Generate XRPL-specific formats
 		xrplAddress, err := xrpl.DeriveXRPLAddress(edPKC)
 		if err == nil {
 			fmt.Printf("\nXRP Ledger (XRPL) Information:\n")
-			fmt.Printf("XRP Address: %s%s%s\n",
-				ui.AnsiCodes["bold"], xrplAddress, ui.AnsiCodes["reset"])
+			fmt.Println(ui.Boldf("XRP Address: %s", xrplAddress))
 		}
 
 		// Generate Bittensor-specific formats
 		bittensorAddress, err := bittensor.GenerateSS58Address(edPKC)
 		if err == nil {
 			fmt.Printf("\nBittensor Information:\n")
-			fmt.Printf("Bittensor Address (SS58): %s%s%s\n",
-				ui.AnsiCodes["bold"], bittensorAddress, ui.AnsiCodes["reset"])
+			fmt.Println(ui.Boldf("Bittensor Address (SS58): %s", bittensorAddress))
 		}
 
 		// Generate Solana-specific formats
 		solanaAddress, err := solana.DeriveSolanaAddress(edPKC)
 		if err == nil {
 			fmt.Printf("\nSolana Information:\n")
-			fmt.Printf("Solana Address: %s%s%s\n",
-				ui.AnsiCodes["bold"], solanaAddress, ui.AnsiCodes["reset"])
+			fmt.Println(ui.Boldf("Solana Address: %s", solanaAddress))
 		}
 
 		// Add wallet import instructions
@@ -298,7 +282,7 @@ func main() {
 	// Include both directories from appConfig and also any added to GlobalConfig by ui_input
 	dirsToCleanup := append(appConfig.ZipExtractedDirs, config.GlobalConfig.ZipExtractedDirs...)
 	for _, dir := range dirsToCleanup {
-		fmt.Printf("Cleaning up temporary directory: %s\n", dir)
+		fmt.Println(ui.PlainTextf("Cleaning up temporary directory: %s", dir))
 		os.RemoveAll(dir)
 	}
 }
@@ -310,7 +294,7 @@ func launchWebInterface(port int, noBrowser bool) {
 	// Create and start the http server
 	server, err := web.NewServer(web.ServerConfig{Port: port})
 	if err != nil {
-		fmt.Printf("Failed to create http server: %v\n", err)
+		fmt.Println(ui.PlainTextf("Failed to create http server: %v", err))
 		return
 	}
 
@@ -321,20 +305,20 @@ func launchWebInterface(port int, noBrowser bool) {
 	// Start the server
 	url, err := server.Start()
 	if err != nil {
-		fmt.Printf("Failed to start http server: %v\n", err)
+		fmt.Println(ui.PlainTextf("Failed to start http server: %v", err))
 		return
 	}
 
-	fmt.Printf("Browser interface started at: %s\n", url)
+	fmt.Println(ui.PlainTextf("Browser interface started at: %s", url))
 
 	// Open the browser unless nobrowser flag is set
 	if !noBrowser {
 		fmt.Println("Opening browser...")
 		if err := web.OpenBrowser(url); err != nil {
-			fmt.Printf("Could not open browser automatically. Please open %s in your browser.\n", url)
+			fmt.Println(ui.PlainTextf("Could not open browser automatically. Please open %s in your browser.", url))
 		}
 	} else {
-		fmt.Printf("Browser not launched (--nobrowser flag set). Please open %s in your browser.\n", url)
+		fmt.Println(ui.PlainTextf("Browser not launched (--nobrowser flag set). Please open %s in your browser.", url))
 	}
 
 	fmt.Println("Browser interface is running. Press Ctrl+C to stop.")
@@ -344,6 +328,6 @@ func launchWebInterface(port int, noBrowser bool) {
 
 	fmt.Println("\nShutting down browser UI...")
 	if err := server.Stop(); err != nil {
-		fmt.Printf("Error shutting down server: %v\n", err)
+		fmt.Println(ui.PlainTextf("Error shutting down server: %v", err))
 	}
 }

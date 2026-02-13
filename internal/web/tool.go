@@ -135,9 +135,9 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 			}
 			if glbLastReShareNonce, ok := vaultLastNonces[vID]; ok && glbLastReShareNonce != lastReshareNonce {
 				vaultName := clearVaults[vID].Name
-				fmt.Printf("\n⚠ Non matching reshare nonce for vault `%s`. You may have to specify prior reshare config with -nonce and -threshold when recovering that vault.\n", vaultName)
+				fmt.Println(ui.PlainTextf("\n⚠ Non matching reshare nonce for vault `%s`. You may have to specify prior reshare config with -nonce and -threshold when recovering that vault.\n", vaultName))
 				if lastReshareNonce-1 >= 0 {
-					fmt.Printf("⚠ If you have problems recovering that vault, you could try: -vault-id %s -nonce %d -threshold x. Replace x with previous vault threshold.\n", vID, lastReshareNonce-1)
+					fmt.Println(ui.PlainTextf("⚠ If you have problems recovering that vault, you could try: -vault-id %s -nonce %d -threshold x. Replace x with previous vault threshold.", vID, lastReshareNonce-1))
 				} else {
 					println()
 				}
@@ -356,7 +356,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 	// write out keystore file
 	if exportKSFile != nil && len(*exportKSFile) > 0 {
 		if passwordForKS == nil || len(*passwordForKS) == 0 {
-			fmt.Printf("NOTE: -password flag is required to export wallet v3 file `%s`. A wallet v3 file will not be created this time.\n\n", *exportKSFile)
+			fmt.Println(ui.PlainTextf("NOTE: -password flag is required to export wallet v3 file `%s`. A wallet v3 file will not be created this time.\n", *exportKSFile))
 			return
 		}
 		ksUuid, err2 := uuid.NewRandom()
@@ -378,7 +378,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 		if welp = os.WriteFile(*exportKSFile, keyfile, os.ModePerm); welp != nil {
 			return
 		}
-		fmt.Printf("\nWrote a MetaMask wallet v3 (for ECDSA key only) to: %s.\n\n", *exportKSFile)
+		fmt.Println(ui.PlainTextf("\nWrote a MetaMask wallet v3 (for ECDSA key only) to: %s.\n", *exportKSFile))
 	}
 	return address, ecdsaSK, eddsaSK, orderedVaults, nil
 }

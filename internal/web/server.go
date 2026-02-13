@@ -480,7 +480,7 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 					jsonFileCount++
 				} else {
 					// Skip files we don't have mnemonics for
-					fmt.Printf("Skipping file %s - no mnemonic provided\n", extractedFile)
+					fmt.Println(ui.PlainTextf("Skipping file %s - no mnemonic provided", extractedFile))
 				}
 			}
 		} else {
@@ -609,7 +609,7 @@ func (s *Server) handleListZipFiles(w http.ResponseWriter, r *http.Request) {
 		// Open the uploaded file
 		file, err := fileHeader.Open()
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to open file %s: %v", fileHeader.Filename, err), http.StatusBadRequest)
+			http.Error(w, ui.PlainTextf("Failed to open file %s: %v", fileHeader.Filename, err), http.StatusBadRequest)
 			return
 		}
 
@@ -619,7 +619,7 @@ func (s *Server) handleListZipFiles(w http.ResponseWriter, r *http.Request) {
 		outFile, err := os.Create(filePath)
 		if err != nil {
 			file.Close()
-			http.Error(w, fmt.Sprintf("Failed to create temporary file: %v", err), http.StatusInternalServerError)
+			http.Error(w, ui.PlainTextf("Failed to create temporary file: %v", err), http.StatusInternalServerError)
 			return
 		}
 
@@ -627,7 +627,7 @@ func (s *Server) handleListZipFiles(w http.ResponseWriter, r *http.Request) {
 		if _, err := io.Copy(outFile, file); err != nil {
 			file.Close()
 			outFile.Close()
-			http.Error(w, fmt.Sprintf("Failed to copy file content: %v", err), http.StatusInternalServerError)
+			http.Error(w, ui.PlainTextf("Failed to copy file content: %v", err), http.StatusInternalServerError)
 			return
 		}
 
@@ -637,7 +637,7 @@ func (s *Server) handleListZipFiles(w http.ResponseWriter, r *http.Request) {
 		// Process the ZIP file to extract JSON files
 		extractedFiles, err := ziputils.ProcessZipFile(filePath)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to process ZIP file %s: %v", fileHeader.Filename, err), http.StatusBadRequest)
+			http.Error(w, ui.PlainTextf("Failed to process ZIP file %s: %v", fileHeader.Filename, err), http.StatusBadRequest)
 			return
 		}
 
@@ -677,7 +677,7 @@ func (s *Server) handleListZipFiles(w http.ResponseWriter, r *http.Request) {
 	// Return the filenames as JSON
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(fileNames); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
+		http.Error(w, ui.PlainTextf("Failed to encode response: %v", err), http.StatusInternalServerError)
 		return
 	}
 }
