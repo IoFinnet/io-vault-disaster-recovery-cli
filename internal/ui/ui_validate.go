@@ -7,6 +7,8 @@ package ui
 import (
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/config"
@@ -26,6 +28,42 @@ func ValidateMnemonics(mnemonic string) error {
 	words := strings.Split(mnemonic, " ")
 	if len(words) != WORDS {
 		return errors2.Errorf("⚠ wanted %d phrase words but got %d", WORDS, len(words))
+	}
+	return nil
+}
+
+// Validates that a string is not vulnerable to ANSI injection attacks if printed to terminal. 
+// Checks if the string contains any ANSI control codes. 
+func validateStringIsSafeForShell(fileName string) (error, string) {
+	// See https://pkg.go.dev/unicode#CategoryAliases
+	const forbiddenPattern = `\p{Control}`
+	if matched := regexp.MustCompile(forbiddenPattern).FindAllString(fileName, 1); len(matched) > 0 {
+		matchedString := strconv.Quote(matched[0])
+		return errors2.Errorf("Character not allowed %s", matchedString), matchedString
+	}
+
+	return nil, ""
+}
+
+// Prevent user input from containing any ANSI escape characters, that if printed to terminal later would allow for ANSI injection attacks.
+func ValidateUserInputsAreSafe(appConfig *config.AppConfig) error {
+	//File names
+	for idx, fileName := range appConfig.Filenames {
+		if err, _ := validateStringIsSafeForShell(fileName); err != nil {
+			return errors2.Errorf("⚠ invalid file name at position %d. %s", idx+1, err)
+		}
+	}
+
+	//Export KS file
+	if err, _ := validateStringIsSafeForShell(appConfig.ExportKSFile); err != nil {
+		return errors2.Errorf("⚠ invalid export file name. %s", err)
+	}
+
+	//Zip extracted dirs
+	for idx, dir := range appConfig.ZipExtractedDirs {
+		if err, _ := validateStringIsSafeForShell(dir); err != nil {
+			return errors2.Errorf("⚠ invalid zip extracted dir name, position %d. %s", idx+1, err)
+		}
 	}
 	return nil
 }

@@ -105,6 +105,12 @@ func main() {
 	// Initialize the global config so ui_input can track ZIP dirs
 	config.GlobalConfig = appConfig
 
+	// Validate user inputs are safe
+	if err := ui.ValidateUserInputsAreSafe(&appConfig); err != nil {
+		fmt.Println(ui.ErrorBox(err))
+		os.Exit(1)
+	}
+
 	// First validate that files exist and are readable
 	if err := ui.ValidateFiles(&appConfig); err != nil {
 		fmt.Print(ui.ErrorBox(err))
