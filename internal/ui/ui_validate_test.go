@@ -8,9 +8,9 @@ import (
 
 func TestPlainText(t *testing.T) {
 	tests := []struct {
-		name                  string
-		input                 string
-		expected              string
+		name     string
+		input    string
+		expected string
 	}{
 		{"Valid with space", "test file.json", "test file.json"},
 		{"Valid with different symbols", "test_file-with$?!@#%&*()_=+;¿?.$,~{}¡!'/symbols.json", "test_file-with$?!@#%&*()_=+;¿?.$,~{}¡!'/symbols.json"},

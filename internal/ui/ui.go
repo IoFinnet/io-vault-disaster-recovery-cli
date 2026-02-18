@@ -43,7 +43,6 @@ func ErrorBox(err error) string {
 	return b
 }
 
-
 func SuccessBox() string {
 	b := "\n"
 	b += fmt.Sprintf("%s%s                %s\n", AnsiCodes["darkGreenBG"], AnsiCodes["bold"], AnsiCodes["reset"])
