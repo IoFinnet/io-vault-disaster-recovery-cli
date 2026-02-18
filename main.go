@@ -231,15 +231,15 @@ func main() {
 	fmt.Println(ui.Bold(address))
 
 	fmt.Printf("\nHere is your private key for Ethereum and Tron assets. Keep safe and do not share.\n")
-	fmt.Println(ui.Boldf("Recovered ECDSA private key (for MetaMask, Phantom, TronLink): %s", hex.EncodeToString(ecSK)))
+	fmt.Println("Recovered ECDSA private key (for MetaMask, Phantom, TronLink): "+ ui.Bold(hex.EncodeToString(ecSK)))
 
 	fmt.Printf("\nHere are your private keys for Bitcoin assets. Keep safe and do not share.\n")
-	fmt.Println(ui.Boldf("Recovered testnet WIF (for BTC/Electrum Wallet): %s", wif.ToBitcoinWIF(ecSK, true, true)))
-	fmt.Println(ui.Boldf("Recovered mainnet WIF (for BTC/Electrum Wallet): %s", wif.ToBitcoinWIF(ecSK, false, true)))
+	fmt.Println("Recovered testnet WIF (for BTC/Electrum Wallet): " + ui.Bold(wif.ToBitcoinWIF(ecSK, true, true)))
+	fmt.Println("Recovered mainnet WIF (for BTC/Electrum Wallet): " + ui.Bold(wif.ToBitcoinWIF(ecSK, false, true)))
 
 	if edSK != nil {
 		fmt.Printf("\nHere is your private key for EdDSA based assets. Keep safe and do not share.\n")
-		fmt.Println(ui.Boldf("Recovered EdDSA private key: %s", hex.EncodeToString(edSK)))
+		fmt.Println("Recovered EdDSA private key: " + ui.Bold(hex.EncodeToString(edSK)))
 
 		// load the eddsa private key in edSK and output the public key
 		_, edPK, err2 := edwards.PrivKeyFromScalar(edSK)
@@ -247,27 +247,27 @@ func main() {
 			panic("ed25519: internal error: setting scalar failed")
 		}
 		edPKC := edPK.SerializeCompressed()
-		fmt.Println(ui.Boldf("Recovered EdDSA public key: %s", hex.EncodeToString(edPKC)))
+		fmt.Println("Recovered EdDSA public key: " + ui.Bold(hex.EncodeToString(edPKC)))
 
 		// Generate XRPL-specific formats
 		xrplAddress, err := xrpl.DeriveXRPLAddress(edPKC)
 		if err == nil {
 			fmt.Printf("\nXRP Ledger (XRPL) Information:\n")
-			fmt.Println(ui.Boldf("XRP Address: %s", xrplAddress))
+			fmt.Println("XRP Address: " + ui.Bold(xrplAddress))
 		}
 
 		// Generate Bittensor-specific formats
 		bittensorAddress, err := bittensor.GenerateSS58Address(edPKC)
 		if err == nil {
 			fmt.Printf("\nBittensor Information:\n")
-			fmt.Println(ui.Boldf("Bittensor Address (SS58): %s", bittensorAddress))
+			fmt.Println("Bittensor Address (SS58): " + ui.Bold(bittensorAddress))
 		}
 
 		// Generate Solana-specific formats
 		solanaAddress, err := solana.DeriveSolanaAddress(edPKC)
 		if err == nil {
 			fmt.Printf("\nSolana Information:\n")
-			fmt.Println(ui.Boldf("Solana Address: %s", solanaAddress))
+			fmt.Println("Solana Address: " + ui.Bold(solanaAddress))
 		}
 
 		// Add wallet import instructions

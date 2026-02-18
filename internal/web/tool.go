@@ -135,7 +135,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 			}
 			if glbLastReShareNonce, ok := vaultLastNonces[vID]; ok && glbLastReShareNonce != lastReshareNonce {
 				vaultName := clearVaults[vID].Name
-				fmt.Println(ui.PlainTextf("\n⚠ Non matching reshare nonce for vault `%s`. You may have to specify prior reshare config with -nonce and -threshold when recovering that vault.\n", vaultName))
+				fmt.Println(ui.PlainTextf("\n⚠ Non matching reshare nonce for vault `%s`. You may have to specify prior reshare config with -nonce and -threshold when recovering that vault.", vaultName))
 				if lastReshareNonce-1 >= 0 {
 					fmt.Println(ui.PlainTextf("⚠ If you have problems recovering that vault, you could try: -vault-id %s -nonce %d -threshold x. Replace x with previous vault threshold.", vID, lastReshareNonce-1))
 				} else {

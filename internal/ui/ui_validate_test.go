@@ -18,7 +18,7 @@ func TestPlainText(t *testing.T) {
 		{"Valid with unix path", "unix/path/test.file.json", "unix/path/test.file.json"},
 		{"Valid with variations", "filèñçü.file.json", "filèñçü.file.json"},
 		{"Valid with icons", "🤷🏼‍♀️.file.json", "🤷🏼‍♀️.file.json"},
-		//Error cases
+		// Cases with ANSI escape codes
 		{"Invalid ANSI escape code", "scape\x1B.json", "scape.json"},
 		{"Invalid ASCII control character", "control\x00.json", "control.json"},
 		{"Invalid ASCII delete character", "delete\x1f.json", "delete.json"},
