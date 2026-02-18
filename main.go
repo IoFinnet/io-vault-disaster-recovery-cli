@@ -196,7 +196,7 @@ func main() {
 	 * Run the recovery for the chosen vault
 	 */
 	fmt.Println(
-		lipgloss.NewStyle().Bold(true).Render(ui.PlainTextf("RECOVERING VAULT %s WITH ID %s\n", selectedVault.Name, selectedVault.VaultID)),
+		lipgloss.NewStyle().Bold(true).Render(ui.PlainTextf("RECOVERING VAULT \"%s\" WITH ID %s\n", selectedVault.Name, selectedVault.VaultID)),
 	)
 
 	address, ecSK, edSK, _, err := runTool(*vaultsDataFiles, &selectedVault.VaultID, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
