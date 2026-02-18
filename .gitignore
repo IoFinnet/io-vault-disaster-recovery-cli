@@ -2,5 +2,6 @@
 .idea
 bin/*
 **/node_modules
+.vscode
 
 .aider*
