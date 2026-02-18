@@ -95,7 +95,7 @@ func (m *MnemonicsFormModel) Run() (*[]VaultsDataFile, error) {
 
 		input := huh.NewText().
 			Key("phrase").
-			Title(PlainTextf("Mnemonics for %s", displayFileName)).
+			Title(PlainTextf("Mnemonics for %q", displayFileName)).
 			Description(PlainTextf("Enter the %d word phrase", WORDS)).
 			Validate(func(input string) error {
 				fileWithMnemonic := VaultsDataFile{File: pathname, Mnemonics: input}
