@@ -499,16 +499,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 signerGroup.innerHTML = `
                     <div class="signer-header">
                         <label class="signer-checkbox-label">
-                            <input type="checkbox" class="signer-checkbox" data-signer-id="${signerId}" checked>
-                            <div class="signer-file-name">${signer}</div>
+                            <input type="checkbox" class="signer-checkbox" data-signer-id="${escapeHTML(signerId)}" checked>
+                            <div class="signer-file-name">${escapeHTML(signer)}</div>
                         </label>
                     </div>
                     <div class="mnemonic-input">
-                        <label for="mnemonic-${signerId}">24-word Mnemonic Phrase for ${truncatedName}</label>
-                        <textarea id="mnemonic-${signerId}" class="mnemonic zip-mnemonic" rows="3" 
+                        <label for="mnemonic-${escapeHTML(signerId)}">24-word Mnemonic Phrase for ${escapeHTML(truncatedName)}</label>
+                        <textarea id="mnemonic-${escapeHTML(signerId)}" class="mnemonic zip-mnemonic" rows="3" 
                             placeholder="Enter the 24-word mnemonic phrase..."></textarea>
-                        <input type="hidden" name="filename-${signerId}" value="${signer}">
-                        <input type="hidden" name="enabled-${signerId}" value="true" class="signer-enabled">
+                        <input type="hidden" name="filename-${escapeHTML(signerId)}" value="${escapeHTML(signer)}">
+                        <input type="hidden" name="enabled-${escapeHTML(signerId)}" value="true" class="signer-enabled">
                     </div>
                 `;
                 
@@ -540,7 +540,7 @@ document.addEventListener('DOMContentLoaded', () => {
             signerMnemonics.innerHTML = `
                 <div class="zip-error">
                     <div class="error-icon">⚠</div>
-                    <div class="error-message">${error.message}</div>
+                    <div class="error-message">${escapeHTML(error.message)}</div>
                 </div>
             `;
         });
@@ -790,8 +790,8 @@ document.addEventListener('DOMContentLoaded', () => {
             row.innerHTML = `
                 <td>${escapeHTML(vault.Name)}</td>
                 <td>${escapeHTML(vault.VaultID)}</td>
-                <td>${vault.Quorum}</td>
-                <td>${vault.NumberOfShares}</td>
+                <td>${escapeHTML(vault.Quorum)}</td>
+                <td>${escapeHTML(vault.NumberOfShares)}</td>
                 <td><button class="select-vault-btn" data-id="${escapeHTML(vault.VaultID)}">Select</button></td>
             `;
 
@@ -1385,7 +1385,7 @@ document.addEventListener('DOMContentLoaded', () => {
         instructions.innerHTML = `<h4>Instructions:</h4>
 <p>1. <strong>First, with an internet connection</strong>: Navigate to the recovery tool directory and run the Step 1 install command</p>
 <p>2. <strong>Then, disconnect from the internet</strong> for maximum security</p>
-<p>3. Run the Step 2 command to execute the ${chain.toUpperCase()} transaction in offline mode</p>
+<p>3. Run the Step 2 command to execute the ${escapeHTML(chain.toUpperCase())} transaction in offline mode</p>
 <p class="security-tip">For maximum security, perform Step 1 and Step 2 in separate sessions. Install dependencies while connected to the internet, then disconnect completely before performing the actual transaction with your private keys.</p>
 <p class="security-tip">Ideally, use a disposable virtual machine (VM) that you can discard after the recovery process is complete.</p>`;
         terminal.appendChild(instructions);
