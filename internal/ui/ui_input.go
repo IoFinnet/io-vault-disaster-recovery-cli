@@ -84,7 +84,7 @@ func (m *MnemonicsFormModel) Run() (*[]VaultsDataFile, error) {
 		// Check if this is a ZIP file
 		if strings.ToLower(filepath.Ext(pathname)) == ".zip" {
 			m.extractedAll = true
-			fmt.Printf("Processing ZIP file: %s\n", pathname)
+			fmt.Println(PlainTextf("Processing ZIP file: %s", pathname))
 
 			// Skip processing ZIPs here - we'll process all extracted files together below
 			continue
@@ -95,8 +95,8 @@ func (m *MnemonicsFormModel) Run() (*[]VaultsDataFile, error) {
 
 		input := huh.NewText().
 			Key("phrase").
-			Title(fmt.Sprintf("Mnemonics for %s", displayFileName)).
-			Description(fmt.Sprintf("Enter the %d word phrase", WORDS)).
+			Title(PlainTextf("Mnemonics for %q", displayFileName)).
+			Description(PlainTextf("Enter the %d word phrase", WORDS)).
 			Validate(func(input string) error {
 				fileWithMnemonic := VaultsDataFile{File: pathname, Mnemonics: input}
 				return fileWithMnemonic.ValidateMnemonics()
@@ -144,8 +144,8 @@ func (m *MnemonicsFormModel) Run() (*[]VaultsDataFile, error) {
 
 			input := huh.NewText().
 				Key("phrase").
-				Title(fmt.Sprintf("Mnemonics for %s (from ZIP)", displayFileName)).
-				Description(fmt.Sprintf("Enter the %d word phrase for %s signer", WORDS, baseName)).
+				Title(PlainTextf("Mnemonics for %s (from ZIP)", displayFileName)).
+				Description(PlainTextf("Enter the %d word phrase for %s signer", WORDS, baseName)).
 				Validate(func(input string) error {
 					fileWithMnemonic := VaultsDataFile{File: extractedFile, Mnemonics: input}
 					return fileWithMnemonic.ValidateMnemonics()
@@ -198,7 +198,7 @@ func processZipFileForMnemonics(zipPath string) ([]string, error) {
 	// Get the temp directory where files were extracted
 	if len(extractedFiles) > 0 {
 		tempDir := filepath.Dir(extractedFiles[0])
-		fmt.Printf("Extracted files to temporary directory: %s\n", tempDir)
+		fmt.Println(PlainTextf("Extracted files to temporary directory: %s", tempDir))
 
 		// Track this directory in a global variable that main.go can access
 		config.GlobalConfig.ZipExtractedDirs = append(config.GlobalConfig.ZipExtractedDirs, tempDir)
@@ -229,7 +229,7 @@ func (m *MnemonicsFormModel) fileList(filesWithMnemonics []VaultsDataFile) strin
 
 	for i, f := range filesWithMnemonics {
 		// Always use the precalculated total files count
-		l = l.Item(fmt.Sprintf("%s (file %d of %d)", filepath.Base(f.File), i+1, m.totalFiles))
+		l = l.Item(PlainTextf("%s (file %d of %d)", filepath.Base(f.File), i+1, m.totalFiles))
 	}
 
 	return l.String()
@@ -251,7 +251,7 @@ func RunVaultPickerForm(vaultsData []VaultPickerItem) (string, error) {
 
 	vaultSelectOptions := make([]huh.Option[string], len(vaultsData))
 	for i, vault := range vaultsData {
-		vaultSelectOptions[i] = huh.NewOption(fmt.Sprintf("%s (%d/%d)", vault.Name, vault.NumberOfShares, vault.Quorum), vault.VaultID)
+		vaultSelectOptions[i] = huh.NewOption(PlainTextf("%s (%d/%d)", vault.Name, vault.NumberOfShares, vault.Quorum), vault.VaultID)
 	}
 	form := huh.NewForm(
 		huh.NewGroup(

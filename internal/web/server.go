@@ -480,7 +480,7 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 					jsonFileCount++
 				} else {
 					// Skip files we don't have mnemonics for
-					fmt.Printf("Skipping file %s - no mnemonic provided\n", extractedFile)
+					fmt.Println(ui.PlainTextf("Skipping file %s - no mnemonic provided", extractedFile))
 				}
 			}
 		} else {
