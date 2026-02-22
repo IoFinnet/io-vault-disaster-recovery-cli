@@ -11,7 +11,7 @@
     "@noble/ed25519": "^2.1.0",
     "@polkadot/api": "^15.0.2",
     "@polkadot/util-crypto": "^13.2.3",
-    "bn.js": "^5.2.1",
+    "bn.js": "^5.2.3",
     "elliptic": "^6.6.1",
     "readline-sync": "^1.4.10"
   },
