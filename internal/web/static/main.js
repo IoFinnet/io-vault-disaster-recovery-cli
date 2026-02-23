@@ -790,8 +790,8 @@ document.addEventListener('DOMContentLoaded', () => {
             row.innerHTML = `
                 <td>${escapeHTML(vault.Name)}</td>
                 <td>${escapeHTML(vault.VaultID)}</td>
-                <td>${vault.Quorum}</td>
-                <td>${vault.NumberOfShares}</td>
+                <td>${escapeHTML(vault.Quorum)}</td>
+                <td>${escapeHTML(vault.NumberOfShares)}</td>
                 <td><button class="select-vault-btn" data-id="${escapeHTML(vault.VaultID)}">Select</button></td>
             `;
 
@@ -1049,6 +1049,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Escape HTML to prevent XSS
     function escapeHTML(str) {
+        if (typeof str !== 'string') {
+            return str;
+        }
         return str
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
