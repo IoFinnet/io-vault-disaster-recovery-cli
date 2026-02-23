@@ -790,8 +790,8 @@ document.addEventListener('DOMContentLoaded', () => {
             row.innerHTML = `
                 <td>${escapeHTML(vault.Name)}</td>
                 <td>${escapeHTML(vault.VaultID)}</td>
-                <td>${escapeHTML(vault.Quorum)}</td>
-                <td>${escapeHTML(vault.NumberOfShares)}</td>
+                <td>${vault.Quorum}</td>
+                <td>${vault.NumberOfShares}</td>
                 <td><button class="select-vault-btn" data-id="${escapeHTML(vault.VaultID)}">Select</button></td>
             `;
 
