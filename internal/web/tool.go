@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -96,7 +97,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 
 		content, err := os.ReadFile(file.File)
 		if err != nil {
-			welp = fmt.Errorf("⚠ file to read from file(%s): %s", file, err)
+			welp = fmt.Errorf("⚠ failed to read file(%s): %s", filepath.Base(file.File), err)
 			return
 		}
 		if err := json.Unmarshal(content, saveData); err != nil {

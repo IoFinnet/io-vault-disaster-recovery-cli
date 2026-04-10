@@ -416,7 +416,7 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 			for _, dir := range zipExtractedDirs {
 				os.RemoveAll(dir)
 			}
-			return nil, fmt.Errorf("failed to create temporary file %s: %w", filePath, err)
+			return nil, fmt.Errorf("failed to create temporary file %s: %w", fileHeader.Filename, err)
 		}
 
 		// Copy the file content
@@ -480,7 +480,7 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 					jsonFileCount++
 				} else {
 					// Skip files we don't have mnemonics for
-					fmt.Println(ui.PlainTextf("Skipping file %s - no mnemonic provided", extractedFile))
+					fmt.Println(ui.PlainTextf("Skipping file %s - no mnemonic provided", filepath.Base(extractedFile)))
 				}
 			}
 		} else {
@@ -619,7 +619,8 @@ func (s *Server) handleListZipFiles(w http.ResponseWriter, r *http.Request) {
 		outFile, err := os.Create(filePath)
 		if err != nil {
 			file.Close()
-			http.Error(w, fmt.Sprintf("Failed to create temporary file: %v", err), http.StatusInternalServerError)
+			log.Printf("Failed to create temporary file %s: %v", filePath, err)
+			http.Error(w, "Failed to create temporary file", http.StatusInternalServerError)
 			return
 		}
 
