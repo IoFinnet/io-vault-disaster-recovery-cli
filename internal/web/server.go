@@ -446,6 +446,9 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 				return nil, err
 			}
 
+			// Delete the uploaded ZIP file — it's no longer needed after extraction
+			os.Remove(filePath)
+
 			// Track the extracted directory for cleanup
 			if len(extractedFiles) > 0 {
 				zipExtractedDirs = append(zipExtractedDirs, filepath.Dir(extractedFiles[0]))
@@ -649,13 +652,13 @@ func (s *Server) handleListZipFiles(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Clean up the uploaded ZIP files — they're no longer needed after extraction
+	for _, path := range tempFilePaths {
+		os.Remove(path)
+	}
+
 	// Check if any JSON files were found across all ZIPs
 	if len(allExtractedFiles) == 0 {
-		// Clean up the temporary files
-		for _, path := range tempFilePaths {
-			os.RemoveAll(path)
-		}
-
 		http.Error(w, "No JSON files found in any of the ZIP archives", http.StatusBadRequest)
 		return
 	}
