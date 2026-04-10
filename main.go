@@ -111,6 +111,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Validate and sanitize the export filename
+	if exportKSFile != nil && len(*exportKSFile) > 0 {
+		cleanedName, err := ui.ValidateExportFilename(*exportKSFile)
+		if err != nil {
+			fmt.Print(ui.ErrorBox(err))
+			os.Exit(1)
+		}
+		exportKSFile = &cleanedName
+	}
+
 	/**
 	 * Run the steps to get the menmonics
 	 */

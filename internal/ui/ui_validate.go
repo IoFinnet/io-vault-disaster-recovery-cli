@@ -14,6 +14,44 @@ import (
 	errors2 "github.com/pkg/errors"
 )
 
+// ValidateExportFilename validates and sanitizes an export filename.
+// It strips directory components, rejects empty/null-byte/hidden/non-JSON filenames,
+// and returns the cleaned bare filename.
+func ValidateExportFilename(filename string) (string, error) {
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		return "", errors2.New("export filename cannot be empty")
+	}
+	if strings.ContainsRune(filename, 0) {
+		return "", errors2.New("export filename contains invalid characters")
+	}
+	cleaned := filepath.Base(filename)
+	if cleaned == "." || cleaned == "/" || cleaned == "" {
+		return "", errors2.New("export filename is invalid")
+	}
+	if strings.HasPrefix(cleaned, ".") {
+		return "", errors2.Errorf("export filename cannot be a hidden file: %s", cleaned)
+	}
+	if !strings.EqualFold(filepath.Ext(cleaned), ".json") {
+		return "", errors2.Errorf("export filename must have .json extension, got: %s", cleaned)
+	}
+	return cleaned, nil
+}
+
+// ScopeExportPath validates the filename and scopes it to the given base directory.
+// Used by web mode to confine exported files to the server's temp directory.
+func ScopeExportPath(filename string, baseDir string) (string, error) {
+	cleaned, err := ValidateExportFilename(filename)
+	if err != nil {
+		return "", err
+	}
+	fullPath := filepath.Join(baseDir, cleaned)
+	if filepath.Dir(fullPath) != filepath.Clean(baseDir) {
+		return "", errors2.New("export path escapes base directory")
+	}
+	return fullPath, nil
+}
+
 // The WORDS constant is defined in ui.go (24)
 
 func (v VaultsDataFile) ValidateMnemonics() error {

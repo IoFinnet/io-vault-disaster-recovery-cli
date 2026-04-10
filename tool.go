@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/data"
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/fileutils"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/binance-chain/tss-lib/crypto"
 	"github.com/binance-chain/tss-lib/crypto/vss"
@@ -344,7 +345,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 			return
 		}
 
-		if welp = os.WriteFile(*exportKSFile, keyfile, os.ModePerm); welp != nil {
+		if welp = os.WriteFile(*exportKSFile, keyfile, fileutils.PermissionOwnerRW); welp != nil {
 			return
 		}
 		fmt.Println(ui.PlainTextf("\nWrote a MetaMask wallet v3 (for ECDSA key only) to: %s.\n", *exportKSFile))

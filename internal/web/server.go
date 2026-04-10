@@ -290,7 +290,12 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 	}
 	var exportFile *string
 	if exportKSFile != "" {
-		exportFile = &exportKSFile
+		scopedPath, err := ui.ScopeExportPath(exportKSFile, s.tempDir)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Invalid export filename: %v", err), http.StatusBadRequest)
+			return
+		}
+		exportFile = &scopedPath
 	}
 
 	// Process files and mnemonics
