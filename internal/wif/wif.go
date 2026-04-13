@@ -5,7 +5,7 @@
 package wif
 
 // ToBitcoinWIF converts a private key to Bitcoin Wallet Import Format (WIF)
-func ToBitcoinWIF(privKey []byte, testNet, compressed bool) string {
+func ToBitcoinWIF(privKey []byte, testNet, compressed bool) []byte {
 	if compressed {
 		// Append 0x01 to tell Bitcoin wallet to use compressed public keys
 		privKey = append(privKey, []byte{0x01}...)

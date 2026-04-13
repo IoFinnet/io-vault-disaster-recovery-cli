@@ -234,8 +234,8 @@ func main() {
 	fmt.Println("Recovered ECDSA private key (for MetaMask, Phantom, TronLink): " + ui.Bold(hex.EncodeToString(ecSK)))
 
 	fmt.Printf("\nHere are your private keys for Bitcoin assets. Keep safe and do not share.\n")
-	fmt.Println("Recovered testnet WIF (for BTC/Electrum Wallet): " + ui.Bold(wif.ToBitcoinWIF(ecSK, true, true)))
-	fmt.Println("Recovered mainnet WIF (for BTC/Electrum Wallet): " + ui.Bold(wif.ToBitcoinWIF(ecSK, false, true)))
+	fmt.Println("Recovered testnet WIF (for BTC/Electrum Wallet): " + ui.Bold(string(wif.ToBitcoinWIF(ecSK, true, true))))
+	fmt.Println("Recovered mainnet WIF (for BTC/Electrum Wallet): " + ui.Bold(string(wif.ToBitcoinWIF(ecSK, false, true))))
 
 	if edSK != nil {
 		fmt.Printf("\nHere is your private key for EdDSA based assets. Keep safe and do not share.\n")

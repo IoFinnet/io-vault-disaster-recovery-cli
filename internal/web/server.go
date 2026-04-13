@@ -47,14 +47,51 @@ type RecoveryResult struct {
 	Success          bool   `json:"success"`
 	ErrorMessage     string `json:"errorMessage,omitempty"`
 	Address          string `json:"address,omitempty"`
-	EcdsaPrivateKey  string `json:"ecdsaPrivateKey,omitempty"`
-	TestnetWIF       string `json:"testnetWIF,omitempty"`
-	MainnetWIF       string `json:"mainnetWIF,omitempty"`
-	EddsaPrivateKey  string `json:"eddsaPrivateKey,omitempty"`
+	EcdsaPrivateKey  []byte `json:"-"`
+	TestnetWIF       []byte `json:"-"`
+	MainnetWIF       []byte `json:"-"`
+	EddsaPrivateKey  []byte `json:"-"`
 	EddsaPublicKey   string `json:"eddsaPublicKey,omitempty"`
 	XRPLAddress      string `json:"xrplAddress,omitempty"`
 	BittensorAddress string `json:"bittensorAddress,omitempty"`
 	SolanaAddress    string `json:"solanaAddress,omitempty"`
+}
+
+func (r RecoveryResult) MarshalJSON() ([]byte, error) {
+	type Shadow RecoveryResult // use alias to prevent recursion
+	return json.Marshal(&struct {
+		Success          bool   `json:"success"`
+		ErrorMessage     string `json:"errorMessage,omitempty"`
+		Address          string `json:"address,omitempty"`
+		EcdsaPrivateKey  string `json:"ecdsaPrivateKey,omitempty"`
+		TestnetWIF       string `json:"testnetWIF,omitempty"`
+		MainnetWIF       string `json:"mainnetWIF,omitempty"`
+		EddsaPrivateKey  string `json:"eddsaPrivateKey,omitempty"`
+		EddsaPublicKey   string `json:"eddsaPublicKey,omitempty"`
+		XRPLAddress      string `json:"xrplAddress,omitempty"`
+		BittensorAddress string `json:"bittensorAddress,omitempty"`
+		SolanaAddress    string `json:"solanaAddress,omitempty"`
+	}{
+		Success:          r.Success,
+		ErrorMessage:     r.ErrorMessage,
+		Address:          r.Address,
+		EcdsaPrivateKey:  hex.EncodeToString(r.EcdsaPrivateKey),
+		TestnetWIF:       string(r.TestnetWIF),
+		MainnetWIF:       string(r.MainnetWIF),
+		EddsaPrivateKey:  hex.EncodeToString(r.EddsaPrivateKey),
+		EddsaPublicKey:   r.EddsaPublicKey,
+		XRPLAddress:      r.XRPLAddress,
+		BittensorAddress: r.BittensorAddress,
+		SolanaAddress:    r.SolanaAddress,
+	})
+}
+
+func (r *RecoveryResult) Zeroize() error {
+	clear(r.EcdsaPrivateKey)
+	clear(r.EddsaPrivateKey)
+	clear(r.TestnetWIF)
+	clear(r.MainnetWIF)
+	return nil
 }
 
 // Server represents the http server for the disaster recovery tool
@@ -311,12 +348,12 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 		// Set up the result with all the recovered key information
 		result.Success = true
 		result.Address = address
-		result.EcdsaPrivateKey = hex.EncodeToString(ecSK)
+		result.EcdsaPrivateKey = ecSK
 		result.TestnetWIF = wif.ToBitcoinWIF(ecSK, true, true)
 		result.MainnetWIF = wif.ToBitcoinWIF(ecSK, false, true)
 
 		if edSK != nil {
-			result.EddsaPrivateKey = hex.EncodeToString(edSK)
+			result.EddsaPrivateKey = edSK
 			log.Printf("EdDSA Private Key present: %d bytes", len(edSK))
 
 			// Get the EdDSA public key
@@ -372,8 +409,8 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(result); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
-		return
 	}
+	result.Zeroize()
 }
 
 // processFilesAndMnemonics processes the uploaded files and their mnemonics

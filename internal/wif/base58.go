@@ -10,7 +10,7 @@ import (
 /******************************************************************************/
 
 // b58encode encodes a byte slice b into a base-58 encoded string.
-func b58encode(b []byte) (s string) {
+func b58encode(b []byte) (out []byte) {
 	/* See https://en.bitcoin.it/wiki/Base58Check_encoding */
 
 	const BITCOIN_BASE58_TABLE = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
@@ -22,17 +22,17 @@ func b58encode(b []byte) (s string) {
 	r := new(big.Int)
 	m := big.NewInt(58)
 	zero := big.NewInt(0)
-	s = ""
+	out = []byte{}
 
 	/* Convert big int to string */
 	for x.Cmp(zero) > 0 {
 		/* x, r = (x / 58, x % 58) */
 		x.QuoRem(x, m, r)
 		/* Prepend ASCII character */
-		s = string(BITCOIN_BASE58_TABLE[r.Int64()]) + s
+		out = append([]byte{BITCOIN_BASE58_TABLE[r.Int64()]}, out...)
 	}
 
-	return s
+	return out
 }
 
 /******************************************************************************/
@@ -40,7 +40,7 @@ func b58encode(b []byte) (s string) {
 /******************************************************************************/
 
 // b58checkencode encodes version ver and byte slice b into a base-58 check encoded string.
-func b58checkencode(ver uint8, b []byte) (s string) {
+func b58checkencode(ver uint8, b []byte) (out []byte) {
 	/* Prepend version */
 	bcpy := append([]byte{ver}, b...)
 
@@ -61,15 +61,15 @@ func b58checkencode(ver uint8, b []byte) (s string) {
 	bcpy = append(bcpy, hash2[0:4]...)
 
 	/* Encode base58 string */
-	s = b58encode(bcpy)
+	out = b58encode(bcpy)
 
 	/* For number of leading 0's in bytes, prepend 1 */
 	for _, v := range bcpy {
 		if v != 0 {
 			break
 		}
-		s = "1" + s
+		out = append([]byte{'1'}, out...)
 	}
 
-	return s
+	return out
 }
