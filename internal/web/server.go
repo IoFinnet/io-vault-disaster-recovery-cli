@@ -42,19 +42,36 @@ type ServerConfig struct {
 	Port int
 }
 
-// RecoveryResult stores the recovery data to be sent to the frontend
+// RecoveryResult stores the recovery data to be sent to the frontend.
+// Sensitive fields use []byte (not string) so they can be reliably zeroed
+// from memory after use. See Zeroize() and IFN-03-007 WP1.
 type RecoveryResult struct {
 	Success          bool   `json:"success"`
 	ErrorMessage     string `json:"errorMessage,omitempty"`
 	Address          string `json:"address,omitempty"`
-	EcdsaPrivateKey  string `json:"ecdsaPrivateKey,omitempty"`
-	TestnetWIF       string `json:"testnetWIF,omitempty"`
-	MainnetWIF       string `json:"mainnetWIF,omitempty"`
-	EddsaPrivateKey  string `json:"eddsaPrivateKey,omitempty"`
+	EcdsaPrivateKey  []byte `json:"-"`
+	TestnetWIF       []byte `json:"-"`
+	MainnetWIF       []byte `json:"-"`
+	EddsaPrivateKey  []byte `json:"-"`
 	EddsaPublicKey   string `json:"eddsaPublicKey,omitempty"`
 	XRPLAddress      string `json:"xrplAddress,omitempty"`
 	BittensorAddress string `json:"bittensorAddress,omitempty"`
 	SolanaAddress    string `json:"solanaAddress,omitempty"`
+}
+
+// Zeroize clears all sensitive key material from memory.
+//
+// This addresses audit finding IFN-03-007 WP1: by storing secrets as []byte
+// instead of string, we can reliably zero the backing memory after use.
+//
+// Note: memguard (github.com/awnuber/memguard) was considered but not used:
+//   - Heavier API — requires .Destroy() calls, complicates JSON serialization
+//   - May have platform-specific behavior (mlock limits on some OS)
+func (r *RecoveryResult) Zeroize() {
+	clear(r.EcdsaPrivateKey)
+	clear(r.TestnetWIF)
+	clear(r.MainnetWIF)
+	clear(r.EddsaPrivateKey)
 }
 
 // Server represents the http server for the disaster recovery tool
@@ -311,12 +328,12 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 		// Set up the result with all the recovered key information
 		result.Success = true
 		result.Address = address
-		result.EcdsaPrivateKey = hex.EncodeToString(ecSK)
-		result.TestnetWIF = wif.ToBitcoinWIF(ecSK, true, true)
-		result.MainnetWIF = wif.ToBitcoinWIF(ecSK, false, true)
+		result.EcdsaPrivateKey = []byte(hex.EncodeToString(ecSK))
+		result.TestnetWIF = []byte(wif.ToBitcoinWIF(ecSK, true, true))
+		result.MainnetWIF = []byte(wif.ToBitcoinWIF(ecSK, false, true))
 
 		if edSK != nil {
-			result.EddsaPrivateKey = hex.EncodeToString(edSK)
+			result.EddsaPrivateKey = []byte(hex.EncodeToString(edSK))
 			log.Printf("EdDSA Private Key present: %d bytes", len(edSK))
 
 			// Get the EdDSA public key
