@@ -602,7 +602,7 @@ func validateOrigin(next http.Handler, port int) http.Handler {
 				http.Error(w, "Forbidden: invalid origin", http.StatusForbidden)
 				return
 			}
-			w.WriteHeader(http.StatusOK)
+			next.ServeHTTP(w, r)
 			return
 		}
 
