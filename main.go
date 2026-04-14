@@ -145,6 +145,8 @@ func main() {
 		os.Exit(0)
 	}
 
+	defer vaultsDataFiles.Zeroize()
+
 	/**
 	 * Retrieve vaults information and select a vault
 	 */

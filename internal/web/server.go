@@ -219,6 +219,7 @@ func (s *Server) handleListVaults(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to process files: %v", err), http.StatusBadRequest)
 		return
 	}
+	defer vaultsDataFiles.Zeroize()
 
 	// If no vault data files were processed, return an error
 	if len(vaultsDataFiles) == 0 {
@@ -299,6 +300,7 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to process files: %v", err), http.StatusBadRequest)
 		return
 	}
+	defer vaultsDataFiles.Zeroize()
 
 	// Run the recovery tool
 	result := RecoveryResult{}
@@ -377,7 +379,7 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 }
 
 // processFilesAndMnemonics processes the uploaded files and their mnemonics
-func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile, error) {
+func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, error) {
 	// Debug logging to help diagnose form issues
 	// Get file uploads - the frontend might use "files" or file input specific IDs
 	var fileHeaders []*multipart.FileHeader
