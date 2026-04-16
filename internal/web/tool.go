@@ -481,11 +481,3 @@ func inflateDataJSON(dataBytes []byte) ([]byte, error) {
 	// Use the actual implementation from the data package
 	return data.InflateSaveDataJSON(dataBytes)
 }
-
-// Helper function for getting the minimum of two integers
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
