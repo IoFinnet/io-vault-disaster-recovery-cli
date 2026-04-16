@@ -55,6 +55,7 @@ type RecoveryResult struct {
 	XRPLAddress      string `json:"xrplAddress,omitempty"`
 	BittensorAddress string `json:"bittensorAddress,omitempty"`
 	SolanaAddress    string `json:"solanaAddress,omitempty"`
+	ExportedKsFile   string `json:"exportedKsFile,omitempty"`
 }
 
 // Server represents the http server for the disaster recovery tool
@@ -227,7 +228,7 @@ func (s *Server) handleListVaults(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Run the tool to get vault information
-	_, _, _, vaultsFormInfo, err := runTool(vaultsDataFiles, nil, nil, nil, nil, nil)
+	_, _, _, vaultsFormInfo, _, err := runTool(vaultsDataFiles, nil, nil, nil, nil, nil)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to retrieve vault information: %v", err), http.StatusInternalServerError)
 		return
@@ -290,7 +291,7 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 	}
 	var exportFile *string
 	if exportKSFile != "" {
-		scopedPath, err := ui.ScopeExportPath(exportKSFile, s.tempDir)
+		scopedPath, err := ui.ScopeExportPathForWeb(exportKSFile, s.tempDir)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Invalid export filename: %v", err), http.StatusBadRequest)
 			return
@@ -307,7 +308,7 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 
 	// Run the recovery tool
 	result := RecoveryResult{}
-	address, ecSK, edSK, _, err := runTool(vaultsDataFiles, &vaultID, nonceOverride, quorumOverride, exportFile, password)
+	address, ecSK, edSK, _, exportedKsFile, err := runTool(vaultsDataFiles, &vaultID, nonceOverride, quorumOverride, exportFile, password)
 
 	if err != nil {
 		result.Success = false
@@ -366,6 +367,11 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 			clear(edSK)
 		} else {
 			log.Printf("No EdDSA private key present for vault `%s`", vaultID)
+		}
+
+		if exportedKsFile != nil {
+			result.ExportedKsFile = *exportedKsFile
+			log.Printf("Wallet v3 file exported to: %s", ui.PlainText(*exportedKsFile))
 		}
 
 		// Clear sensitive data again to be safe

@@ -17,37 +17,56 @@ import (
 // ValidateExportFilename validates and sanitizes an export filename.
 // It strips directory components, rejects empty/null-byte/hidden/non-JSON filenames,
 // and returns the cleaned bare filename.
-func ValidateExportFilename(filename string) (string, error) {
+func commonValidateExportFilename(filename string) (error) {
 	filename = strings.TrimSpace(filename)
 	if filename == "" {
-		return "", errors2.New("export filename cannot be empty")
+		return errors2.New("export filename cannot be empty")
 	}
 	if strings.ContainsRune(filename, 0) {
-		return "", errors2.New("export filename contains invalid characters")
+		return errors2.New("export filename contains invalid characters")
 	}
-	cleaned := filepath.Base(filename)
-	if cleaned == "." || cleaned == "/" || cleaned == "" {
-		return "", errors2.New("export filename is invalid")
+	justFileName := filepath.Base(filename)
+	if justFileName == "." || justFileName == "/" || justFileName == "" {
+		return errors2.New("export filename is invalid")
 	}
-	if strings.HasPrefix(cleaned, ".") {
-		return "", errors2.Errorf("export filename cannot be a hidden file: %s", cleaned)
+	if strings.HasPrefix(justFileName, ".") {
+		return errors2.Errorf("export filename cannot be a hidden file: %s", justFileName)
 	}
-	if !strings.EqualFold(filepath.Ext(cleaned), ".json") {
-		return "", errors2.Errorf("export filename must have .json extension, got: %s", cleaned)
+	if !strings.EqualFold(filepath.Ext(justFileName), ".json") {
+		return errors2.Errorf("export filename must have .json extension, got: %s", justFileName)
 	}
-	return cleaned, nil
+	return nil
 }
 
-// ScopeExportPath validates the filename and scopes it to the given base directory.
+func ValidateExportFilenameForCli(filename string) (error) {
+	err := commonValidateExportFilename(filename)
+	if err != nil {
+		return errors2.Errorf("⚠ %s", err)
+	}
+	if _, err := os.Stat(filename); err == nil {
+		return errors2.Errorf("⚠ export filename already exists: %s", filename)
+	}
+	return nil
+}
+
+// ScopeExportPath validates the filename, scopes it to the given base directory, and checks if it already exists.
 // Used by web mode to confine exported files to the server's temp directory.
-func ScopeExportPath(filename string, baseDir string) (string, error) {
-	cleaned, err := ValidateExportFilename(filename)
+func ScopeExportPathForWeb(filename string, baseDir string) (string, error) {
+	sanitized := strings.TrimSpace(filename)
+	err := ValidateExportFilenameForCli(sanitized)
 	if err != nil {
 		return "", err
 	}
-	fullPath := filepath.Join(baseDir, cleaned)
+	justFileName := filepath.Base(sanitized)
+	if sanitized != justFileName {
+		return "", errors2.Errorf("export filename cannot include directory components: %s", filename)
+	}
+	fullPath := filepath.Join(baseDir, justFileName)
 	if filepath.Dir(fullPath) != filepath.Clean(baseDir) {
 		return "", errors2.New("export path escapes base directory")
+	}
+	if _, err := os.Stat(fullPath); err == nil {
+		return "", errors2.Errorf("⚠ export filename already exists: %s", fullPath)
 	}
 	return fullPath, nil
 }

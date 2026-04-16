@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -44,28 +45,79 @@ func TestPlainText(t *testing.T) {
 	}
 }
 
-func TestValidateExportFilename(t *testing.T) {
+func TestValidateExportFilenameForCli(t *testing.T) {
 	tests := []struct {
 		name        string
 		input       string
+		expectError bool
+	}{
+		{"valid simple filename", "wallet.json",  false},
+		{"valid with hyphens", "my-wallet.json", false},
+		{"valid with underscores", "my_wallet.json",  false},
+		{"valid uppercase extension", "wallet.JSON",  false},
+		{"valid mixed case extension", "wallet.Json",  false},
+		{"trimmed whitespace", "  wallet.json  ",  false},
+
+		// Note: on Unix, backslash is a valid filename character, not a path separator.
+		{"filename with backslashes on unix", "path\\to\\wallet.json", false},
+
+		// Rejections
+		{"empty string", "", true},
+		{"whitespace only", "   ", true},
+		{"null byte", "file\x00name.json", true},
+		{"wrong extension txt", "wallet.txt", true},
+		{"wrong extension csv", "wallet.csv", true},
+		{"no extension", "wallet", true},
+		{"hidden file", ".hidden.json", true},
+		{"dot only", ".", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateExportFilenameForCli(tt.input)
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestScopeExportPath(t *testing.T) {
+	baseDir := filepath.Join("/tmp", "vault-web-test")
+	defer os.Remove(baseDir)
+
+	//File to test that it is not overwritten
+	dummyFile := filepath.Join(baseDir, "dummy.json")
+	os.WriteFile(dummyFile, []byte("dummy"), 0644)
+
+	//File that is a soft link to the dummy file
+	softLinkFile := filepath.Join(baseDir, "soft-link.json")
+	os.Symlink(dummyFile, softLinkFile)
+
+	// Link to a non-existing file
+	softLinkToNonExistingFile := filepath.Join(baseDir, "soft-link-to-non-existing.json")
+	os.Symlink(filepath.Join(baseDir, "non-existing"), softLinkToNonExistingFile)
+
+	// Directory with .json extension
+	jsonDisguisedDirectory := filepath.Join(baseDir, "directory.json")
+	os.Mkdir(jsonDisguisedDirectory, 0755)
+
+	tests := []struct {
+		name        string
+		filename    string
 		expected    string
 		expectError bool
 	}{
-		{"valid simple filename", "wallet.json", "wallet.json", false},
-		{"valid with hyphens", "my-wallet.json", "my-wallet.json", false},
-		{"valid with underscores", "my_wallet.json", "my_wallet.json", false},
-		{"valid uppercase extension", "wallet.JSON", "wallet.JSON", false},
-		{"valid mixed case extension", "wallet.Json", "wallet.Json", false},
-		{"trimmed whitespace", "  wallet.json  ", "wallet.json", false},
 
-		// Path stripping — directory components removed, bare filename returned
-		{"strips directory traversal", "../../etc/passwd.json", "passwd.json", false},
-		{"strips absolute path", "/etc/wallet.json", "wallet.json", false},
-		{"strips relative path", "path/to/wallet.json", "wallet.json", false},
+		{"valid simple filename scoped to base", "wallet.json", filepath.Join(baseDir, "wallet.json"), false},
+		{"valid with hyphens scoped to base", "my-wallet.json", filepath.Join(baseDir, "my-wallet.json"), false},
+		{"valid with underscores scoped to base", "my_wallet.json", filepath.Join(baseDir, "my_wallet.json"), false},
+		{"valid uppercase extension scoped to base", "wallet.JSON", filepath.Join(baseDir, "wallet.JSON"), false},
+		{"valid mixed case extension scoped to base", "wallet.Json", filepath.Join(baseDir, "wallet.Json"), false},
+		{"trimmed whitespace scoped to base", "  wallet.json  ", filepath.Join(baseDir, "wallet.json"), false},
 		// Note: on Unix, backslash is a valid filename character, not a path separator.
-		// filepath.Base does not strip backslash-delimited components on Unix.
-		// This test verifies the actual platform behavior.
-		{"filename with backslashes on unix", "path\\to\\wallet.json", "path\\to\\wallet.json", false},
+		{"filename with backslashes on unix scoped to base", "path\\to\\wallet.json", filepath.Join(baseDir, "path\\to\\wallet.json"), false},
 
 		// Rejections
 		{"empty string", "", "", true},
@@ -76,39 +128,18 @@ func TestValidateExportFilename(t *testing.T) {
 		{"no extension", "wallet", "", true},
 		{"hidden file", ".hidden.json", "", true},
 		{"dot only", ".", "", true},
+		{"file with directory components rejected", "../../etc/passwd.json", "", true},
+		{"base tmp directory is rejected", baseDir, "", true},
+
+		// Detection of existing file
+		{"directory disguised as file is rejected", jsonDisguisedDirectory, "", true},
+		{"file already exists rejected", dummyFile, "", true},
+		{"file soft link to existing file rejected", softLinkFile, "", true},
+		{"file soft link to non-existing file rejected", softLinkToNonExistingFile, "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := ValidateExportFilename(tt.input)
-			if tt.expectError {
-				assert.Error(t, err)
-				assert.Empty(t, result)
-			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tt.expected, result)
-			}
-		})
-	}
-}
-
-func TestScopeExportPath(t *testing.T) {
-	baseDir := filepath.Join("/tmp", "vault-web-test")
-
-	tests := []struct {
-		name        string
-		filename    string
-		expected    string
-		expectError bool
-	}{
-		{"valid filename scoped to base", "wallet.json", filepath.Join(baseDir, "wallet.json"), false},
-		{"traversal stripped and scoped", "../../etc/passwd.json", filepath.Join(baseDir, "passwd.json"), false},
-		{"absolute path stripped and scoped", "/etc/wallet.json", filepath.Join(baseDir, "wallet.json"), false},
-		{"empty filename rejected", "", "", true},
-		{"wrong extension rejected", "wallet.txt", "", true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := ScopeExportPath(tt.filename, baseDir)
+			result, err := ScopeExportPathForWeb(tt.filename, baseDir)
 			if tt.expectError {
 				assert.Error(t, err)
 				assert.Empty(t, result)

@@ -111,14 +111,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Validate and sanitize the export filename
+	// Validate the exportKSFile is valid and does not already exist
 	if exportKSFile != nil && len(*exportKSFile) > 0 {
-		cleanedName, err := ui.ValidateExportFilename(*exportKSFile)
+		err := ui.ValidateExportFilenameForCli(*exportKSFile)
 		if err != nil {
 			fmt.Print(ui.ErrorBox(err))
 			os.Exit(1)
 		}
-		exportKSFile = &cleanedName
 	}
 
 	/**
@@ -159,7 +158,7 @@ func main() {
 	 * Retrieve vaults information and select a vault
 	 */
 
-	_, _, _, vaultsFormInfo, err := runTool(*vaultsDataFiles, nil, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
+	_, _, _, vaultsFormInfo, _, err := runTool(*vaultsDataFiles, nil, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
 	if err != nil {
 		fmt.Println(ui.ErrorBox(err))
 		fmt.Println()
@@ -209,7 +208,7 @@ func main() {
 		lipgloss.NewStyle().Bold(true).Render(ui.PlainTextf("RECOVERING VAULT \"%s\" WITH ID %s\n", selectedVault.Name, selectedVault.VaultID)),
 	)
 
-	address, ecSK, edSK, _, err := runTool(*vaultsDataFiles, &selectedVault.VaultID, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
+	address, ecSK, edSK, _, exportedKsFile,err := runTool(*vaultsDataFiles, &selectedVault.VaultID, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
 	if err != nil {
 		fmt.Println(ui.ErrorBox(err))
 		fmt.Println()
@@ -285,6 +284,9 @@ func main() {
 		fmt.Println("- XRPL, TAO, SOL: Start this tool with the -web flag to enter the browser UI recovery")
 	} else {
 		fmt.Println("\nNo EdDSA/Ed25519 private key found for this older vault.")
+	}
+	if exportedKsFile != nil {
+		fmt.Println(ui.PlainTextf("Wallet v3 file exported to: %s", ui.Bold(ui.PlainText(*exportedKsFile))))
 	}
 	fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.\n")
 

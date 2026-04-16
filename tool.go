@@ -37,7 +37,7 @@ import (
 )
 
 func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride, quorumOverride *int, exportKSFile, passwordForKS *string) (
-	address string, ecdsaSK, eddsaSK []byte, orderedVaults []ui.VaultPickerItem, welp error) {
+	address string, ecdsaSK, eddsaSK []byte, orderedVaults []ui.VaultPickerItem, exportedKsFile *string, welp error) {
 
 	if nonceOverride != nil && *nonceOverride > -1 {
 		fmt.Printf("\n⚠ Using reshare nonce override: %d. Be sure to set the threshold of the vault at this reshare point with -threshold, or recovery will produce incorrect data.\n", *nonceOverride)
@@ -226,7 +226,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 
 	// Just list the ID's and names?
 	if justListingVaults {
-		return "", nil, nil, orderedVaults, nil
+		return "", nil, nil, orderedVaults, nil, nil
 	}
 
 	println()
@@ -341,16 +341,17 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 		}
 		keyfile, err2 := keystore.EncryptKey(key, *passwordForKS, keystore.StandardScryptN, keystore.StandardScryptP)
 		if err2 != nil {
-			welp = fmt.Errorf("⚠ could not create the wallet v3 file json: %v", err2)
+			welp = fmt.Errorf("⚠ could not create the wallet v3 file json %s: %v", *exportKSFile, err2)
 			return
 		}
-
-		if welp = os.WriteFile(*exportKSFile, keyfile, fileutils.PermissionOwnerRW); welp != nil {
+		if err := fileutils.WriteToNewFile(*exportKSFile, keyfile, fileutils.PermissionOwnerRW); err != nil {
+			welp = fmt.Errorf("⚠ could not write the wallet v3 file %s: %v", *exportKSFile, err)
 			return
 		}
-		fmt.Println(ui.PlainTextf("\nWrote a MetaMask wallet v3 (for ECDSA key only) to: %s.\n", *exportKSFile))
+		exportedKsFile = exportKSFile
+		fmt.Println(ui.PlainTextf("\nWrote a MetaMask wallet v3 (for ECDSA key only) to: %s\n", *exportKSFile))
 	}
-	return address, ecdsaSK, eddsaSK, orderedVaults, nil
+	return address, ecdsaSK, eddsaSK, orderedVaults, exportedKsFile, nil
 }
 
 func inflateSharesForCurve[T SaveData](shares []string, justListingVaults bool) ([]*T, error) {
