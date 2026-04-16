@@ -63,6 +63,7 @@ type RecoveryResult struct {
 type Server struct {
 	config           ServerConfig
 	tempDir          string
+	// exportDir is never cleaned up on server shutdown, because it stores files the users can download and use later.
 	exportDir        string
 	server           *http.Server
 	listener         net.Listener
