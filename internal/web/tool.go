@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -97,6 +98,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 
 		content, err := os.ReadFile(file.File)
 		if err != nil {
+			log.Printf("⚠ failed to read file(%s): %s", file.File, err)
 			welp = fmt.Errorf("⚠ failed to read file(%s): %s", filepath.Base(file.File), err)
 			return
 		}
