@@ -214,14 +214,6 @@ func (s *Server) Stop() error {
 	return nil
 }
 
-func (s *Server) CreateExportDirectory() (string, error) {
-	exportDir, err := os.MkdirTemp(s.exportDir, "")
-	if err != nil {
-		return "", fmt.Errorf("failed to create export directory: %w", err)
-	}
-	return exportDir, nil
-}
-
 // handleListVaults handles the request to list vaults from uploaded files
 func (s *Server) handleListVaults(w http.ResponseWriter, r *http.Request) {
 	// Parse the multipart form data
