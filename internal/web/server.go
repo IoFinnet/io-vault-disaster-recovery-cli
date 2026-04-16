@@ -35,6 +35,7 @@ var staticFiles embed.FS
 
 const (
 	tempDirPrefix = "vault-recovery-web-"
+	exportDirPrefix = "vault-recovery-web-export-"
 )
 
 // ServerConfig holds the configuration for the http server
@@ -62,6 +63,7 @@ type RecoveryResult struct {
 type Server struct {
 	config           ServerConfig
 	tempDir          string
+	exportDir        string
 	server           *http.Server
 	listener         net.Listener
 	zipExtractedDirs []string // Tracks temporary directories created for ZIP extractions
@@ -75,9 +77,15 @@ func NewServer(config ServerConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to create temporary directory: %w", err)
 	}
 
+	exportDir, err := os.MkdirTemp("", exportDirPrefix)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create export directory: %w", err)
+	}
+
 	return &Server{
 		config:           config,
 		tempDir:          tempDir,
+		exportDir:        exportDir,
 		zipExtractedDirs: make([]string, 0),
 	}, nil
 }
@@ -205,6 +213,14 @@ func (s *Server) Stop() error {
 	return nil
 }
 
+func (s *Server) CreateExportDirectory() (string, error) {
+	exportDir, err := os.MkdirTemp(s.exportDir, "")
+	if err != nil {
+		return "", fmt.Errorf("failed to create export directory: %w", err)
+	}
+	return exportDir, nil
+}
+
 // handleListVaults handles the request to list vaults from uploaded files
 func (s *Server) handleListVaults(w http.ResponseWriter, r *http.Request) {
 	// Parse the multipart form data
@@ -291,7 +307,7 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 	}
 	var exportFile *string
 	if exportKSFile != "" {
-		scopedPath, err := ui.ScopeExportPathForWeb(exportKSFile, s.tempDir)
+		scopedPath, err := ui.ScopeExportPathForWeb(exportKSFile, s.exportDir)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Invalid export filename: %v", err), http.StatusBadRequest)
 			return

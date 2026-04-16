@@ -5,6 +5,7 @@
 package ui
 
 import (
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,7 +50,7 @@ func ValidateExportFilenameForCli(filename string) error {
 	return nil
 }
 
-// ScopeExportPath validates the filename, scopes it to the given base directory, and checks if it already exists.
+// ScopeExportPath validates the filename, scopes it to the given base directory under a random subfolder each time
 // Used by web mode to confine exported files to the server's temp directory.
 func ScopeExportPathForWeb(filename string, baseDir string) (string, error) {
 	sanitized := strings.TrimSpace(filename)
@@ -61,12 +62,18 @@ func ScopeExportPathForWeb(filename string, baseDir string) (string, error) {
 	if sanitized != justFileName {
 		return "", errors2.Errorf("export filename cannot include directory components: %s", filename)
 	}
-	fullPath := filepath.Join(baseDir, justFileName)
-	if filepath.Dir(fullPath) != filepath.Clean(baseDir) {
-		return "", errors2.New("export path escapes base directory")
+
+	uniqueSubfolder, err := os.MkdirTemp(baseDir, "req-")
+	if err != nil {
+		log.Printf("⚠ failed to create temporary subfolder %s: %v", uniqueSubfolder, err)
+		return "", errors2.Errorf("failed to create temporary subfolder: %v", err)
 	}
+
+	fullPath := filepath.Join(uniqueSubfolder, justFileName)
 	if _, err := os.Stat(fullPath); err == nil {
-		return "", errors2.Errorf("⚠ export filename already exists: %s", fullPath)
+		// This error should not be possible to happen because the subfolder is random every time, but just in case, log it and return an error
+		log.Printf("⚠ export filename already exists in the temporary directory: %s", fullPath)
+		return "", errors2.Errorf("⚠ export filename already exists in the temporary directory: %s", filename)
 	}
 	return fullPath, nil
 }
