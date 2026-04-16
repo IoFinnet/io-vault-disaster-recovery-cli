@@ -51,12 +51,12 @@ func TestValidateExportFilenameForCli(t *testing.T) {
 		input       string
 		expectError bool
 	}{
-		{"valid simple filename", "wallet.json",  false},
+		{"valid simple filename", "wallet.json", false},
 		{"valid with hyphens", "my-wallet.json", false},
-		{"valid with underscores", "my_wallet.json",  false},
-		{"valid uppercase extension", "wallet.JSON",  false},
-		{"valid mixed case extension", "wallet.Json",  false},
-		{"trimmed whitespace", "  wallet.json  ",  false},
+		{"valid with underscores", "my_wallet.json", false},
+		{"valid uppercase extension", "wallet.JSON", false},
+		{"valid mixed case extension", "wallet.Json", false},
+		{"trimmed whitespace", "  wallet.json  ", false},
 
 		// Note: on Unix, backslash is a valid filename character, not a path separator.
 		{"filename with backslashes on unix", "path\\to\\wallet.json", false},

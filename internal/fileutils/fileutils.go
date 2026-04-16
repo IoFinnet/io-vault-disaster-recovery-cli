@@ -18,13 +18,13 @@ func WriteToNewFile(filename string, data []byte, perm os.FileMode) error {
 	// O_EXCL means the file must not exist already
 	// O_WRONLY means you’re opening the file as write-only
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_EXCL|os.O_WRONLY, perm)
-    if err != nil {
-        if os.IsExist(err) {
+	if err != nil {
+		if os.IsExist(err) {
 			return errors2.Errorf("file already exists: %s", filename)
 		} else {
 			return errors2.Errorf("failed creating file: %s: %v", filename, err)
 		}
-    }
+	}
 	defer file.Close()
 	_, err = file.Write(data)
 	if err != nil {
