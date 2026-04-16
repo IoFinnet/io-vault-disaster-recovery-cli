@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/fileutils"
 	errors2 "github.com/pkg/errors"
 )
 
@@ -25,7 +26,7 @@ func ProcessZipFile(zipPath string) ([]string, error) {
 	// Open the ZIP file
 	reader, err := zip.OpenReader(zipPath)
 	if err != nil {
-		return nil, errors2.Errorf("unable to open ZIP file `%s`: %s", filepath.Base(zipPath), err)
+		return nil, errors2.Errorf("unable to open ZIP file `%s`: %s", filepath.Base(zipPath), fileutils.StripPathFromError(err))
 	}
 	defer reader.Close()
 

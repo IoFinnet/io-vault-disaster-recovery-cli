@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/bittensor"
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/fileutils"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/solana"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/wif"
@@ -417,7 +418,7 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 				os.RemoveAll(dir)
 			}
 			log.Printf("⚠ failed to create temporary file %s: %v", filePath, err)
-			return nil, fmt.Errorf("failed to create temporary file %s: %w", fileHeader.Filename, err)
+			return nil, fmt.Errorf("failed to create temporary file %s: %w", filepath.Base(fileHeader.Filename), fileutils.StripPathFromError(err))
 		}
 
 		// Copy the file content

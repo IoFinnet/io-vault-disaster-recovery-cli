@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/data"
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/fileutils"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/binance-chain/tss-lib/crypto"
 	"github.com/binance-chain/tss-lib/crypto/vss"
@@ -99,7 +100,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 		content, err := os.ReadFile(file.File)
 		if err != nil {
 			log.Printf("⚠ failed to read file(%s): %s", file.File, err)
-			welp = fmt.Errorf("⚠ failed to read file(%s): %s", filepath.Base(file.File), err)
+			welp = fmt.Errorf("⚠ failed to read file (%s): %s", filepath.Base(file.File), fileutils.StripPathFromError(err))
 			return
 		}
 		if err := json.Unmarshal(content, saveData); err != nil {
