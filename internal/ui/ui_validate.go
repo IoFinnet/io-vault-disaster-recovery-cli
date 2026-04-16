@@ -53,7 +53,7 @@ func ValidateExportFilenameForCli(filename string) error {
 // Used by web mode to confine exported files to the server's temp directory.
 func ScopeExportPathForWeb(filename string, baseDir string) (string, error) {
 	sanitized := strings.TrimSpace(filename)
-	err := ValidateExportFilenameForCli(sanitized)
+	err := commonValidateExportFilename(sanitized)
 	if err != nil {
 		return "", err
 	}

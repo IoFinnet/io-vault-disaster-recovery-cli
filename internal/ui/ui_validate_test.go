@@ -84,24 +84,32 @@ func TestValidateExportFilenameForCli(t *testing.T) {
 }
 
 func TestScopeExportPath(t *testing.T) {
-	baseDir := filepath.Join("/tmp", "vault-web-test")
+	baseDir := t.TempDir()
 	defer os.Remove(baseDir)
 
 	//File to test that it is not overwritten
 	dummyFile := filepath.Join(baseDir, "dummy.json")
-	os.WriteFile(dummyFile, []byte("dummy"), 0644)
+	if err := os.WriteFile(dummyFile, []byte("dummy"), 0644); err != nil {
+		t.Fatalf("failed to create dummy file: %v", err)
+	}
 
 	//File that is a soft link to the dummy file
 	softLinkFile := filepath.Join(baseDir, "soft-link.json")
-	os.Symlink(dummyFile, softLinkFile)
+	if err := os.Symlink(dummyFile, softLinkFile); err != nil {
+		t.Skipf("symlink setup not available on this platform. Skipping test: %v", err)
+	}
 
 	// Link to a non-existing file
 	softLinkToNonExistingFile := filepath.Join(baseDir, "soft-link-to-non-existing.json")
-	os.Symlink(filepath.Join(baseDir, "non-existing"), softLinkToNonExistingFile)
+	if err := os.Symlink(filepath.Join(baseDir, "non-existing"), softLinkToNonExistingFile); err != nil {
+		t.Skipf("symlink setup not available on this platform. Skipping test: %v", err)
+	}
 
 	// Directory with .json extension
 	jsonDisguisedDirectory := filepath.Join(baseDir, "directory.json")
-	os.Mkdir(jsonDisguisedDirectory, 0755)
+	if err := os.Mkdir(jsonDisguisedDirectory, 0700); err != nil {
+		t.Fatalf("failed to create json-named directory: %v", err)
+	}
 
 	tests := []struct {
 		name        string

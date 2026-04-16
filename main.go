@@ -111,8 +111,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Validate the exportKSFile is valid and does not already exist
-	if exportKSFile != nil && len(*exportKSFile) > 0 {
+	// Validate the exportKSFile is valid and does not already exist, only when the password is provided.
+	// Because -export defaults to wallet.json, avoiding running this block on normal recoveries to avoid errors when wallet.json already exists,
+	// even if no -password was supplied (so no export would happen).
+	if exportKSFile != nil && len(*exportKSFile) > 0 && passwordForKS != nil && len(*passwordForKS) > 0 {
 		err := ui.ValidateExportFilenameForCli(*exportKSFile)
 		if err != nil {
 			fmt.Print(ui.ErrorBox(err))
@@ -279,14 +281,15 @@ func main() {
 			fmt.Println("Solana Address: " + ui.Bold(solanaAddress))
 		}
 
+		if exportedKsFile != nil {
+			fmt.Println("\nWallet v3 file exported to:", ui.Bold(ui.PlainText(*exportedKsFile)))
+		}
+
 		// Add wallet import instructions
 		fmt.Println("\nWallet Import Instructions:")
 		fmt.Println("- XRPL, TAO, SOL: Start this tool with the -web flag to enter the browser UI recovery")
 	} else {
 		fmt.Println("\nNo EdDSA/Ed25519 private key found for this older vault.")
-	}
-	if exportedKsFile != nil {
-		fmt.Println(ui.PlainTextf("Wallet v3 file exported to: %s", ui.Bold(ui.PlainText(*exportedKsFile))))
 	}
 	fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.\n")
 
