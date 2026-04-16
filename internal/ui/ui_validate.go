@@ -64,7 +64,7 @@ func ScopeExportPathForWeb(filename string, baseDir string) (string, error) {
 
 	uniqueSubfolder, err := os.MkdirTemp(baseDir, "req-")
 	if err != nil {
-		log.Printf("⚠ failed to create temporary subfolder %s: %v", uniqueSubfolder, err)
+		log.Printf("⚠ failed to create temporary subfolder under %s: %v", baseDir, err)
 		return "", errors2.Errorf("failed to create temporary subfolder: %v", err)
 	}
 
