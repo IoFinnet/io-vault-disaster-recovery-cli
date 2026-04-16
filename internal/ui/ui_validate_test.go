@@ -134,10 +134,10 @@ func TestScopeExportPath(t *testing.T) {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.expected, filepath.Base(result))
 
-				randomDirPath := filepath.Dir(result);
+				randomDirPath := filepath.Dir(result)
 				assert.Regexp(t, `^req-\d{2,16}$`, filepath.Base(randomDirPath))
 
-				baseTmpDirPath := filepath.Dir(randomDirPath);
+				baseTmpDirPath := filepath.Dir(randomDirPath)
 				assert.Equal(t, baseDir, baseTmpDirPath)
 			}
 		})

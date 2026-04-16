@@ -34,7 +34,7 @@ import (
 var staticFiles embed.FS
 
 const (
-	tempDirPrefix = "vault-recovery-web-"
+	tempDirPrefix   = "vault-recovery-web-"
 	exportDirPrefix = "vault-recovery-web-export-"
 )
 
@@ -61,8 +61,8 @@ type RecoveryResult struct {
 
 // Server represents the http server for the disaster recovery tool
 type Server struct {
-	config           ServerConfig
-	tempDir          string
+	config  ServerConfig
+	tempDir string
 	// exportDir is never cleaned up on server shutdown, because it stores files the users can download and use later.
 	exportDir        string
 	server           *http.Server
