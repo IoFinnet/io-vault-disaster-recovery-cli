@@ -2,6 +2,9 @@ all: build
 
 build: build-win build-mac build-linux-amd64 build-linux-arm64 build-freebsd-amd64 build-freebsd-arm64
 
+format:
+	go fmt -x ./...
+
 build-win:
 	GOOS=windows GOARCH=amd64 go build -trimpath -o ./bin/recovery-tool.exe ./
 
@@ -31,4 +34,3 @@ test:
 	go test -race ./...
 
 .PHONY: build build-win build-linux-amd64 build-linux-arm64 build-linux build-freebsd-amd64 build-freebsd-arm64 build-freebsd build-mac sandbox test
-
