@@ -78,15 +78,15 @@ func NewServer(config ServerConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to create temporary directory: %w", err)
 	}
 
-	exportDir, err := os.MkdirTemp("", exportDirPrefix)
+	workingDir, err := os.Getwd()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create export directory: %w", err)
+		return nil, fmt.Errorf("failed to get current working directory: %w", err)
 	}
 
 	return &Server{
 		config:           config,
 		tempDir:          tempDir,
-		exportDir:        exportDir,
+		exportDir:        workingDir,
 		zipExtractedDirs: make([]string, 0),
 	}, nil
 }
