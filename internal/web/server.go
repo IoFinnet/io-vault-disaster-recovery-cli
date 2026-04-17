@@ -63,6 +63,7 @@ type Server struct {
 	tempDir          string
 	server           *http.Server
 	listener         net.Listener
+	actualPort       int      // the port the server actually bound to
 	zipExtractedDirs []string // Tracks temporary directories created for ZIP extractions
 }
 
@@ -161,10 +162,15 @@ func (s *Server) Start() (string, error) {
 		}
 	}
 	s.listener = listener
+	s.actualPort = port
+
+	// Apply security middleware: origin validation wraps the mux,
+	// then security headers wrap everything.
+	handler := securityHeaders(validateOrigin(mux, port))
 
 	// Create the server
 	s.server = &http.Server{
-		Handler:      mux,
+		Handler:      handler,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
@@ -548,6 +554,62 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, 
 	// Store the list of extracted directories in the server for later cleanup
 	s.zipExtractedDirs = append(s.zipExtractedDirs, zipExtractedDirs...)
 	return vaultsDataFiles, nil
+}
+
+// securityHeaders wraps an http.Handler to add security headers to every response.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Prevent the site from being loaded in an iframe. Removes clickjacking risks.
+		w.Header().Set("X-Frame-Options", "DENY")
+		// Prevent MIME type sniffing. Helps stop attacks where files might be served as the wrong content-type.
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		// Restrict what resources this page can load and from where (only self for api, images and scripts. also inlined html styles).
+		w.Header().Set("Content-Security-Policy",
+			"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'")
+		// Only send referrer info for same-origin or top-level navigation. Limits leaking info to other sites.
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		// Forbid browser features like camera, microphone, geolocation on this site unless explicitly allowed.
+		// Protects user privacy.
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// validateOrigin wraps an http.Handler to reject cross-origin POST and OPTIONS requests.
+// Requests with no Origin header are allowed, because they are treated as same-origin or non-browser (e.g., curl), which are safe.
+func validateOrigin(next http.Handler, port int) http.Handler {
+	// The server always binds to localhost, so only allow requests from localhost or 127.0.0.1.
+	// Making it configurable would risk weakening security through misconfiguration
+	allowedOrigins := map[string]bool{
+		fmt.Sprintf("http://localhost:%d", port): true,
+		fmt.Sprintf("http://127.0.0.1:%d", port): true,
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Methods that modify state (POST, PUT, DELETE, PATCH) are vulnerable to CSRF attacks.
+		// Methods that don't modify state (GET, HEAD) are not vulnerable. Altough, OPTIONS is a special case.
+		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete || r.Method == http.MethodPatch {
+			origin := r.Header.Get("Origin")
+			if origin != "" && !allowedOrigins[origin] {
+				http.Error(w, "Forbidden: invalid origin", http.StatusForbidden)
+				return
+			}
+		}
+
+		// empty origin indicates a non-browser or non-CORS preflight request,
+		// which should not be allowed because browsers use OPTIONS with Origin during CORS preflight. Allowing it could let cross-origin preflight requests to bypass origin checks.
+		if r.Method == http.MethodOptions {
+			origin := r.Header.Get("Origin")
+			if origin == "" || !allowedOrigins[origin] {
+				http.Error(w, "Forbidden: invalid origin", http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 // OpenBrowser opens the URL in the default browser
