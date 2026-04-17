@@ -34,7 +34,8 @@ import (
 var staticFiles embed.FS
 
 const (
-	tempDirPrefix = "vault-recovery-web-"
+	tempDirPrefix   = "vault-recovery-web-"
+	exportDirPrefix = "vault-recovery-web-export-"
 )
 
 // ServerConfig holds the configuration for the http server
@@ -55,12 +56,15 @@ type RecoveryResult struct {
 	XRPLAddress      string `json:"xrplAddress,omitempty"`
 	BittensorAddress string `json:"bittensorAddress,omitempty"`
 	SolanaAddress    string `json:"solanaAddress,omitempty"`
+	ExportedKsFile   string `json:"exportedKsFile,omitempty"`
 }
 
 // Server represents the http server for the disaster recovery tool
 type Server struct {
-	config           ServerConfig
-	tempDir          string
+	config  ServerConfig
+	tempDir string
+	// exportDir is never cleaned up on server shutdown, because it stores files the users can download and use later.
+	exportDir        string
 	server           *http.Server
 	listener         net.Listener
 	actualPort       int      // the port the server actually bound to
@@ -75,9 +79,15 @@ func NewServer(config ServerConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to create temporary directory: %w", err)
 	}
 
+	workingDir, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current working directory: %w", err)
+	}
+
 	return &Server{
 		config:           config,
 		tempDir:          tempDir,
+		exportDir:        workingDir,
 		zipExtractedDirs: make([]string, 0),
 	}, nil
 }
@@ -234,7 +244,7 @@ func (s *Server) handleListVaults(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Run the tool to get vault information
-	_, _, _, vaultsFormInfo, err := runTool(vaultsDataFiles, nil, nil, nil, nil, nil)
+	_, _, _, vaultsFormInfo, _, err := runTool(vaultsDataFiles, nil, nil, nil, nil, nil)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to retrieve vault information: %v", err), http.StatusInternalServerError)
 		return
@@ -297,7 +307,12 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 	}
 	var exportFile *string
 	if exportKSFile != "" {
-		exportFile = &exportKSFile
+		scopedPath, err := ui.ScopeExportPathForWeb(exportKSFile, s.exportDir)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Invalid export filename: %v", err), http.StatusBadRequest)
+			return
+		}
+		exportFile = &scopedPath
 	}
 
 	// Process files and mnemonics
@@ -310,7 +325,7 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 
 	// Run the recovery tool
 	result := RecoveryResult{}
-	address, ecSK, edSK, _, err := runTool(vaultsDataFiles, &vaultID, nonceOverride, quorumOverride, exportFile, password)
+	address, ecSK, edSK, _, exportedKsFile, err := runTool(vaultsDataFiles, &vaultID, nonceOverride, quorumOverride, exportFile, password)
 
 	if err != nil {
 		result.Success = false
@@ -369,6 +384,11 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 			clear(edSK)
 		} else {
 			log.Printf("No EdDSA private key present for vault `%s`", vaultID)
+		}
+
+		if exportedKsFile != nil {
+			result.ExportedKsFile = *exportedKsFile
+			log.Printf("Wallet v3 file exported to: %s", ui.PlainText(*exportedKsFile))
 		}
 
 		// Clear sensitive data again to be safe
