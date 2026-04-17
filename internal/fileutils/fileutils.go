@@ -6,9 +6,9 @@ package fileutils
 
 import (
 	"errors"
+	errors2 "github.com/pkg/errors"
 	"io/fs"
 	"path/filepath"
-  errors2 "github.com/pkg/errors"
 )
 
 func StripPathFromError(err error) error {
