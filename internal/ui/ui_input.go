@@ -23,6 +23,8 @@ type (
 		Mnemonics string
 	}
 
+	VaultsDataFiles []VaultsDataFile
+
 	// MnemonicsFormModel is a struct that represents the model for the mnemonics entry.
 	MnemonicsFormModel struct {
 		filenames    []string
@@ -30,6 +32,19 @@ type (
 		extractedAll bool
 	}
 )
+
+// removes reference to mnemonic strings from the entry.
+func (file *VaultsDataFile) Zeroize() {
+	file.Mnemonics = ""
+	file.File = ""
+}
+
+// removes reference to mnemonic strings from all the entries.
+func (files *VaultsDataFiles) Zeroize() {
+	for i := range *files {
+		(*files)[i].Zeroize()
+	}
+}
 
 func NewMnemonicsForm(config config.AppConfig) MnemonicsFormModel {
 	return MnemonicsFormModel{
@@ -39,8 +54,8 @@ func NewMnemonicsForm(config config.AppConfig) MnemonicsFormModel {
 	}
 }
 
-func (m *MnemonicsFormModel) Run() (*[]VaultsDataFile, error) {
-	filesWithMnemonics := make([]VaultsDataFile, 0, len(m.filenames))
+func (m *MnemonicsFormModel) Run() (*VaultsDataFiles, error) {
+	filesWithMnemonics := make(VaultsDataFiles, 0, len(m.filenames))
 
 	// Make a first pass to calculate the total number of files
 	totalJSONFiles := 0

@@ -111,6 +111,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Validate the exportKSFile is valid and does not already exist, only when the password is provided.
+	// Because -export defaults to wallet.json, avoiding running this block on normal recoveries to avoid errors when wallet.json already exists,
+	// even if no -password was supplied (so no export would happen).
+	if exportKSFile != nil && len(*exportKSFile) > 0 && passwordForKS != nil && len(*passwordForKS) > 0 {
+		err := ui.ValidateExportFilenameForCli(*exportKSFile)
+		if err != nil {
+			fmt.Print(ui.ErrorBox(err))
+			os.Exit(1)
+		}
+	}
+
 	/**
 	 * Run the steps to get the menmonics
 	 */
@@ -145,11 +156,13 @@ func main() {
 		os.Exit(0)
 	}
 
+	defer vaultsDataFiles.Zeroize()
+
 	/**
 	 * Retrieve vaults information and select a vault
 	 */
 
-	_, _, _, vaultsFormInfo, err := runTool(*vaultsDataFiles, nil, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
+	_, _, _, vaultsFormInfo, _, err := runTool(*vaultsDataFiles, nil, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
 	if err != nil {
 		fmt.Println(ui.ErrorBox(err))
 		fmt.Println()
@@ -199,7 +212,7 @@ func main() {
 		lipgloss.NewStyle().Bold(true).Render(ui.PlainTextf("RECOVERING VAULT \"%s\" WITH ID %s\n", selectedVault.Name, selectedVault.VaultID)),
 	)
 
-	address, ecSK, edSK, _, err := runTool(*vaultsDataFiles, &selectedVault.VaultID, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
+	address, ecSK, edSK, _, exportedKsFile, err := runTool(*vaultsDataFiles, &selectedVault.VaultID, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
 	if err != nil {
 		fmt.Println(ui.ErrorBox(err))
 		fmt.Println()
@@ -268,6 +281,10 @@ func main() {
 		if err == nil {
 			fmt.Printf("\nSolana Information:\n")
 			fmt.Println("Solana Address: " + ui.Bold(solanaAddress))
+		}
+
+		if exportedKsFile != nil {
+			fmt.Println("\nWallet v3 file exported to:", ui.Bold(ui.PlainText(*exportedKsFile)))
 		}
 
 		// Add wallet import instructions

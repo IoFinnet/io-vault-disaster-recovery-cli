@@ -82,7 +82,7 @@ type (
 
 // Implementation of runTool for the web package
 func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride, quorumOverride *int, exportKSFile, passwordForKS *string) (
-	address string, ecdsaSK, eddsaSK []byte, orderedVaults []ui.VaultPickerItem, welp error) {
+	address string, ecdsaSK, eddsaSK []byte, orderedVaults []ui.VaultPickerItem, exportedKsFile *string, welp error) {
 
 	justListingVaults := vaultID == nil || *vaultID == ""
 
@@ -262,7 +262,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 
 	// Just list the ID's and names?
 	if justListingVaults {
-		return "", nil, nil, orderedVaults, nil
+		return "", nil, nil, orderedVaults, nil, nil
 	}
 
 	if _, ok := vaultAllSharesECDSA[*vaultID]; !ok {
@@ -379,12 +379,14 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 			return
 		}
 
-		if welp = os.WriteFile(*exportKSFile, keyfile, os.ModePerm); welp != nil {
+		if welp = fileutils.WriteToNewFile(*exportKSFile, keyfile, fileutils.PermissionOwnerRW); welp != nil {
+			welp = fmt.Errorf("⚠ could not write the wallet v3 file: %v", welp)
 			return
 		}
+		exportedKsFile = exportKSFile
 		fmt.Println(ui.PlainTextf("\nWrote a MetaMask wallet v3 (for ECDSA key only) to: %s.\n", *exportKSFile))
 	}
-	return address, ecdsaSK, eddsaSK, orderedVaults, nil
+	return address, ecdsaSK, eddsaSK, orderedVaults, exportedKsFile, nil
 }
 
 // inflateSharesForCurve inflates shares for a specific curve
