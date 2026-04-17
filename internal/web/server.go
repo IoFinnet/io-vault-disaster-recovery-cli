@@ -395,15 +395,27 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 	// Process all files
 	jsonFileCount := 0 // Track actual JSON files (either direct or from ZIP)
 
+	cleanUpZipExtractedDirs := func() {
+		for _, dir := range zipExtractedDirs {
+			os.RemoveAll(dir)
+		}
+	}
+	closeFiles := func(file *multipart.File, outFile *os.File) {
+		if file != nil {
+			(*file).Close()
+		}
+		if outFile != nil {
+			(*outFile).Close()
+		}
+	}
+
 	// Save each file to the temp directory
 	for i, fileHeader := range fileHeaders {
 		// Open the uploaded file
 		file, err := fileHeader.Open()
 		if err != nil {
-			// Clean up any temp directories we've created
-			for _, dir := range zipExtractedDirs {
-				os.RemoveAll(dir)
-			}
+			cleanUpZipExtractedDirs()
+			closeFiles(&file, nil)
 			return nil, fmt.Errorf("failed to open file %s: %w", fileHeader.Filename, err)
 		}
 
@@ -411,43 +423,38 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 		filePath := filepath.Join(s.tempDir, fileHeader.Filename)
 		outFile, err := os.Create(filePath)
 		if err != nil {
-			file.Close() // Close the file before returning on error
-			// Clean up any temp directories we've created
-			for _, dir := range zipExtractedDirs {
-				os.RemoveAll(dir)
-			}
+			cleanUpZipExtractedDirs()
+			closeFiles(&file, outFile)
+			os.Remove(filePath)
 			return nil, fmt.Errorf("failed to create temporary file %s: %w", filePath, err)
 		}
 
 		// Copy the file content
 		if _, err := io.Copy(outFile, file); err != nil {
-			file.Close()    // Close the input file
-			outFile.Close() // Close the output file
-			// Clean up any temp directories we've created
-			for _, dir := range zipExtractedDirs {
-				os.RemoveAll(dir)
-			}
+			cleanUpZipExtractedDirs()
+			closeFiles(&file, outFile)
+			os.Remove(filePath)
 			return nil, fmt.Errorf("failed to copy file content: %w", err)
 		}
 
-		// Close both files after successful processing
-		file.Close()
-		outFile.Close()
+		closeFiles(&file, outFile)
+
+		if !ziputils.IsZipFile(filePath) {
+			os.Remove(filePath)
+		}
+
 
 		// Process the file based on its type
 		if ziputils.IsZipFile(filePath) {
 			// Extract JSON files from the ZIP
 			extractedFiles, err := ziputils.ProcessZipFile(filePath)
+			// Delete the uploaded ZIP file — it's no longer needed after extraction, regardless if it succeeded or failed
+			os.Remove(filePath)
 			if err != nil {
-				// Clean up any temp directories we've created
-				for _, dir := range zipExtractedDirs {
-					os.RemoveAll(dir)
-				}
+				cleanUpZipExtractedDirs()
 				return nil, err
 			}
 
-			// Delete the uploaded ZIP file — it's no longer needed after extraction
-			os.Remove(filePath)
 
 			// Track the extracted directory for cleanup
 			if len(extractedFiles) > 0 {
@@ -468,10 +475,7 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 				if mnemonicValues, ok := r.MultipartForm.Value[mnemonicKey]; ok && len(mnemonicValues) > 0 {
 					mnemonic := ui.CleanMnemonicInput(mnemonicValues[0])
 					if err := ui.ValidateMnemonics(mnemonic); err != nil {
-						// Clean up any temp directories we've created
-						for _, dir := range zipExtractedDirs {
-							os.RemoveAll(dir)
-						}
+						cleanUpZipExtractedDirs()
 						return nil, fmt.Errorf("invalid mnemonic for signer %s: %w", baseName, err)
 					}
 
@@ -512,19 +516,13 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 			}
 
 			if len(mnemonicValues) == 0 {
-				// Clean up any temp directories we've created
-				for _, dir := range zipExtractedDirs {
-					os.RemoveAll(dir)
-				}
+				cleanUpZipExtractedDirs()
 				return nil, fmt.Errorf("no mnemonics provided for JSON file %s", fileHeader.Filename)
 			}
 
 			mnemonic := ui.CleanMnemonicInput(mnemonicValues[mnemonicIndex])
 			if err := ui.ValidateMnemonics(mnemonic); err != nil {
-				// Clean up any temp directories we've created
-				for _, dir := range zipExtractedDirs {
-					os.RemoveAll(dir)
-				}
+				cleanUpZipExtractedDirs()
 				return nil, fmt.Errorf("invalid mnemonic for file %s: %w", fileHeader.Filename, err)
 			}
 
@@ -539,10 +537,7 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 
 	// Ensure we have at least one JSON file to process
 	if jsonFileCount == 0 {
-		// Clean up any temp directories we've created
-		for _, dir := range zipExtractedDirs {
-			os.RemoveAll(dir)
-		}
+		cleanUpZipExtractedDirs()
 		return nil, fmt.Errorf("no valid JSON files were uploaded (directly or in ZIP archives)")
 	}
 
@@ -605,40 +600,50 @@ func (s *Server) handleListZipFiles(w http.ResponseWriter, r *http.Request) {
 
 	// Track all extracted files
 	allExtractedFiles := []string{}
-	tempFilePaths := []string{} // Track temp files for cleanup
+
+	onZipFileProcessingFinished := func(file *multipart.File, outFile *os.File, filePath *string) {
+		if file != nil {
+			(*file).Close()
+		}
+		if outFile != nil {
+			(*outFile).Close()
+		}
+		if filePath != nil {
+			os.Remove(*filePath)
+		}
+	}
 
 	// Process each ZIP file
 	for _, fileHeader := range zipFiles {
 		// Open the uploaded file
 		file, err := fileHeader.Open()
 		if err != nil {
+			onZipFileProcessingFinished(&file, nil, nil)
 			http.Error(w, fmt.Sprintf("Failed to open file %s: %v", fileHeader.Filename, err), http.StatusBadRequest)
 			return
 		}
 
 		// Create a file in the temp directory
 		filePath := filepath.Join(s.tempDir, fileHeader.Filename)
-		tempFilePaths = append(tempFilePaths, filePath)
 		outFile, err := os.Create(filePath)
 		if err != nil {
-			file.Close()
+			onZipFileProcessingFinished(&file, outFile, &filePath)
 			http.Error(w, fmt.Sprintf("Failed to create temporary file: %v", err), http.StatusInternalServerError)
 			return
 		}
+		log.Printf("created temporary file %s", filePath)
 
 		// Copy the file content
 		if _, err := io.Copy(outFile, file); err != nil {
-			file.Close()
-			outFile.Close()
+			onZipFileProcessingFinished(&file, outFile, &filePath)
 			http.Error(w, fmt.Sprintf("Failed to copy file content: %v", err), http.StatusInternalServerError)
 			return
 		}
 
-		file.Close()
-		outFile.Close()
-
 		// Process the ZIP file to extract JSON files
 		extractedFiles, err := ziputils.ProcessZipFile(filePath)
+		// Delete the uploaded ZIP file — it's no longer needed after extraction, regardless if it succeeded or failed
+		onZipFileProcessingFinished(&file, outFile, &filePath)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to process ZIP file %s: %v", fileHeader.Filename, err), http.StatusBadRequest)
 			return
@@ -650,11 +655,6 @@ func (s *Server) handleListZipFiles(w http.ResponseWriter, r *http.Request) {
 			s.zipExtractedDirs = append(s.zipExtractedDirs, extractDir)
 			allExtractedFiles = append(allExtractedFiles, extractedFiles...)
 		}
-	}
-
-	// Clean up the uploaded ZIP files — they're no longer needed after extraction
-	for _, path := range tempFilePaths {
-		os.Remove(path)
 	}
 
 	// Check if any JSON files were found across all ZIPs
