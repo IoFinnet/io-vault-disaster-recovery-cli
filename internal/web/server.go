@@ -443,7 +443,6 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 			os.Remove(filePath)
 		}
 
-
 		// Process the file based on its type
 		if ziputils.IsZipFile(filePath) {
 			// Extract JSON files from the ZIP
@@ -454,7 +453,6 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) ([]ui.VaultsDataFile,
 				cleanUpZipExtractedDirs()
 				return nil, err
 			}
-
 
 			// Track the extracted directory for cleanup
 			if len(extractedFiles) > 0 {
