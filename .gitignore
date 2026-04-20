@@ -5,3 +5,8 @@ bin/*
 .vscode
 
 .aider*
+
+# Claude Code personal files
+.claude/plans/
+.claude/settings.local.json
+.claude/worktrees/
