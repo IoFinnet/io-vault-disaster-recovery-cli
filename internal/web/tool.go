@@ -13,8 +13,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math/big"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -97,7 +99,8 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 
 		content, err := os.ReadFile(file.File)
 		if err != nil {
-			welp = fmt.Errorf("⚠ file to read from file(%s): %s", file, err)
+			log.Printf("⚠ failed to read file(%s): %s", file.File, err)
+			welp = fmt.Errorf("⚠ failed to read file (%s): %s", filepath.Base(file.File), fileutils.StripPathFromError(err))
 			return
 		}
 		if err := json.Unmarshal(content, saveData); err != nil {
@@ -479,12 +482,4 @@ func leftPadTo32Bytes(i *big.Int) []byte {
 func inflateDataJSON(dataBytes []byte) ([]byte, error) {
 	// Use the actual implementation from the data package
 	return data.InflateSaveDataJSON(dataBytes)
-}
-
-// Helper function for getting the minimum of two integers
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

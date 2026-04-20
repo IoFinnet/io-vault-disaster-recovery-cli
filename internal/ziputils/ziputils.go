@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/fileutils"
 	errors2 "github.com/pkg/errors"
 )
 
@@ -25,7 +26,7 @@ func ProcessZipFile(zipPath string) ([]string, error) {
 	// Open the ZIP file
 	reader, err := zip.OpenReader(zipPath)
 	if err != nil {
-		return nil, errors2.Errorf("unable to open ZIP file `%s`: %s", zipPath, err)
+		return nil, errors2.Errorf("unable to open ZIP file `%s`: %s", filepath.Base(zipPath), fileutils.StripPathFromError(err))
 	}
 	defer reader.Close()
 
@@ -62,13 +63,13 @@ func ProcessZipFile(zipPath string) ([]string, error) {
 	// Reject ZIPs with nested directories
 	if hasNestedDirs {
 		os.RemoveAll(tempDir)
-		return nil, errors2.Errorf("ZIP file `%s` contains nested directories - only flat hierarchy of JSON files is supported", zipPath)
+		return nil, errors2.Errorf("ZIP file `%s` contains nested directories - only flat hierarchy of JSON files is supported", filepath.Base(zipPath))
 	}
 
 	// Reject ZIPs containing non-JSON files
 	if hasNonJsonFiles {
 		os.RemoveAll(tempDir)
-		return nil, errors2.Errorf("ZIP file `%s` contains non-JSON files - only JSON files are supported", zipPath)
+		return nil, errors2.Errorf("ZIP file `%s` contains non-JSON files - only JSON files are supported", filepath.Base(zipPath))
 	}
 
 	// Second pass: Extract JSON files (we've already validated that all files are JSON)
@@ -91,7 +92,7 @@ func ProcessZipFile(zipPath string) ([]string, error) {
 		if err != nil {
 			rc.Close()
 			os.RemoveAll(tempDir)
-			return nil, errors2.Errorf("unable to create extracted file `%s`: %s", extractPath, err)
+			return nil, errors2.Errorf("unable to create extracted file `%s`: %s", filepath.Base(extractPath), err)
 		}
 
 		// Copy file contents
@@ -107,7 +108,7 @@ func ProcessZipFile(zipPath string) ([]string, error) {
 		content, err := os.ReadFile(extractPath)
 		if err != nil {
 			os.RemoveAll(tempDir)
-			return nil, errors2.Errorf("unable to read extracted file `%s`: %s", extractPath, err)
+			return nil, errors2.Errorf("unable to read extracted file `%s`: %s", filepath.Base(extractPath), err)
 		}
 		if len(content) == 0 || content[0] != '{' {
 			os.RemoveAll(tempDir)
@@ -120,7 +121,7 @@ func ProcessZipFile(zipPath string) ([]string, error) {
 	// Check if we found any JSON files
 	if len(extractedFiles) == 0 {
 		os.RemoveAll(tempDir)
-		return nil, errors2.Errorf("ZIP file `%s` does not contain any JSON files", zipPath)
+		return nil, errors2.Errorf("ZIP file `%s` does not contain any JSON files", filepath.Base(zipPath))
 	}
 
 	return extractedFiles, nil

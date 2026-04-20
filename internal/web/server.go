@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/bittensor"
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/fileutils"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/solana"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/wif"
@@ -454,7 +455,8 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, 
 			cleanUpZipExtractedDirs()
 			closeFiles(&file, outFile)
 			os.Remove(filePath)
-			return nil, fmt.Errorf("failed to create temporary file %s: %w", filePath, err)
+			log.Printf("⚠ failed to create temporary file %s: %v", filePath, err)
+			return nil, fmt.Errorf("failed to create temporary file %s: %w", filepath.Base(fileHeader.Filename), fileutils.StripPathFromError(err))
 		}
 
 		// Copy the file content
@@ -513,7 +515,8 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, 
 					jsonFileCount++
 				} else {
 					// Skip files we don't have mnemonics for
-					fmt.Println(ui.PlainTextf("Skipping file %s - no mnemonic provided", extractedFile))
+					log.Printf("⚠ skipping file %s - no mnemonic provided", extractedFile)
+					fmt.Println(ui.PlainTextf("Skipping file %s - no mnemonic provided", filepath.Base(extractedFile)))
 				}
 			}
 		} else {
@@ -710,7 +713,8 @@ func (s *Server) handleListZipFiles(w http.ResponseWriter, r *http.Request) {
 		outFile, err := os.Create(filePath)
 		if err != nil {
 			onZipFileProcessingFinished(&file, outFile, &filePath)
-			http.Error(w, fmt.Sprintf("Failed to create temporary file: %v", err), http.StatusInternalServerError)
+			log.Printf("Failed to create temporary file %s: %v", filePath, err)
+			http.Error(w, "Failed to create temporary file", http.StatusInternalServerError)
 			return
 		}
 		log.Printf("created temporary file %s", filePath)
