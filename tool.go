@@ -57,6 +57,11 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 	vaultAllSharesEDDSA := make(VaultAllSharesEdDSA, len(vaultsDataFile)*16)
 	vaultHasEDDSA := make(map[string]bool, len(vaultsDataFile)*16)
 	vaultLastNonces := make(map[string]int, len(vaultsDataFile)*16)
+	// Highest reshare nonce selected for each vault across all input files. Unlike
+	// vaultLastNonces (last-file-wins, used for the mismatch warning), this is an
+	// order-independent max so list-vaults reports a stable value regardless of
+	// vaultsDataFile order.
+	vaultMaxReShareNonce := make(map[string]int, len(vaultsDataFile)*16)
 
 	// // Do the main routine
 	for _, file := range vaultsDataFile {
@@ -111,6 +116,9 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 				}
 			}
 			vaultLastNonces[vID] = lastReshareNonce
+			if cur, ok := vaultMaxReShareNonce[vID]; !ok || lastReshareNonce > cur {
+				vaultMaxReShareNonce[vID] = lastReshareNonce
+			}
 			cipheredVault := resharesMap[lastReshareNonce]
 
 			// DECRYPT
@@ -220,7 +228,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 	orderedVaults = make([]ui.VaultPickerItem, 0, len(vaultIDs))
 	for _, vID := range vaultIDs {
 		vault := clearVaults[vID]
-		vaultFormData := ui.VaultPickerItem{VaultID: vID, Name: vault.Name, Quorum: vault.Quroum, NumberOfShares: len(vaultAllSharesECDSA[vID]), LastReShareNonce: vault.LastReShareNonce}
+		vaultFormData := ui.VaultPickerItem{VaultID: vID, Name: vault.Name, Quorum: vault.Quroum, NumberOfShares: len(vaultAllSharesECDSA[vID]), LastReShareNonce: vaultMaxReShareNonce[vID]}
 		orderedVaults = append(orderedVaults, vaultFormData)
 	}
 
