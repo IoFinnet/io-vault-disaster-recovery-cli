@@ -50,7 +50,14 @@ type AddressRecord struct {
 	Flags     int
 }
 
-// DerivedRecord represents a single row for the output CSV
+// DerivedRecord represents a single row for the output CSV.
+//
+// PrivateKey is held as a hex string and is intentionally not zeroised in
+// memory: materialising the derived private keys is the whole purpose of this
+// tool, and Go strings are immutable so they cannot be reliably wiped in place.
+// The security boundary is the output instead — the CSV is written 0600 (see
+// WriteCSV) and the tool is meant to run on an air-gapped machine — not
+// in-process scrubbing of an unavoidable secret.
 type DerivedRecord struct {
 	AddressRecord
 	PublicKey  string // hex-encoded

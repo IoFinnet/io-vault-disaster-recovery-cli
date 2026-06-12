@@ -276,7 +276,7 @@ h3 {
 .clear-file-btn {
     background: none;
     border: none;
-    color: var(--error-color);
+    color: var(--danger-color);
     font-size: 1rem;
     cursor: pointer;
     padding: 0.25rem 0.5rem;
@@ -291,7 +291,7 @@ h3 {
 }
 
 .hd-csv-upload {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 0.5rem;
@@ -1140,12 +1140,6 @@ button:active {
     margin-top: 1rem;
     padding-top: 1rem;
     border-top: 1px solid var(--border-color);
-}
-
-.hd-csv-upload {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
 }
 
 .hd-addresses-table-container {

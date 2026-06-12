@@ -1067,9 +1067,16 @@ document.addEventListener('DOMContentLoaded', () => {
         // Add click handler for "Copy All" button
         copyBtn.onclick = () => {
             // Create CSV-style output
+            const escapeCSV = (val) => {
+                const str = String(val);
+                if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                    return '"' + str.replace(/"/g, '""') + '"';
+                }
+                return str;
+            };
             let csvContent = 'address,path,algorithm,curve,publicKey,privateKey\n';
             hdAddresses.forEach(addr => {
-                csvContent += `${addr.address},${addr.path},${addr.algorithm},${addr.curve},${addr.publicKey},${addr.privateKey}\n`;
+                csvContent += `${escapeCSV(addr.address)},${escapeCSV(addr.path)},${escapeCSV(addr.algorithm)},${escapeCSV(addr.curve)},${escapeCSV(addr.publicKey)},${escapeCSV(addr.privateKey)}\n`;
             });
 
             copyToClipboard(csvContent);

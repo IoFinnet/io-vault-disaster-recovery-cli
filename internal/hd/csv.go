@@ -102,9 +102,12 @@ func ParseCSV(filePath string) ([]AddressRecord, error) {
 	return records, nil
 }
 
-// WriteCSV writes derived records to the output CSV file
+// WriteCSV writes derived records to the output CSV file.
+// The file contains private keys, so it is created 0600 (owner read/write only)
+// rather than via os.Create, whose 0666-before-umask default can leave it
+// group/world-readable.
 func WriteCSV(filePath string, records []DerivedRecord) error {
-	file, err := os.Create(filePath)
+	file, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to create output CSV: %w", err)
 	}
