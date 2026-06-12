@@ -69,7 +69,7 @@ func PlainTextf(format string, a ...any) string {
 
 func NonANSIEscapeCodes(input string) string {
 	// See https://pkg.go.dev/unicode#CategoryAliases
-	const forbiddenPattern = `\p{Control}`
+	const forbiddenPattern = `\p{Cc}`
 	replaced := regexp.MustCompile(forbiddenPattern).ReplaceAllString(input, "")
 	return replaced
 }
