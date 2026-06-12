@@ -256,7 +256,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 	orderedVaults = make([]ui.VaultPickerItem, 0, len(vaultIDs))
 	for _, vID := range vaultIDs {
 		vault := clearVaults[vID]
-		vaultFormData := ui.VaultPickerItem{VaultID: vID, Name: vault.Name, Quorum: vault.Quroum, NumberOfShares: len(vaultAllSharesECDSA[vID])}
+		vaultFormData := ui.VaultPickerItem{VaultID: vID, Name: vault.Name, Quorum: vault.Quroum, NumberOfShares: len(vaultAllSharesECDSA[vID]), LastReShareNonce: vault.LastReShareNonce}
 		orderedVaults = append(orderedVaults, vaultFormData)
 	}
 

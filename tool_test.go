@@ -82,6 +82,32 @@ func TestTool_New_V2_List(t *testing.T) {
 	}
 }
 
+// Regression: the detected reshare nonce must survive into the listed
+// VaultPickerItem. Previously the item was built without LastReShareNonce, so
+// the web/desktop UI always saw 0 even for vaults that had been reshared.
+func TestTool_New_V2_List_ReportsReshareNonce(t *testing.T) {
+	files := []ui.VaultsDataFile{
+		{File: "./test-files/new_bvn.json", Mnemonics: mmNewBvn},
+		{File: "./test-files/new_x2q.json", Mnemonics: mmNewX2q},
+		{File: "./test-files/new_u44.json", Mnemonics: mmNewU44},
+	}
+
+	_, _, _, vaultFormData, _, err := runTool(files, nil, nil, nil, nil, nil)
+	require.NoError(t, err)
+
+	// dfqyrx0f7v exists only in new_u44.json, saved at reshare nonces [1,2,3];
+	// the highest (3) must be reported, not the 0 zero-value.
+	var found *ui.VaultPickerItem
+	for i := range vaultFormData {
+		if vaultFormData[i].VaultID == "dfqyrx0f7vevbjx9o5yrg7gw" {
+			found = &vaultFormData[i]
+			break
+		}
+	}
+	require.NotNil(t, found, "vault dfqyrx0f7v should be listed")
+	assert.Equal(t, 3, found.LastReShareNonce, "highest reshare nonce should reach the UI")
+}
+
 func TestTool_New_V2_Export_lqns(t *testing.T) {
 	// use the correct file path for tests
 	vaultID := "yz5x2a7zhwwt7r0lv4gklqns"
