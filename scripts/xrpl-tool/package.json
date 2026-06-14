@@ -17,6 +17,6 @@
   "description": "Loads in a scalar format EDDSA keypair for onchain recovery of XRPL assets.",
   "devDependencies": {
     "@types/node": "^22.10.2",
-    "tsx": "^4.19.3"
+    "tsx": "^4.22.4"
   }
 }
