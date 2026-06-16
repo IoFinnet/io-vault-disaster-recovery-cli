@@ -20,5 +20,12 @@
   "devDependencies": {
     "@types/node": "^22.10.2",
     "tsx": "^4.19.3"
+  },
+  "overrides": {
+    "esbuild": "^0.28.1",
+    "ws": "^8.20.1",
+    "elliptic": {
+      "bn.js": "^4.12.3"
+    }
   }
 }
