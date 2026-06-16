@@ -23,6 +23,7 @@ import (
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/bittensor"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/fileutils"
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/hd"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/solana"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/wif"
@@ -44,20 +45,31 @@ type ServerConfig struct {
 	Port int
 }
 
+// HDAddressResult represents a derived HD address for the frontend
+type HDAddressResult struct {
+	Address    string `json:"address"`
+	Path       string `json:"path"`
+	Algorithm  string `json:"algorithm"`
+	Curve      string `json:"curve"`
+	PublicKey  string `json:"publicKey"`
+	PrivateKey string `json:"privateKey"`
+}
+
 // RecoveryResult stores the recovery data to be sent to the frontend
 type RecoveryResult struct {
-	Success          bool   `json:"success"`
-	ErrorMessage     string `json:"errorMessage,omitempty"`
-	Address          string `json:"address,omitempty"`
-	EcdsaPrivateKey  string `json:"ecdsaPrivateKey,omitempty"`
-	TestnetWIF       string `json:"testnetWIF,omitempty"`
-	MainnetWIF       string `json:"mainnetWIF,omitempty"`
-	EddsaPrivateKey  string `json:"eddsaPrivateKey,omitempty"`
-	EddsaPublicKey   string `json:"eddsaPublicKey,omitempty"`
-	XRPLAddress      string `json:"xrplAddress,omitempty"`
-	BittensorAddress string `json:"bittensorAddress,omitempty"`
-	SolanaAddress    string `json:"solanaAddress,omitempty"`
-	ExportedKsFile   string `json:"exportedKsFile,omitempty"`
+	Success          bool              `json:"success"`
+	ErrorMessage     string            `json:"errorMessage,omitempty"`
+	Address          string            `json:"address,omitempty"`
+	EcdsaPrivateKey  string            `json:"ecdsaPrivateKey,omitempty"`
+	TestnetWIF       string            `json:"testnetWIF,omitempty"`
+	MainnetWIF       string            `json:"mainnetWIF,omitempty"`
+	EddsaPrivateKey  string            `json:"eddsaPrivateKey,omitempty"`
+	EddsaPublicKey   string            `json:"eddsaPublicKey,omitempty"`
+	XRPLAddress      string            `json:"xrplAddress,omitempty"`
+	BittensorAddress string            `json:"bittensorAddress,omitempty"`
+	SolanaAddress    string            `json:"solanaAddress,omitempty"`
+	ExportedKsFile   string            `json:"exportedKsFile,omitempty"`
+	HDAddresses      []HDAddressResult `json:"hdAddresses,omitempty"`
 }
 
 // Server represents the http server for the disaster recovery tool
@@ -379,10 +391,6 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 			} else {
 				log.Printf("Error getting EdDSA public key: %v", err)
 			}
-
-			// Clear sensitive data
-			clear(ecSK)
-			clear(edSK)
 		} else {
 			log.Printf("No EdDSA private key present for vault `%s`", vaultID)
 		}
@@ -390,6 +398,16 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 		if exportedKsFile != nil {
 			result.ExportedKsFile = *exportedKsFile
 			log.Printf("Wallet v3 file exported to: %s", ui.PlainText(*exportedKsFile))
+		}
+
+		// Process HD addresses if CSV file was provided (must be done before clearing keys)
+		hdAddresses, hdErr := s.processHDAddresses(r, ecSK, edSK)
+		if hdErr != nil {
+			// Log the error but don't fail the entire recovery
+			log.Printf("HD address derivation error: %v", hdErr)
+		} else if len(hdAddresses) > 0 {
+			result.HDAddresses = hdAddresses
+			log.Printf("Derived %d HD addresses", len(hdAddresses))
 		}
 
 		// Clear sensitive data again to be safe
@@ -409,8 +427,12 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, error) {
 	// Debug logging to help diagnose form issues
 	// Get file uploads - the frontend might use "files" or file input specific IDs
+	// Skip the hdAddressesCSV key - that's handled separately by processHDAddresses
 	var fileHeaders []*multipart.FileHeader
-	for _, uploadedFiles := range r.MultipartForm.File {
+	for key, uploadedFiles := range r.MultipartForm.File {
+		if key == "hdAddressesCSV" {
+			continue // Skip HD addresses CSV - not a backup file
+		}
 		fileHeaders = append(fileHeaders, uploadedFiles...)
 	}
 
@@ -629,6 +651,76 @@ func validateOrigin(next http.Handler, port int) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// processHDAddresses processes an optional HD addresses CSV file and derives child keys
+func (s *Server) processHDAddresses(r *http.Request, ecdsaSK, eddsaSK []byte) ([]HDAddressResult, error) {
+	// Check if an HD CSV file was uploaded
+	hdFiles := r.MultipartForm.File["hdAddressesCSV"]
+	if len(hdFiles) == 0 {
+		// No HD CSV file provided - this is not an error
+		return nil, nil
+	}
+
+	// Process only the first HD CSV file
+	fileHeader := hdFiles[0]
+
+	// Open the uploaded file
+	file, err := fileHeader.Open()
+	if err != nil {
+		return nil, fmt.Errorf("failed to open HD addresses CSV file: %w", err)
+	}
+	defer file.Close()
+
+	// Save the CSV to a temp file
+	csvPath := filepath.Join(s.tempDir, "hd_addresses_"+fileHeader.Filename)
+	outFile, err := os.Create(csvPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temporary HD CSV file: %w", err)
+	}
+
+	if _, err := io.Copy(outFile, file); err != nil {
+		outFile.Close()
+		return nil, fmt.Errorf("failed to save HD CSV file: %w", err)
+	}
+	outFile.Close()
+
+	// Parse the CSV
+	records, err := hd.ParseCSV(csvPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse HD addresses CSV: %w", err)
+	}
+
+	if len(records) == 0 {
+		return nil, nil
+	}
+
+	// Create the deriver with the master keys
+	deriver, err := hd.NewDeriver(ecdsaSK, eddsaSK)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HD deriver: %w", err)
+	}
+
+	// Derive all keys
+	derivedRecords, err := deriver.DeriveAll(records)
+	if err != nil {
+		return nil, fmt.Errorf("HD key derivation failed: %w", err)
+	}
+
+	// Convert to HDAddressResult for the frontend
+	results := make([]HDAddressResult, len(derivedRecords))
+	for i, rec := range derivedRecords {
+		results[i] = HDAddressResult{
+			Address:    rec.Address,
+			Path:       rec.Path,
+			Algorithm:  string(rec.Algorithm),
+			Curve:      string(rec.Curve),
+			PublicKey:  rec.PublicKey,
+			PrivateKey: rec.PrivateKey,
+		}
+	}
+
+	return results, nil
 }
 
 // OpenBrowser opens the URL in the default browser

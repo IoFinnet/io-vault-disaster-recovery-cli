@@ -23,16 +23,16 @@ import (
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/data"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/fileutils"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
-	"github.com/binance-chain/tss-lib/crypto"
-	"github.com/binance-chain/tss-lib/crypto/vss"
-	ecdsa_keygen "github.com/binance-chain/tss-lib/ecdsa/keygen"
-	eddsa_keygen "github.com/binance-chain/tss-lib/eddsa/keygen"
-	"github.com/binance-chain/tss-lib/tss"
 	"github.com/decred/dcrd/dcrec/edwards/v2"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
+	"github.com/iofinnet/tss-lib/v3/crypto"
+	"github.com/iofinnet/tss-lib/v3/crypto/vss"
+	"github.com/iofinnet/tss-lib/v3/tss"
+	ecdsa_keygen "github.com/iofinnet/tss-lib/v3/tss/ecdsa/keygen"
+	eddsa_keygen "github.com/iofinnet/tss-lib/v3/tss/schnorr/keygen"
 	errors2 "github.com/pkg/errors"
 	"github.com/tyler-smith/go-bip39"
 	"golang.org/x/crypto/sha3"
@@ -92,6 +92,11 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 	vaultAllSharesEDDSA := make(VaultAllSharesEdDSA, len(vaultsDataFile)*16)
 	vaultHasEDDSA := make(map[string]bool, len(vaultsDataFile)*16)
 	vaultLastNonces := make(map[string]int, len(vaultsDataFile)*16)
+	// Highest reshare nonce selected for each vault across all input files. Unlike
+	// vaultLastNonces (last-file-wins, used for the mismatch warning), this is an
+	// order-independent max so list-vaults reports a stable value regardless of
+	// vaultsDataFile order.
+	vaultMaxReShareNonce := make(map[string]int, len(vaultsDataFile)*16)
 
 	// Process each vault data file
 	for _, file := range vaultsDataFile {
@@ -147,6 +152,9 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 				}
 			}
 			vaultLastNonces[vID] = lastReshareNonce
+			if cur, ok := vaultMaxReShareNonce[vID]; !ok || lastReshareNonce > cur {
+				vaultMaxReShareNonce[vID] = lastReshareNonce
+			}
 			cipheredVault := resharesMap[lastReshareNonce]
 
 			// DECRYPT
@@ -256,7 +264,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 	orderedVaults = make([]ui.VaultPickerItem, 0, len(vaultIDs))
 	for _, vID := range vaultIDs {
 		vault := clearVaults[vID]
-		vaultFormData := ui.VaultPickerItem{VaultID: vID, Name: vault.Name, Quorum: vault.Quroum, NumberOfShares: len(vaultAllSharesECDSA[vID])}
+		vaultFormData := ui.VaultPickerItem{VaultID: vID, Name: vault.Name, Quorum: vault.Quroum, NumberOfShares: len(vaultAllSharesECDSA[vID]), LastReShareNonce: vaultMaxReShareNonce[vID]}
 		orderedVaults = append(orderedVaults, vaultFormData)
 	}
 
