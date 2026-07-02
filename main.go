@@ -33,6 +33,7 @@ func main() {
 	quorumOverride := flag.Int("threshold", 0, "(Optional) Vault Quorum (Threshold) override. Try it if the tool advises you to do so.")
 	passwordForKS := flag.String("password", "", "(Optional) Encryption password for the Ethereum wallet v3 file; use with -export")
 	exportKSFile := flag.String("export", "wallet.json", "(Optional) Filename to export a Ethereum wallet v3 JSON to; use with -password.")
+	privateKeyFile := flag.String("private-key", "", "(Required when recovering from Virtual Signer .dr files) Path to the ML-KEM-768 private key PEM.")
 
 	// Note: Transaction modes have been removed - use scripts in scripts/ directory instead
 
@@ -99,6 +100,7 @@ func main() {
 		QuorumOverride:   *quorumOverride,
 		ExportKSFile:     *exportKSFile,
 		PasswordForKS:    *passwordForKS,
+		PrivateKeyFile:   *privateKeyFile,
 		ZipExtractedDirs: []string{}, // Initialize empty slice for tracking ZIP dirs
 	}
 
@@ -158,11 +160,23 @@ func main() {
 
 	defer vaultsDataFiles.Zeroize()
 
+	// Read the ML-KEM-768 private key PEM, if a path was supplied via -private-key or entered
+	// interactively above (for .dr files); config.GlobalConfig.PrivateKeyFile reflects either source.
+	var privateKeyPEM []byte
+	if config.GlobalConfig.PrivateKeyFile != "" {
+		var err2 error
+		privateKeyPEM, err2 = os.ReadFile(config.GlobalConfig.PrivateKeyFile)
+		if err2 != nil {
+			fmt.Print(ui.ErrorBox(fmt.Errorf("⚠ unable to read private key file `%s`: %s", config.GlobalConfig.PrivateKeyFile, err2)))
+			os.Exit(1)
+		}
+	}
+
 	/**
 	 * Retrieve vaults information and select a vault
 	 */
 
-	_, _, _, vaultsFormInfo, _, err := runTool(*vaultsDataFiles, nil, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
+	_, _, _, vaultsFormInfo, _, err := runTool(*vaultsDataFiles, nil, nonceOverride, quorumOverride, exportKSFile, passwordForKS, privateKeyPEM)
 	if err != nil {
 		fmt.Println(ui.ErrorBox(err))
 		fmt.Println()
@@ -212,7 +226,7 @@ func main() {
 		lipgloss.NewStyle().Bold(true).Render(ui.PlainTextf("RECOVERING VAULT \"%s\" WITH ID %s\n", selectedVault.Name, selectedVault.VaultID)),
 	)
 
-	address, ecSK, edSK, _, exportedKsFile, err := runTool(*vaultsDataFiles, &selectedVault.VaultID, nonceOverride, quorumOverride, exportKSFile, passwordForKS)
+	address, ecSK, edSK, _, exportedKsFile, err := runTool(*vaultsDataFiles, &selectedVault.VaultID, nonceOverride, quorumOverride, exportKSFile, passwordForKS, privateKeyPEM)
 	if err != nil {
 		fmt.Println(ui.ErrorBox(err))
 		fmt.Println()

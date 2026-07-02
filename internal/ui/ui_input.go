@@ -6,6 +6,7 @@ package ui
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -27,11 +28,17 @@ type (
 
 	// MnemonicsFormModel is a struct that represents the model for the mnemonics entry.
 	MnemonicsFormModel struct {
-		filenames    []string
-		totalFiles   int
-		extractedAll bool
+		filenames      []string
+		totalFiles     int
+		extractedAll   bool
+		privateKeyFile string
 	}
 )
+
+// isDRFile reports whether pathname is a Virtual Signer .dr file, identified by extension.
+func isDRFile(pathname string) bool {
+	return strings.EqualFold(filepath.Ext(pathname), ".dr")
+}
 
 // removes reference to mnemonic strings from the entry.
 func (file *VaultsDataFile) Zeroize() {
@@ -48,9 +55,10 @@ func (files *VaultsDataFiles) Zeroize() {
 
 func NewMnemonicsForm(config config.AppConfig) MnemonicsFormModel {
 	return MnemonicsFormModel{
-		filenames:    config.Filenames,
-		totalFiles:   len(config.Filenames),
-		extractedAll: false,
+		filenames:      config.Filenames,
+		totalFiles:     len(config.Filenames),
+		extractedAll:   false,
+		privateKeyFile: config.PrivateKeyFile,
 	}
 }
 
@@ -105,6 +113,12 @@ func (m *MnemonicsFormModel) Run() (*VaultsDataFiles, error) {
 			continue
 		}
 
+		// .dr files are decrypted with a shared private key, not a per-file mnemonic; skip the prompt.
+		if isDRFile(pathname) {
+			filesWithMnemonics = append(filesWithMnemonics, VaultsDataFile{File: pathname})
+			continue
+		}
+
 		// Process regular JSON files
 		displayFileName := filepath.Base(pathname)
 
@@ -150,6 +164,12 @@ func (m *MnemonicsFormModel) Run() (*VaultsDataFiles, error) {
 		fmt.Printf("Processing %d extracted JSON files from ZIP archives\n", len(extractedFiles))
 
 		for _, extractedFile := range extractedFiles {
+			// .dr files are decrypted with a shared private key, not a per-file mnemonic; skip the prompt.
+			if isDRFile(extractedFile) {
+				filesWithMnemonics = append(filesWithMnemonics, VaultsDataFile{File: extractedFile})
+				continue
+			}
+
 			// Use the full filename from the ZIP
 			fileName := filepath.Base(extractedFile)
 			displayFileName := fileName
@@ -198,7 +218,51 @@ func (m *MnemonicsFormModel) Run() (*VaultsDataFiles, error) {
 	fmt.Println(m.fileList(filesWithMnemonics))
 	fmt.Print("All mnemonics entered\n\n")
 
+	if err := m.ensurePrivateKeyFile(filesWithMnemonics); err != nil {
+		return nil, err
+	}
+
 	return &filesWithMnemonics, nil
+}
+
+// ensurePrivateKeyFile prompts once for the ML-KEM-768 private key PEM path if any .dr file is
+// present and no path was already supplied via -private-key, then records it in the global config
+// for main.go to read and load after this form returns.
+func (m *MnemonicsFormModel) ensurePrivateKeyFile(files VaultsDataFiles) error {
+	hasDRFile := false
+	for _, f := range files {
+		if isDRFile(f.File) {
+			hasDRFile = true
+			break
+		}
+	}
+	if !hasDRFile || m.privateKeyFile != "" {
+		return nil
+	}
+
+	var path string
+	input := huh.NewInput().
+		Key("privateKeyFile").
+		Title("Virtual Signer .dr files detected").
+		Description("Enter the path to the ML-KEM-768 private key PEM file").
+		Value(&path).
+		Validate(func(input string) error {
+			if strings.TrimSpace(input) == "" {
+				return errors2.New("private key path cannot be empty")
+			}
+			if _, err := os.Stat(input); err != nil {
+				return errors2.Errorf("unable to see file `%s` - does it exist?", input)
+			}
+			return nil
+		})
+	form := huh.NewForm(huh.NewGroup(input)).WithTheme(huh.ThemeBase16())
+	if err := form.Run(); err != nil {
+		return err
+	}
+
+	m.privateKeyFile = path
+	config.GlobalConfig.PrivateKeyFile = path
+	return nil
 }
 
 // processZipFileForMnemonics extracts JSON files from a ZIP archive

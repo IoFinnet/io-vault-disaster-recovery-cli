@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/data"
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/dr"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/fileutils"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/binance-chain/tss-lib/crypto"
@@ -81,7 +82,7 @@ type (
 )
 
 // Implementation of runTool for the web package
-func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride, quorumOverride *int, exportKSFile, passwordForKS *string) (
+func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride, quorumOverride *int, exportKSFile, passwordForKS *string, privateKeyPEM []byte) (
 	address string, ecdsaSK, eddsaSK []byte, orderedVaults []ui.VaultPickerItem, exportedKsFile *string, welp error) {
 
 	justListingVaults := vaultID == nil || *vaultID == ""
@@ -95,6 +96,15 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 
 	// Process each vault data file
 	for _, file := range vaultsDataFile {
+		if strings.EqualFold(filepath.Ext(file.File), ".dr") {
+			if err := processDRFile(file.File, privateKeyPEM, vaultID, justListingVaults,
+				clearVaults, vaultAllSharesECDSA, vaultAllSharesEDDSA, vaultHasEDDSA); err != nil {
+				welp = err
+				return
+			}
+			continue
+		}
+
 		saveData := new(SavedData)
 
 		content, err := os.ReadFile(file.File)
@@ -387,6 +397,83 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 		fmt.Println(ui.PlainTextf("\nWrote a MetaMask wallet v3 (for ECDSA key only) to: %s.\n", *exportKSFile))
 	}
 	return address, ecdsaSK, eddsaSK, orderedVaults, exportedKsFile, nil
+}
+
+// processDRFile decrypts a Virtual Signer .dr file and folds its shares into the same per-vault
+// share pools the legacy mnemonic-encrypted path populates, so a single recovery run can mix both
+// file formats for the same vault.
+func processDRFile(path string, privateKeyPEM []byte, vaultID *string, justListingVaults bool,
+	clearVaults ClearVaultMap, vaultAllSharesECDSA VaultAllSharesECDSA, vaultAllSharesEDDSA VaultAllSharesEdDSA,
+	vaultHasEDDSA map[string]bool) error {
+
+	if len(privateKeyPEM) == 0 {
+		return fmt.Errorf("⚠ %s is a Virtual Signer .dr file; supply the ML-KEM-768 private key PEM to decrypt it", path)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("⚠ failed to read file(%s): %s", filepath.Base(path), fileutils.StripPathFromError(err))
+	}
+
+	parsed, err := dr.DecryptAndParse(privateKeyPEM, raw)
+	if err != nil {
+		return fmt.Errorf("⚠ failed to decrypt %s: %s", filepath.Base(path), err)
+	}
+
+	var vID string
+	var threshold int
+	switch parsed.Kind {
+	case dr.KindECDSA:
+		vID, threshold = parsed.ECDSA.VaultId, parsed.ECDSA.Threshold
+	case dr.KindEdDSA:
+		vID, threshold = parsed.EdDSA.VaultId, parsed.EdDSA.Threshold
+	}
+
+	// only look at the vault we're interested in, if one was supplied
+	if !justListingVaults && vID != *vaultID {
+		return nil
+	}
+
+	if err := ensureClearVaultThreshold(clearVaults, vID, threshold, path); err != nil {
+		return err
+	}
+
+	switch parsed.Kind {
+	case dr.KindECDSA:
+		shares, err := parsed.ECDSA.ToECDSASaveData()
+		if err != nil {
+			return fmt.Errorf("⚠ %s: %s", filepath.Base(path), err)
+		}
+		vaultAllSharesECDSA[vID] = append(vaultAllSharesECDSA[vID], shares...)
+	case dr.KindEdDSA:
+		shares, err := parsed.EdDSA.ToEdDSASaveData()
+		if err != nil {
+			return fmt.Errorf("⚠ %s: %s", filepath.Base(path), err)
+		}
+		vaultAllSharesEDDSA[vID] = append(vaultAllSharesEDDSA[vID], shares...)
+		vaultHasEDDSA[vID] = true
+	}
+	return nil
+}
+
+// ensureClearVaultThreshold makes sure a ClearVault entry exists for a vault first seen via a .dr
+// file (which carries no vault Name, only a VaultId), and errors out if a .dr file's threshold
+// disagrees with a threshold already established for this vault from another input file.
+func ensureClearVaultThreshold(clearVaults ClearVaultMap, vID string, threshold int, path string) error {
+	if threshold < 1 {
+		return fmt.Errorf("⚠ %s does not carry a valid threshold", filepath.Base(path))
+	}
+	existing, ok := clearVaults[vID]
+	if !ok {
+		clearVaults[vID] = &ClearVault{Name: vID, Quroum: threshold}
+		return nil
+	}
+	if existing.Quroum != 0 && existing.Quroum != threshold {
+		return fmt.Errorf("⚠ vault %s: threshold mismatch between input files (%d vs %d). "+
+			"Make sure all supplied files are from the same vault epoch", vID, existing.Quroum, threshold)
+	}
+	existing.Quroum = threshold
+	return nil
 }
 
 // inflateSharesForCurve inflates shares for a specific curve
