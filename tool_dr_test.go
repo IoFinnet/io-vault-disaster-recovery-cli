@@ -11,6 +11,7 @@ import (
 	"crypto/mlkem"
 	"crypto/rand"
 	"crypto/sha512"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -141,11 +142,27 @@ func writeLegacyVaultFile(t *testing.T, dir, name, mnemonic, vaultID string, non
 	return path
 }
 
+// oidMLKEM768Test is the ML-KEM-768 algorithm identifier (RFC 9935 / NIST CSOR
+// 2.16.840.1.101.3.4.4.2) used to wrap generated seeds in the standard
+// PKCS#8 PrivateKeyInfo DER structure that OpenSSL 3.5+ and current
+// key-generation tooling produce.
+var oidMLKEM768Test = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 4, 2}
+
 func genMLKEMKeyPEM(t *testing.T) (priv *mlkem.DecapsulationKey768, privPEM []byte) {
 	t.Helper()
 	priv, err := mlkem.GenerateKey768()
 	require.NoError(t, err)
-	privPEM = pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: priv.Bytes()})
+
+	der, err := asn1.Marshal(struct {
+		Version    int
+		Algo       struct{ Algorithm asn1.ObjectIdentifier }
+		PrivateKey []byte
+	}{
+		Algo:       struct{ Algorithm asn1.ObjectIdentifier }{oidMLKEM768Test},
+		PrivateKey: priv.Bytes(),
+	})
+	require.NoError(t, err)
+	privPEM = pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
 	return priv, privPEM
 }
 

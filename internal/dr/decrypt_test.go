@@ -9,6 +9,7 @@ import (
 	"crypto/cipher"
 	"crypto/mlkem"
 	"crypto/rand"
+	"encoding/asn1"
 	"encoding/pem"
 	"io"
 	"testing"
@@ -32,10 +33,23 @@ func encryptForTest(t *testing.T, pub *mlkem.EncapsulationKey768, plaintext []by
 	return append(cipherTextKEM, sealed...)
 }
 
+// mlkemPrivateKeyPEM wraps a raw ML-KEM-768 seed in the standard PKCS#8
+// PrivateKeyInfo DER structure (RFC 9935), matching what OpenSSL 3.5+ and
+// current key-generation tooling produce.
+func mlkemPrivateKeyPEM(t *testing.T, seed []byte) []byte {
+	t.Helper()
+	der, err := asn1.Marshal(mlkemPKCS8PrivateKeyInfo{
+		Algo:       mlkemAlgorithmIdentifier{Algorithm: oidMLKEM768},
+		PrivateKey: seed,
+	})
+	require.NoError(t, err)
+	return pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
+}
+
 func TestDecryptFile_RoundTrip(t *testing.T) {
 	priv, err := mlkem.GenerateKey768()
 	require.NoError(t, err)
-	privPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: priv.Bytes()})
+	privPEM := mlkemPrivateKeyPEM(t, priv.Bytes())
 
 	want := []byte(`{"Data":[{"Xi":1,"ShareID":2}],"VaultId":"vault-1","Threshold":2}`)
 	raw := encryptForTest(t, priv.EncapsulationKey(), want)
@@ -50,7 +64,7 @@ func TestDecryptFile_WrongKey(t *testing.T) {
 	require.NoError(t, err)
 	priv2, err := mlkem.GenerateKey768()
 	require.NoError(t, err)
-	priv2PEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: priv2.Bytes()})
+	priv2PEM := mlkemPrivateKeyPEM(t, priv2.Bytes())
 
 	raw := encryptForTest(t, priv1.EncapsulationKey(), []byte("secret"))
 
