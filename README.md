@@ -98,23 +98,30 @@ Unblock-File -Path "recovery-tool.exe"
 
 ## Usage
 
-Run the recovery tool with your backup JSON files or ZIP archives containing JSON files.
+Run the recovery tool with your backup JSON files, .dr files or ZIP archives containing JSON files or .dr files.
 ``` bash
 ./recovery-tool-mac sandbox/file1.json sandbox/file2.json
 ```
 
-You can also use ZIP archives that contain multiple JSON files:
+.dr files are files created by Virtual Signers. When referencing .dr files with the recovery tool, provide the path to the private key used by the Virtual Signer for Disaster Recovery files. This is the private part of the public/private ML-KEM-768 key pair
+created as the initial step of the Disaster Recovery process. See scripts/posix/gen_mlkem768.sh in this project for a sample script that calls `openssl` to generate the ML-KEM-768 key pair.
+
+``` bash
+./recovery-tool-mac -private-key sandbox/mlkem768_priv.pem sandbox/file1.json sandbox/019f2838-e9ab-7e0c-8a45-cf8a3ae18e8e.ecdsa.secp256k1.dr sandbox/019f2838-e9ab-7e0c-8a45-cf8a3ae18e8e.eddsa.ed25519.dr
+```
+
+You can also use ZIP archives that contain multiple JSON/dr files:
 ```bash
 ./recovery-tool-mac sandbox/backup.zip
 ```
 
 > [!NOTE]
-> When using ZIP files, ensure they contain only a flat hierarchy of JSON files with no nested directories.
-> Each ZIP file will be treated as a batch of JSON files, all using the same mnemonic phrase.
+> When using ZIP files, ensure they contain only a flat hierarchy of JSON or .dr files with no nested directories.
+> Each ZIP file will be treated as a batch of JSON or .dr files. All JSON must use the same mnemonic phrase and the .dr files must belong to the same vault.
 
 You can also provide the vault ID you want to recover, which will skip the step of choosing a vault:
 ```bash
-./recovery-tool-mac -vault-id cl347wz8w00006sx3f1g23p4s sandbox/file1.json sandbox/file2.json
+./recovery-tool-mac -vault-id "019f2838-e9ab-7e0c-8a45-cf89a63d9169"  -private-key sandbox/mlkem768_priv.pem sandbox/file1.json sandbox/019f2838-e9ab-7e0c-8a45-cf8a3ae18e8e.ecdsa.secp256k1.dr sandbox/019f2838-e9ab-7e0c-8a45-cf8a3ae18e8e.eddsa.ed25519.dr
 ```
 
 Use multiple ZIP archives:
@@ -122,7 +129,7 @@ Use multiple ZIP archives:
 ./recovery-tool-mac sandbox/backups1.zip sandbox/backups2.zip sandbox/backups3.zip
 ```
 
-Note: You cannot mix JSON and ZIP files in the same command.
+Note: You cannot mix JSON and ZIP files, or .dr and ZIP files in the same command.
 
 Replace `mac` with one of the following depending on your computer's OS and architecture:
 - `linux-amd64` - For Linux on x86-64 processors
