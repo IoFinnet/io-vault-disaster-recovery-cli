@@ -59,12 +59,16 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 	vaultAllSharesEDDSA := make(VaultAllSharesEdDSA, len(vaultsDataFile)*16)
 	vaultHasEDDSA := make(map[string]bool, len(vaultsDataFile)*16)
 	vaultLastNonces := make(map[string]int, len(vaultsDataFile)*16)
+	// .dr files carry a reshare nonce (unlike the legacy mnemonic-encrypted JSON below, one .dr
+	// file is one device's shares for one specific epoch), so they're grouped by vault+nonce here
+	// and folded in below once every input file has been seen, picking the highest nonce the same
+	// way the legacy path does.
+	drSharesByVaultNonce := make(map[string]map[int]*drVaultShares, len(vaultsDataFile))
 
 	// // Do the main routine
 	for _, file := range vaultsDataFile {
 		if strings.EqualFold(filepath.Ext(file.File), ".dr") {
-			if err := processDRFile(file.File, privateKeyPEM, vaultID, justListingVaults,
-				clearVaults, vaultAllSharesECDSA, vaultAllSharesEDDSA, vaultHasEDDSA); err != nil {
+			if err := processDRFile(file.File, privateKeyPEM, vaultID, justListingVaults, drSharesByVaultNonce); err != nil {
 				welp = err
 				return
 			}
@@ -98,30 +102,15 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 			}
 
 			// take the highest reshareNonce we have saved (best effort)
-			lastReshareNonce := -1
+			nonces := make(map[int]bool, len(resharesMap))
 			for nonce := range resharesMap {
-				// support the -nonce flag to override the last reshare nonce we use
-				if !justListingVaults && nonceOverride != nil && *nonceOverride > -1 && *nonceOverride != nonce {
-					continue
-				}
-				if nonce > lastReshareNonce {
-					lastReshareNonce = nonce
-				}
+				nonces[nonce] = true
 			}
+			lastReshareNonce := pickLastReshareNonce(nonces, vID, clearVaults, nonceOverride, justListingVaults, vaultLastNonces)
 			if lastReshareNonce == -1 {
 				//welp = fmt.Errorf("⚠ no share data found for vault `%s` in save file", vID)
 				continue // not a show stopper
 			}
-			if glbLastReShareNonce, ok := vaultLastNonces[vID]; ok && glbLastReShareNonce != lastReshareNonce {
-				vaultName := clearVaults[vID].Name
-				fmt.Println(ui.PlainTextf("\n⚠ Non matching reshare nonce for vault `%s`. You may have to specify prior reshare config with -nonce and -threshold when recovering that vault", vaultName))
-				if lastReshareNonce-1 >= 0 {
-					fmt.Println(ui.PlainTextf("⚠ If you have problems recovering that vault, you could try: -vault-id %s -nonce %d -threshold x. Replace x with previous vault threshold.", vID, lastReshareNonce-1))
-				} else {
-					println()
-				}
-			}
-			vaultLastNonces[vID] = lastReshareNonce
 			cipheredVault := resharesMap[lastReshareNonce]
 
 			// DECRYPT
@@ -218,6 +207,32 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 		}
 
 		clear(aesKey32)
+	}
+
+	// Fold in the .dr shares accumulated above: for each vault, pick the highest reshare nonce
+	// (or -nonce override) the same way the legacy mnemonic-encrypted JSON path does, warning on
+	// cross-file nonce disagreement, then merge that epoch's shares into the same pools used by
+	// the legacy path so a single recovery run can mix both file formats for a vault.
+	for vID, byNonce := range drSharesByVaultNonce {
+		nonces := make(map[int]bool, len(byNonce))
+		for nonce := range byNonce {
+			nonces[nonce] = true
+		}
+		lastReshareNonce := pickLastReshareNonce(nonces, vID, clearVaults, nonceOverride, justListingVaults, vaultLastNonces)
+		if lastReshareNonce == -1 {
+			continue
+		}
+		chosen := byNonce[lastReshareNonce]
+		if err := ensureClearVaultThreshold(clearVaults, vID, chosen.threshold,
+			fmt.Sprintf(".dr files for vault %s at reshare nonce %d", vID, lastReshareNonce)); err != nil {
+			welp = err
+			return
+		}
+		vaultAllSharesECDSA[vID] = append(vaultAllSharesECDSA[vID], chosen.ecdsa...)
+		if chosen.hasEdDSA {
+			vaultAllSharesEDDSA[vID] = append(vaultAllSharesEDDSA[vID], chosen.eddsa...)
+			vaultHasEDDSA[vID] = true
+		}
 	}
 
 	// populate vault IDs
@@ -369,8 +384,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride,
 // share pools the legacy mnemonic-encrypted path populates, so a single recovery run can mix both
 // file formats for the same vault.
 func processDRFile(path string, privateKeyPEM []byte, vaultID *string, justListingVaults bool,
-	clearVaults ClearVaultMap, vaultAllSharesECDSA VaultAllSharesECDSA, vaultAllSharesEDDSA VaultAllSharesEdDSA,
-	vaultHasEDDSA map[string]bool) error {
+	drSharesByVaultNonce map[string]map[int]*drVaultShares) error {
 
 	if len(privateKeyPEM) == 0 {
 		return fmt.Errorf("⚠ %s is a Virtual Signer .dr file; use -private-key to supply the ML-KEM-768 private key PEM", path)
@@ -386,6 +400,8 @@ func processDRFile(path string, privateKeyPEM []byte, vaultID *string, justListi
 		return fmt.Errorf("⚠ failed to decrypt %s: %s", path, err)
 	}
 
+	// The reconstructed vault ID and threshold come from the decrypted (AEAD-authenticated)
+	// payload, not the plaintext envelope fields, since the latter aren't tamper-evident.
 	var vID string
 	var threshold int
 	switch parsed.Kind {
@@ -399,9 +415,23 @@ func processDRFile(path string, privateKeyPEM []byte, vaultID *string, justListi
 	if !justListingVaults && vID != *vaultID {
 		return nil
 	}
+	if threshold < 1 {
+		return fmt.Errorf("⚠ %s does not carry a valid threshold", path)
+	}
 
-	if err := ensureClearVaultThreshold(clearVaults, vID, threshold, path); err != nil {
-		return err
+	nonce := int(parsed.Envelope.ReshareNonce)
+	byNonce, ok := drSharesByVaultNonce[vID]
+	if !ok {
+		byNonce = make(map[int]*drVaultShares)
+		drSharesByVaultNonce[vID] = byNonce
+	}
+	entry, ok := byNonce[nonce]
+	if !ok {
+		entry = &drVaultShares{threshold: threshold}
+		byNonce[nonce] = entry
+	} else if entry.threshold != threshold {
+		return fmt.Errorf("⚠ %s: threshold %d disagrees with another .dr file at the same reshare nonce %d for vault %s (%d)",
+			path, threshold, nonce, vID, entry.threshold)
 	}
 
 	switch parsed.Kind {
@@ -410,16 +440,53 @@ func processDRFile(path string, privateKeyPEM []byte, vaultID *string, justListi
 		if err != nil {
 			return fmt.Errorf("⚠ %s: %s", path, err)
 		}
-		vaultAllSharesECDSA[vID] = append(vaultAllSharesECDSA[vID], shares...)
+		entry.ecdsa = append(entry.ecdsa, shares...)
 	case dr.KindEdDSA:
 		shares, err := parsed.EdDSA.ToEdDSASaveData()
 		if err != nil {
 			return fmt.Errorf("⚠ %s: %s", path, err)
 		}
-		vaultAllSharesEDDSA[vID] = append(vaultAllSharesEDDSA[vID], shares...)
-		vaultHasEDDSA[vID] = true
+		entry.eddsa = append(entry.eddsa, shares...)
+		entry.hasEdDSA = true
 	}
 	return nil
+}
+
+// pickLastReshareNonce selects the reshare nonce to use for a vault from the set of nonces found
+// across its input files (honoring the -nonce override), warning if it disagrees with the nonce
+// already picked for this vault from another input file. Shared by the legacy mnemonic-encrypted
+// JSON path and the Virtual Signer .dr JSON path so multi-epoch inputs are handled consistently
+// regardless of file format. Returns -1 if no nonce survives the override filter.
+func pickLastReshareNonce(nonces map[int]bool, vID string, clearVaults ClearVaultMap, nonceOverride *int,
+	justListingVaults bool, vaultLastNonces map[string]int) int {
+
+	lastReshareNonce := -1
+	for nonce := range nonces {
+		// support the -nonce flag to override the last reshare nonce we use
+		if !justListingVaults && nonceOverride != nil && *nonceOverride > -1 && *nonceOverride != nonce {
+			continue
+		}
+		if nonce > lastReshareNonce {
+			lastReshareNonce = nonce
+		}
+	}
+	if lastReshareNonce == -1 {
+		return -1
+	}
+	if glbLastReShareNonce, ok := vaultLastNonces[vID]; ok && glbLastReShareNonce != lastReshareNonce {
+		vaultName := vID
+		if cv, ok2 := clearVaults[vID]; ok2 && cv != nil {
+			vaultName = cv.Name
+		}
+		fmt.Println(ui.PlainTextf("\n⚠ Non matching reshare nonce for vault `%s`. You may have to specify prior reshare config with -nonce and -threshold when recovering that vault", vaultName))
+		if lastReshareNonce-1 >= 0 {
+			fmt.Println(ui.PlainTextf("⚠ If you have problems recovering that vault, you could try: -vault-id %s -nonce %d -threshold x. Replace x with previous vault threshold.", vID, lastReshareNonce-1))
+		} else {
+			println()
+		}
+	}
+	vaultLastNonces[vID] = lastReshareNonce
+	return lastReshareNonce
 }
 
 // ensureClearVaultThreshold makes sure a ClearVault entry exists for a vault first seen via a .dr

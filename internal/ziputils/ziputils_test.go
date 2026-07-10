@@ -325,6 +325,66 @@ func createEmptyZip(zipPath string) error {
 	return zipWriter.Close()
 }
 
+// TestProcessZipFile_WithDRFile verifies that a flat ZIP mixing a Virtual Signer .dr file (JSON,
+// per the current on-disk envelope format) alongside a .json file is accepted and both are
+// extracted, since .dr is now a supported extension inside a ZIP.
+func TestProcessZipFile_WithDRFile(t *testing.T) {
+	zipPath := filepath.Join(t.TempDir(), "with_dr.zip")
+
+	zipFile, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatalf("failed to create test ZIP file: %v", err)
+	}
+	zipWriter := zip.NewWriter(zipFile)
+
+	jsonWriter, err := zipWriter.Create("share.json")
+	if err != nil {
+		t.Fatalf("failed to add json entry: %v", err)
+	}
+	if _, err := jsonWriter.Write([]byte(`{"key": "value"}`)); err != nil {
+		t.Fatalf("failed to write json entry: %v", err)
+	}
+
+	drWriter, err := zipWriter.Create("req0.ecdsa.secp256k1.dr")
+	if err != nil {
+		t.Fatalf("failed to add .dr entry: %v", err)
+	}
+	if _, err := drWriter.Write([]byte(`{"vaultId":"v1","requestId":"req0","reshareNonce":1,"algo":"ECDSA","curve":"secp256k1","dataB64":"AAAA"}`)); err != nil {
+		t.Fatalf("failed to write .dr entry: %v", err)
+	}
+
+	if err := zipWriter.Close(); err != nil {
+		t.Fatalf("failed to close ZIP writer: %v", err)
+	}
+	if err := zipFile.Close(); err != nil {
+		t.Fatalf("failed to close ZIP file: %v", err)
+	}
+
+	extractedFiles, err := ProcessZipFile(zipPath)
+	if err != nil {
+		t.Fatalf("ProcessZipFile() unexpected error: %v", err)
+	}
+	if len(extractedFiles) > 0 {
+		defer os.RemoveAll(filepath.Dir(extractedFiles[0]))
+	}
+	if len(extractedFiles) != 2 {
+		t.Fatalf("ProcessZipFile() extracted %d files, want 2", len(extractedFiles))
+	}
+
+	var sawJSON, sawDR bool
+	for _, f := range extractedFiles {
+		switch strings.ToLower(filepath.Ext(f)) {
+		case ".json":
+			sawJSON = true
+		case ".dr":
+			sawDR = true
+		}
+	}
+	if !sawJSON || !sawDR {
+		t.Fatalf("expected both a .json and a .dr file among extracted files, got %v", extractedFiles)
+	}
+}
+
 // Helper function to check if a file exists
 func fileExists(path string) bool {
 	_, err := os.Stat(path)

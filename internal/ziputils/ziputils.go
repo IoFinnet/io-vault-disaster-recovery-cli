@@ -20,6 +20,12 @@ func IsZipFile(filename string) bool {
 	return strings.ToLower(filepath.Ext(filename)) == ".zip"
 }
 
+// allowedZipExtensions are the file extensions ProcessZipFile accepts inside a flat ZIP archive:
+// ".json" for legacy mnemonic-encrypted vault backups (mobile app exports), ".dr" for Virtual
+// Signer disaster-recovery share files. Both are JSON documents, so both get the same
+// first-byte-is-'{' sanity check below.
+var allowedZipExtensions = map[string]bool{".json": true, ".dr": true}
+
 // ProcessZipFile extracts JSON files from a ZIP archive to a temporary directory
 // It returns a list of extracted file paths, or an error if the ZIP isn't valid
 func ProcessZipFile(zipPath string) ([]string, error) {
@@ -54,7 +60,7 @@ func ProcessZipFile(zipPath string) ([]string, error) {
 		}
 
 		// Check file extension
-		if strings.ToLower(filepath.Ext(f.Name)) != ".json" {
+		if !allowedZipExtensions[strings.ToLower(filepath.Ext(f.Name))] {
 			hasNonJsonFiles = true
 			break
 		}
@@ -69,10 +75,10 @@ func ProcessZipFile(zipPath string) ([]string, error) {
 	// Reject ZIPs containing non-JSON files
 	if hasNonJsonFiles {
 		os.RemoveAll(tempDir)
-		return nil, errors2.Errorf("ZIP file `%s` contains non-JSON files - only JSON files are supported", filepath.Base(zipPath))
+		return nil, errors2.Errorf("ZIP file `%s` contains non-JSON files - only .json and .dr files are supported", filepath.Base(zipPath))
 	}
 
-	// Second pass: Extract JSON files (we've already validated that all files are JSON)
+	// Second pass: Extract JSON/.dr files (we've already validated the extensions)
 	for _, f := range reader.File {
 		// Skip directories
 		if f.FileInfo().IsDir() {

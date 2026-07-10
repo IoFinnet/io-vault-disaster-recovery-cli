@@ -5,6 +5,7 @@
 package dr
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 )
@@ -17,53 +18,69 @@ const (
 	KindEdDSA
 )
 
+// FileEnvelope is the on-disk JSON structure Virtual Signer writes for a .dr file: vaultId,
+// requestId, reshareNonce, algo, and curve are plaintext so operators/tooling can identify a DR
+// file's epoch and algorithm without decrypting it; dataB64 is the opaque base64-encoded
+// ML-KEM+AES-GCM ciphertext produced by EncryptingMarshallerForDR, decrypted out-of-band during an
+// actual DR event.
+type FileEnvelope struct {
+	VaultId      string `json:"vaultId"`
+	RequestId    string `json:"requestId"`
+	ReshareNonce int64  `json:"reshareNonce"`
+	Algo         string `json:"algo"`
+	Curve        string `json:"curve"`
+	DataB64      string `json:"dataB64"`
+}
+
 // Parsed holds the outcome of decrypting and classifying one .dr file.
 type Parsed struct {
-	Kind  Kind
-	ECDSA *ECDSASharesAndVaultId
-	EdDSA *EdDSASharesAndVaultId
+	Kind     Kind
+	ECDSA    *ECDSASharesAndVaultId
+	EdDSA    *EdDSASharesAndVaultId
+	Envelope FileEnvelope
 }
 
-// probe sniffs which of ECDSAPub/EDDSAPub is present in the first share, without
-// committing to a concrete share type up front.
-type probe struct {
-	Data []struct {
-		ECDSAPub json.RawMessage `json:"ECDSAPub"`
-		EDDSAPub json.RawMessage `json:"EDDSAPub"`
-	} `json:"Data"`
-}
-
-// DecryptAndParse decrypts a .dr file with the given ML-KEM-768 private key PEM, then classifies
-// it as ECDSA or EdDSA by inspecting the decrypted content -- not the filename -- and unmarshals
-// it into the matching mirror type.
+// DecryptAndParse parses a .dr file's JSON envelope, decrypts its dataB64 ciphertext with the
+// given ML-KEM-768 private key PEM, and unmarshals the plaintext into the type matching the
+// envelope's plaintext algo field.
+//
+// The envelope's vaultId/requestId/reshareNonce/algo/curve fields are plaintext and not covered
+// by the AES-GCM authentication tag, so callers must treat them as unauthenticated metadata (fine
+// for grouping/display) and rely on the decrypted payload's own VaultId/Threshold, which is
+// authenticated, for anything security-relevant.
 func DecryptAndParse(pemBytes, raw []byte) (*Parsed, error) {
-	plaintext, err := DecryptFile(pemBytes, raw)
+	var envelope FileEnvelope
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return nil, fmt.Errorf("invalid .dr file (not a JSON envelope): %w", err)
+	}
+	if envelope.DataB64 == "" {
+		return nil, fmt.Errorf("invalid .dr file: missing dataB64")
+	}
+
+	ciphertext, err := base64.StdEncoding.DecodeString(envelope.DataB64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base64 in .dr file dataB64: %w", err)
+	}
+
+	plaintext, err := DecryptFile(pemBytes, ciphertext)
 	if err != nil {
 		return nil, err
 	}
 
-	var p probe
-	if err := json.Unmarshal(plaintext, &p); err != nil {
-		return nil, fmt.Errorf("invalid .dr payload format: %w", err)
-	}
-	if len(p.Data) == 0 {
-		return nil, fmt.Errorf(".dr payload contains no share data")
-	}
-
-	switch {
-	case len(p.Data[0].ECDSAPub) > 0 && len(p.Data[0].EDDSAPub) == 0:
+	switch envelope.Algo {
+	case "ECDSA":
 		var shares ECDSASharesAndVaultId
 		if err := json.Unmarshal(plaintext, &shares); err != nil {
 			return nil, fmt.Errorf("invalid ECDSA .dr payload: %w", err)
 		}
-		return &Parsed{Kind: KindECDSA, ECDSA: &shares}, nil
-	case len(p.Data[0].EDDSAPub) > 0 && len(p.Data[0].ECDSAPub) == 0:
+		return &Parsed{Kind: KindECDSA, ECDSA: &shares, Envelope: envelope}, nil
+	case "EDDSA":
 		var shares EdDSASharesAndVaultId
 		if err := json.Unmarshal(plaintext, &shares); err != nil {
 			return nil, fmt.Errorf("invalid EdDSA .dr payload: %w", err)
 		}
-		return &Parsed{Kind: KindEdDSA, EdDSA: &shares}, nil
+		return &Parsed{Kind: KindEdDSA, EdDSA: &shares, Envelope: envelope}, nil
 	default:
-		return nil, fmt.Errorf("could not determine algorithm (ECDSA/EdDSA) of .dr payload")
+		return nil, fmt.Errorf("unknown .dr algo %q", envelope.Algo)
 	}
 }

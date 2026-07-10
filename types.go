@@ -43,6 +43,15 @@ type (
 	VaultAllSharesECDSA map[string][]*ecdsa_keygen.LocalPartySaveData
 	VaultAllSharesEdDSA map[string][]*eddsa_keygen.LocalPartySaveData
 
+	// drVaultShares accumulates one reshare epoch's worth of .dr shares for a vault (one .dr file
+	// per device per algorithm), pending the "pick the highest nonce" selection in runTool.
+	drVaultShares struct {
+		threshold int
+		ecdsa     []*ecdsa_keygen.LocalPartySaveData
+		eddsa     []*eddsa_keygen.LocalPartySaveData
+		hasEdDSA  bool
+	}
+
 	SaveData interface {
 	}
 )

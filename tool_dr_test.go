@@ -51,14 +51,19 @@ func encryptDRForTest(t *testing.T, pub *mlkem.EncapsulationKey768, plaintext []
 	return append(cipherTextKEM, sealed...)
 }
 
-// writeDRFile JSON-marshals payload, encrypts it as a .dr file under dir/name, and returns its path.
-func writeDRFile(t *testing.T, dir, name string, pub *mlkem.EncapsulationKey768, payload any) string {
+// writeDRFile JSON-marshals payload, encrypts it, wraps it in a dr.FileEnvelope (meta's
+// plaintext fields plus the resulting base64 ciphertext as DataB64), and writes it as a .dr file
+// under dir/name. Returns the file's path.
+func writeDRFile(t *testing.T, dir, name string, pub *mlkem.EncapsulationKey768, meta dr.FileEnvelope, payload any) string {
 	t.Helper()
 	plaintext, err := json.Marshal(payload)
 	require.NoError(t, err)
-	raw := encryptDRForTest(t, pub, plaintext)
+	ciphertext := encryptDRForTest(t, pub, plaintext)
+	meta.DataB64 = base64.StdEncoding.EncodeToString(ciphertext)
+	content, err := json.Marshal(meta)
+	require.NoError(t, err)
 	path := filepath.Join(dir, name)
-	require.NoError(t, os.WriteFile(path, raw, 0o600))
+	require.NoError(t, os.WriteFile(path, content, 0o600))
 	return path
 }
 
@@ -184,7 +189,8 @@ func TestTool_DR_ECDSA_And_EdDSA_Recovery(t *testing.T) {
 			VaultId:   vaultID,
 			Threshold: threshold,
 		}
-		path := writeDRFile(t, dirTmp, fmt.Sprintf("req%d.ecdsa.secp256k1.dr", i), priv.EncapsulationKey(), payload)
+		meta := dr.FileEnvelope{VaultId: vaultID, RequestId: fmt.Sprintf("req%d", i), ReshareNonce: 1, Algo: "ECDSA", Curve: "secp256k1"}
+		path := writeDRFile(t, dirTmp, fmt.Sprintf("req%d.ecdsa.secp256k1.dr", i), priv.EncapsulationKey(), meta, payload)
 		files = append(files, ui.VaultsDataFile{File: path})
 	}
 	for i := 0; i < n; i++ {
@@ -193,7 +199,8 @@ func TestTool_DR_ECDSA_And_EdDSA_Recovery(t *testing.T) {
 			VaultId:   vaultID,
 			Threshold: threshold,
 		}
-		path := writeDRFile(t, dirTmp, fmt.Sprintf("req%d.eddsa.ed25519.dr", i), priv.EncapsulationKey(), payload)
+		meta := dr.FileEnvelope{VaultId: vaultID, RequestId: fmt.Sprintf("req%d", i), ReshareNonce: 1, Algo: "EDDSA", Curve: "ed25519"}
+		path := writeDRFile(t, dirTmp, fmt.Sprintf("req%d.eddsa.ed25519.dr", i), priv.EncapsulationKey(), meta, payload)
 		files = append(files, ui.VaultsDataFile{File: path})
 	}
 
@@ -217,21 +224,25 @@ func TestTool_DR_ThresholdMismatch(t *testing.T) {
 
 	_, pub, shares := makeVSSSharesS256(t, 2, 3)
 
-	path1 := writeDRFile(t, dirTmp, "req0.ecdsa.secp256k1.dr", priv.EncapsulationKey(), &dr.ECDSASharesAndVaultId{
-		Data:      []*dr.ECDSAShare{{Xi: shares[0].Share, ShareID: shares[0].ID, ECDSAPub: ecPointMirror("secp256k1", pub)}},
-		VaultId:   vaultID,
-		Threshold: 2,
-	})
-	path2 := writeDRFile(t, dirTmp, "req1.ecdsa.secp256k1.dr", priv.EncapsulationKey(), &dr.ECDSASharesAndVaultId{
-		Data:      []*dr.ECDSAShare{{Xi: shares[1].Share, ShareID: shares[1].ID, ECDSAPub: ecPointMirror("secp256k1", pub)}},
-		VaultId:   vaultID,
-		Threshold: 3, // deliberately different
-	})
+	path1 := writeDRFile(t, dirTmp, "req0.ecdsa.secp256k1.dr", priv.EncapsulationKey(),
+		dr.FileEnvelope{VaultId: vaultID, RequestId: "req0", ReshareNonce: 1, Algo: "ECDSA", Curve: "secp256k1"},
+		&dr.ECDSASharesAndVaultId{
+			Data:      []*dr.ECDSAShare{{Xi: shares[0].Share, ShareID: shares[0].ID, ECDSAPub: ecPointMirror("secp256k1", pub)}},
+			VaultId:   vaultID,
+			Threshold: 2,
+		})
+	path2 := writeDRFile(t, dirTmp, "req1.ecdsa.secp256k1.dr", priv.EncapsulationKey(),
+		dr.FileEnvelope{VaultId: vaultID, RequestId: "req1", ReshareNonce: 1, Algo: "ECDSA", Curve: "secp256k1"},
+		&dr.ECDSASharesAndVaultId{
+			Data:      []*dr.ECDSAShare{{Xi: shares[1].Share, ShareID: shares[1].ID, ECDSAPub: ecPointMirror("secp256k1", pub)}},
+			VaultId:   vaultID,
+			Threshold: 3, // deliberately different
+		})
 
 	files := []ui.VaultsDataFile{{File: path1}, {File: path2}}
 	_, _, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, privPEM)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "threshold mismatch")
+	require.Contains(t, err.Error(), "disagrees with another .dr file")
 }
 
 func TestTool_DR_MissingPrivateKey(t *testing.T) {
@@ -240,11 +251,13 @@ func TestTool_DR_MissingPrivateKey(t *testing.T) {
 	vaultID := "dr-test-vault-nokey"
 
 	_, pub, shares := makeVSSSharesS256(t, 2, 2)
-	path := writeDRFile(t, dirTmp, "req0.ecdsa.secp256k1.dr", priv.EncapsulationKey(), &dr.ECDSASharesAndVaultId{
-		Data:      []*dr.ECDSAShare{{Xi: shares[0].Share, ShareID: shares[0].ID, ECDSAPub: ecPointMirror("secp256k1", pub)}},
-		VaultId:   vaultID,
-		Threshold: 2,
-	})
+	path := writeDRFile(t, dirTmp, "req0.ecdsa.secp256k1.dr", priv.EncapsulationKey(),
+		dr.FileEnvelope{VaultId: vaultID, RequestId: "req0", ReshareNonce: 1, Algo: "ECDSA", Curve: "secp256k1"},
+		&dr.ECDSASharesAndVaultId{
+			Data:      []*dr.ECDSAShare{{Xi: shares[0].Share, ShareID: shares[0].ID, ECDSAPub: ecPointMirror("secp256k1", pub)}},
+			VaultId:   vaultID,
+			Threshold: 2,
+		})
 
 	files := []ui.VaultsDataFile{{File: path}}
 	_, _, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil)
@@ -259,11 +272,13 @@ func TestTool_DR_WrongPrivateKey(t *testing.T) {
 	vaultID := "dr-test-vault-wrongkey"
 
 	_, pub, shares := makeVSSSharesS256(t, 2, 2)
-	path := writeDRFile(t, dirTmp, "req0.ecdsa.secp256k1.dr", priv.EncapsulationKey(), &dr.ECDSASharesAndVaultId{
-		Data:      []*dr.ECDSAShare{{Xi: shares[0].Share, ShareID: shares[0].ID, ECDSAPub: ecPointMirror("secp256k1", pub)}},
-		VaultId:   vaultID,
-		Threshold: 2,
-	})
+	path := writeDRFile(t, dirTmp, "req0.ecdsa.secp256k1.dr", priv.EncapsulationKey(),
+		dr.FileEnvelope{VaultId: vaultID, RequestId: "req0", ReshareNonce: 1, Algo: "ECDSA", Curve: "secp256k1"},
+		&dr.ECDSASharesAndVaultId{
+			Data:      []*dr.ECDSAShare{{Xi: shares[0].Share, ShareID: shares[0].ID, ECDSAPub: ecPointMirror("secp256k1", pub)}},
+			VaultId:   vaultID,
+			Threshold: 2,
+		})
 
 	files := []ui.VaultsDataFile{{File: path}}
 	_, _, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, wrongPEM)
@@ -287,12 +302,15 @@ func TestTool_DR_MixedWithLegacy(t *testing.T) {
 	require.NoError(t, err)
 	legacyPath := writeLegacyVaultFile(t, dirTmp, "legacy.json", mmI, vaultID, 0, threshold, []string{string(legacyShareJSON)})
 
-	// Share 1 goes into a .dr file.
-	drPath := writeDRFile(t, dirTmp, "req0.ecdsa.secp256k1.dr", priv.EncapsulationKey(), &dr.ECDSASharesAndVaultId{
-		Data:      []*dr.ECDSAShare{{Xi: shares[1].Share, ShareID: shares[1].ID, ECDSAPub: ecPointMirror("secp256k1", pub)}},
-		VaultId:   vaultID,
-		Threshold: threshold,
-	})
+	// Share 1 goes into a .dr file, at the same reshare nonce (0) as the legacy file above so
+	// they're recognized as the same epoch and folded together.
+	drPath := writeDRFile(t, dirTmp, "req0.ecdsa.secp256k1.dr", priv.EncapsulationKey(),
+		dr.FileEnvelope{VaultId: vaultID, RequestId: "req0", ReshareNonce: 0, Algo: "ECDSA", Curve: "secp256k1"},
+		&dr.ECDSASharesAndVaultId{
+			Data:      []*dr.ECDSAShare{{Xi: shares[1].Share, ShareID: shares[1].ID, ECDSAPub: ecPointMirror("secp256k1", pub)}},
+			VaultId:   vaultID,
+			Threshold: threshold,
+		})
 
 	files := []ui.VaultsDataFile{
 		{File: legacyPath, Mnemonics: mmI},
