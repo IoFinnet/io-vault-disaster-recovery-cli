@@ -29,7 +29,8 @@ const (
 
 func main() {
 	vaultID := flag.String("vault-id", "", "(Optional) The vault id to export the keys for.")
-	nonceOverride := flag.Int("nonce", -1, "(Optional) Reshare Nonce override. Try it if the tool advises you to do so.")
+	nonceOverride := flag.Int("nonce", -1, "(Optional) Reshare Nonce override for legacy mnemonic-encrypted JSON files. Try it if the tool advises you to do so.")
+	requestIDOverride := flag.String("request-id", "", "(Optional) Request id override for Virtual Signer .dr files / v4 JSON exports. Try it if the tool advises you to do so.")
 	quorumOverride := flag.Int("threshold", 0, "(Optional) Vault Quorum (Threshold) override. Try it if the tool advises you to do so.")
 	passwordForKS := flag.String("password", "", "(Optional) Encryption password for the Ethereum wallet v3 file; use with -export")
 	exportKSFile := flag.String("export", "wallet.json", "(Optional) Filename to export a Ethereum wallet v3 JSON to; use with -password.")
@@ -176,7 +177,7 @@ func main() {
 	 * Retrieve vaults information and select a vault
 	 */
 
-	_, _, _, vaultsFormInfo, _, err := runTool(*vaultsDataFiles, nil, nonceOverride, quorumOverride, exportKSFile, passwordForKS, privateKeyPEM)
+	_, _, _, vaultsFormInfo, _, err := runTool(*vaultsDataFiles, nil, nonceOverride, requestIDOverride, quorumOverride, exportKSFile, passwordForKS, privateKeyPEM)
 	if err != nil {
 		fmt.Println(ui.ErrorBox(err))
 		fmt.Println()
@@ -226,7 +227,7 @@ func main() {
 		lipgloss.NewStyle().Bold(true).Render(ui.PlainTextf("RECOVERING VAULT \"%s\" WITH ID %s\n", selectedVault.Name, selectedVault.VaultID)),
 	)
 
-	address, ecSK, edSK, _, exportedKsFile, err := runTool(*vaultsDataFiles, &selectedVault.VaultID, nonceOverride, quorumOverride, exportKSFile, passwordForKS, privateKeyPEM)
+	address, ecSK, edSK, _, exportedKsFile, err := runTool(*vaultsDataFiles, &selectedVault.VaultID, nonceOverride, requestIDOverride, quorumOverride, exportKSFile, passwordForKS, privateKeyPEM)
 	if err != nil {
 		fmt.Println(ui.ErrorBox(err))
 		fmt.Println()

@@ -318,11 +318,11 @@ func (m *MnemonicsFormModel) fileList(filesWithMnemonics []VaultsDataFile) strin
  * VaultPickerItem is a struct that represents the model for the vault picker form.
  */
 type VaultPickerItem struct {
-	VaultID          string
-	Name             string
-	Quorum           int
-	LastReShareNonce int
-	NumberOfShares   int
+	VaultID        string
+	Name           string
+	Quorum         int
+	LastRequestID  string
+	NumberOfShares int
 }
 
 func RunVaultPickerForm(vaultsData []VaultPickerItem) (string, error) {

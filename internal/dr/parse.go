@@ -19,17 +19,20 @@ const (
 )
 
 // FileEnvelope is the on-disk JSON structure Virtual Signer writes for a .dr file: vaultId,
-// requestId, reshareNonce, algo, and curve are plaintext so operators/tooling can identify a DR
-// file's epoch and algorithm without decrypting it; dataB64 is the opaque base64-encoded
+// requestId, previousRequestId, algo, and curve are plaintext so operators/tooling can identify a
+// DR file's epoch and algorithm without decrypting it; dataB64 is the opaque base64-encoded
 // ML-KEM+AES-GCM ciphertext produced by EncryptingMarshallerForDR, decrypted out-of-band during an
-// actual DR event.
+// actual DR event. PreviousRequestId is the request id of the operation (keygen or prior reshare)
+// that produced the shares this reshare replaced, empty for a keygen-originated file. A consumer
+// walks this chain across a vault's .dr files (rather than comparing an integer nonce) to
+// determine its most recent epoch.
 type FileEnvelope struct {
-	VaultId      string `json:"vaultId"`
-	RequestId    string `json:"requestId"`
-	ReshareNonce int64  `json:"reshareNonce"`
-	Algo         string `json:"algo"`
-	Curve        string `json:"curve"`
-	DataB64      string `json:"dataB64"`
+	VaultId           string `json:"vaultId"`
+	RequestId         string `json:"requestId"`
+	PreviousRequestId string `json:"previousRequestId,omitempty"`
+	Algo              string `json:"algo"`
+	Curve             string `json:"curve"`
+	DataB64           string `json:"dataB64"`
 }
 
 // Parsed holds the outcome of decrypting and classifying one .dr file.
@@ -44,9 +47,9 @@ type Parsed struct {
 // given ML-KEM-768 private key PEM, and unmarshals the plaintext into the type matching the
 // envelope's plaintext algo field.
 //
-// The envelope's vaultId/requestId/reshareNonce/algo/curve fields are plaintext and not covered
-// by the AES-GCM authentication tag, so callers must treat them as unauthenticated metadata (fine
-// for grouping/display) and rely on the decrypted payload's own VaultId/Threshold, which is
+// The envelope's vaultId/requestId/previousRequestId/algo/curve fields are plaintext and not
+// covered by the AES-GCM authentication tag, so callers must treat them as unauthenticated
+// metadata (fine for grouping/display) and rely on the decrypted payload's own VaultId/Threshold, which is
 // authenticated, for anything security-relevant.
 func DecryptAndParse(pemBytes, raw []byte) (*Parsed, error) {
 	var envelope FileEnvelope

@@ -245,7 +245,7 @@ func (s *Server) handleListVaults(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Run the tool to get vault information
-	_, _, _, vaultsFormInfo, _, err := runTool(vaultsDataFiles, nil, nil, nil, nil, nil, nil)
+	_, _, _, vaultsFormInfo, _, err := runTool(vaultsDataFiles, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to retrieve vault information: %v", err), http.StatusInternalServerError)
 		return
@@ -287,6 +287,11 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 		nonceOverride = &nonce
 	}
 
+	var requestIDOverride *string
+	if requestIDOverrideStr := r.FormValue("requestIdOverride"); requestIDOverrideStr != "" {
+		requestIDOverride = &requestIDOverrideStr
+	}
+
 	quorumOverrideStr := r.FormValue("quorumOverride")
 	var quorumOverride *int
 	if quorumOverrideStr != "" {
@@ -326,7 +331,7 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 
 	// Run the recovery tool
 	result := RecoveryResult{}
-	address, ecSK, edSK, _, exportedKsFile, err := runTool(vaultsDataFiles, &vaultID, nonceOverride, quorumOverride, exportFile, password, nil)
+	address, ecSK, edSK, _, exportedKsFile, err := runTool(vaultsDataFiles, &vaultID, nonceOverride, requestIDOverride, quorumOverride, exportFile, password, nil)
 
 	if err != nil {
 		result.Success = false
