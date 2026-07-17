@@ -495,7 +495,8 @@ func TestZipFileProcessing_V2_Export_lqns(t *testing.T) {
 }
 
 func TestZipFileWithInvalidStructure(t *testing.T) {
-	// Create a test ZIP with nested directories, which should be rejected
+	// Create a test ZIP with nested directories, which is now accepted: payload files are
+	// collected regardless of directory depth and extracted flat by basename.
 	tempZip, err := os.CreateTemp("", "invalid_zip_*.zip")
 	require.NoError(t, err)
 	defer os.Remove(tempZip.Name())
@@ -538,10 +539,10 @@ func TestZipFileWithInvalidStructure(t *testing.T) {
 		Filenames: []string{tempZip.Name()},
 	}
 
-	// Process and validate the ZIP file - should fail due to nested directories
+	// Process and validate the ZIP file - nested directories are now accepted (files
+	// are flattened by basename), so validation should succeed.
 	err = ui.ValidateFiles(appConfig)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "nested directories")
+	assert.NoError(t, err)
 }
 
 func TestZipFileWithNonJSONFiles(t *testing.T) {
