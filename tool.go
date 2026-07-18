@@ -68,6 +68,12 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 	// vaultLastRequestIDs tracks disagreement across v4 JSON entries and the .dr chain's resolved
 	// head for a vault, regardless of which of those two sources produced the value.
 	vaultLastRequestIDs := make(map[string]string, len(vaultsDataFile)*16)
+	// mobileVaults marks vaults that received shares from a v4/v5 mobile export; mobileFileThreshold
+	// marks those whose mobile file actually carried a threshold (v5). Together they enforce the
+	// rule that a mobile vault's threshold comes from its own file or the -threshold flag — NEVER
+	// borrowed from a .dr file (checked at reconstruction).
+	mobileVaults := make(map[string]bool, len(vaultsDataFile)*16)
+	mobileFileThreshold := make(map[string]bool, len(vaultsDataFile)*16)
 	// .dr files carry a previousRequestId chain pointer (unlike the legacy mnemonic-encrypted
 	// JSON below, one .dr file is one device's shares for one specific epoch, keyed by
 	// RequestId), so they're grouped by vault+requestId here and folded in below once every input
@@ -143,12 +149,14 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 			}
 
 			// DECRYPT
-			aesNonce, err := hex.DecodeString(cipheredVault.CipherParams.IV)
+			// iv/tag are hex in legacy exports and base64 in current ones; decode by
+			// field length so either era recovers. See data.DecodeGcmField.
+			aesNonce, err := data.DecodeGcmField(cipheredVault.CipherParams.IV, data.GcmIVBytes)
 			if err != nil {
 				welp = errors2.Errorf("⚠ failed to decrypt vault %s: %s (on nonce decode)", vID, err)
 				return
 			}
-			aesTag, err := hex.DecodeString(cipheredVault.CipherParams.Tag)
+			aesTag, err := data.DecodeGcmField(cipheredVault.CipherParams.Tag, data.GcmTagBytes)
 			if err != nil {
 				welp = errors2.Errorf("⚠ failed to decrypt vault %s: %s (on tag decode)", vID, err)
 				return
@@ -184,55 +192,96 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 				return
 			}
 
-			// decode vault from json
-			clearVaults[vID] = new(ClearVault)
-			if err = json.Unmarshal(plainload, clearVaults[vID]); err != nil {
-				welp = errors2.Wrapf(err, "invalid saveData format - is this an old backup file? (code: 3)")
-				return
-			}
-			clearVaults[vID].LastRequestID = lastRequestID
-
-			// rack up the shares
-			sharesECDSA, sharesEDDSA := clearVaults[vID].SharesLegacy, ([]string)(nil)
-			if sharesECDSA == nil {
-				for _, curve := range clearVaults[vID].Curves {
-					if strings.ToUpper(curve.Algorithm) == "ECDSA" {
-						sharesECDSA = curve.Shares
-					} else if strings.ToUpper(curve.Algorithm) == "EDDSA" {
-						sharesEDDSA = curve.Shares
-					}
-				}
-			}
-
-			// Build up shares lists
-			// - Ensure that ECDSA shares were found.
-			// - EdDSA shares may not be set for a legacy vault, so we won't catch that as a blocking issue
-			vaultSharesECDSA, vaultSharesEDDSA := make([]*ecdsa_keygen.LocalPartySaveData, 0), make([]*eddsa_keygen.LocalPartySaveData, 0)
-			// ECDSA
-			if sharesECDSA == nil {
-				welp = fmt.Errorf("no legacy or new shares found for vault %s %s", vID, clearVaults[vID].Name)
-				return
-			}
-			if vaultSharesECDSA, welp = inflateSharesForCurve[ecdsa_keygen.LocalPartySaveData](sharesECDSA, justListingVaults); welp != nil {
-				return
-			}
-			if _, ok := vaultAllSharesECDSA[vID]; !ok {
-				vaultAllSharesECDSA[vID] = make([]*ecdsa_keygen.LocalPartySaveData, 0, len(sharesECDSA))
-			}
-			vaultAllSharesECDSA[vID] = append(vaultAllSharesECDSA[vID], vaultSharesECDSA...)
-			// / ECDSA
-			// EDDSA
-			if sharesEDDSA != nil {
-				if vaultSharesEDDSA, welp = inflateSharesForCurve[eddsa_keygen.LocalPartySaveData](sharesEDDSA, justListingVaults); welp != nil {
+			if entry.IsLegacy {
+				// Legacy flat-nonce JSON: the decrypted payload is a ClearVault object carrying the
+				// vault name, threshold, and its shares as tss-lib "V2" JSON strings.
+				clearVaults[vID] = new(ClearVault)
+				if err = json.Unmarshal(plainload, clearVaults[vID]); err != nil {
+					welp = errors2.Wrapf(err, "invalid saveData format - is this an old backup file? (code: 3)")
 					return
 				}
-				if _, ok := vaultAllSharesEDDSA[vID]; !ok {
-					vaultAllSharesEDDSA[vID] = make([]*eddsa_keygen.LocalPartySaveData, 0, len(sharesEDDSA))
+				clearVaults[vID].LastRequestID = lastRequestID
+
+				// rack up the shares
+				sharesECDSA, sharesEDDSA := clearVaults[vID].SharesLegacy, ([]string)(nil)
+				if sharesECDSA == nil {
+					for _, curve := range clearVaults[vID].Curves {
+						if strings.ToUpper(curve.Algorithm) == "ECDSA" {
+							sharesECDSA = curve.Shares
+						} else if strings.ToUpper(curve.Algorithm) == "EDDSA" {
+							sharesEDDSA = curve.Shares
+						}
+					}
+				}
+
+				// Build up shares lists
+				// - Ensure that ECDSA shares were found.
+				// - EdDSA shares may not be set for a legacy vault, so we won't catch that as a blocking issue
+				vaultSharesECDSA, vaultSharesEDDSA := make([]*ecdsa_keygen.LocalPartySaveData, 0), make([]*eddsa_keygen.LocalPartySaveData, 0)
+				// ECDSA
+				if sharesECDSA == nil {
+					welp = fmt.Errorf("no legacy or new shares found for vault %s %s", vID, clearVaults[vID].Name)
+					return
+				}
+				if vaultSharesECDSA, welp = inflateSharesForCurve[ecdsa_keygen.LocalPartySaveData](sharesECDSA, justListingVaults); welp != nil {
+					return
+				}
+				if _, ok := vaultAllSharesECDSA[vID]; !ok {
+					vaultAllSharesECDSA[vID] = make([]*ecdsa_keygen.LocalPartySaveData, 0, len(sharesECDSA))
+				}
+				vaultAllSharesECDSA[vID] = append(vaultAllSharesECDSA[vID], vaultSharesECDSA...)
+				// / ECDSA
+				// EDDSA
+				if sharesEDDSA != nil {
+					if vaultSharesEDDSA, welp = inflateSharesForCurve[eddsa_keygen.LocalPartySaveData](sharesEDDSA, justListingVaults); welp != nil {
+						return
+					}
+					if _, ok := vaultAllSharesEDDSA[vID]; !ok {
+						vaultAllSharesEDDSA[vID] = make([]*eddsa_keygen.LocalPartySaveData, 0, len(sharesEDDSA))
+						vaultHasEDDSA[vID] = true
+					}
+					vaultAllSharesEDDSA[vID] = append(vaultAllSharesEDDSA[vID], vaultSharesEDDSA...)
+				}
+				// / EDDSA
+			} else {
+				// v4/v5 mobile export: the decrypted payload is a mobile share payload — the v5
+				// object {threshold, shares} or the legacy v4 bare shares array. Its opaque share
+				// bytes decode to the SAME tss-lib save data as a .dr file, so they merge into the
+				// same reconstruction. See dr.ParseMobileSharePayload.
+				parsedMobile, err := dr.ParseMobileSharePayload(plainload)
+				if err != nil {
+					welp = errors2.Wrapf(err, "invalid saveData format - is this an old backup file? (code: 3)")
+					return
+				}
+				mobileVaults[vID] = true
+
+				// Threshold is STRICTLY the mobile file's own (v5) or the -threshold flag; it is
+				// never borrowed from a .dr file (enforced at reconstruction). A v5 payload's
+				// threshold also cross-checks any other file's threshold for this vault via
+				// ensureClearVaultThreshold (a mismatch is a hard error, not a silent pick).
+				if parsedMobile.HasThreshold {
+					if welp = ensureClearVaultThreshold(clearVaults, vID, parsedMobile.Threshold,
+						fmt.Sprintf("mobile backup for vault %s at request %s", vID, lastRequestID)); welp != nil {
+						return
+					}
+					mobileFileThreshold[vID] = true
+				} else if _, ok := clearVaults[vID]; !ok {
+					// Legacy v4 mobile with no threshold: register the vault so it still lists and can
+					// reconstruct once a -threshold flag supplies the quorum.
+					clearVaults[vID] = &ClearVault{Name: vID}
+				}
+				clearVaults[vID].LastRequestID = lastRequestID
+
+				if len(parsedMobile.ECDSA) == 0 {
+					welp = fmt.Errorf("no ECDSA shares found for vault %s in mobile backup", vID)
+					return
+				}
+				vaultAllSharesECDSA[vID] = append(vaultAllSharesECDSA[vID], parsedMobile.ECDSA...)
+				if parsedMobile.HasEdDSA {
+					vaultAllSharesEDDSA[vID] = append(vaultAllSharesEDDSA[vID], parsedMobile.EdDSA...)
 					vaultHasEDDSA[vID] = true
 				}
-				vaultAllSharesEDDSA[vID] = append(vaultAllSharesEDDSA[vID], vaultSharesEDDSA...)
 			}
-			// / EDDSA
 		}
 
 		clear(aesKey32)
@@ -297,9 +346,21 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 		return
 	}
 
+	// Strict per-epoch threshold for mobile vaults: a mobile vault's quorum must come from its own
+	// file (v5) or the -threshold flag — never from a .dr file that happens to cover the same vault.
+	// A legacy v4 mobile file carries no threshold, so require the flag rather than silently reusing
+	// a .dr-derived Quroum.
+	if mobileVaults[*vaultID] && !mobileFileThreshold[*vaultID] && (quorumOverride == nil || *quorumOverride <= 0) {
+		welp = fmt.Errorf("⚠ vault %s: mobile backup carries no threshold (re-export with an updated app for v5, or pass -threshold)", *vaultID)
+		return
+	}
 	tPlus1 := clearVaults[*vaultID].Quroum
 	if quorumOverride != nil && *quorumOverride > 0 {
 		tPlus1 = *quorumOverride
+	}
+	if tPlus1 < 1 {
+		welp = fmt.Errorf("⚠ vault %s: no threshold available for reconstruction (pass -threshold)", *vaultID)
+		return
 	}
 	vssSharesECDSA := make(vss.Shares, len(vaultAllSharesECDSA[*vaultID]))
 	vssSharesEDDSA := make(vss.Shares, len(vaultAllSharesEDDSA[*vaultID]))
