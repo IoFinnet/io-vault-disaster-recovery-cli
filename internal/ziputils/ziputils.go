@@ -80,13 +80,17 @@ func ProcessZipFile(zipPath string) ([]string, error) {
 			continue
 		}
 
-		// Guard against basename collisions across directories, since we flatten the hierarchy
+		// Guard against basename collisions across directories, since we flatten the hierarchy.
+		// Compare case-insensitively: "share.json" and "SHARE.JSON" resolve to the same file on
+		// common case-insensitive filesystems (e.g. default macOS/Windows), so an exact-match
+		// comparison would let the latter silently overwrite the former on extraction.
 		base := path.Base(f.Name)
-		if prev, ok := seenBasenames[base]; ok {
+		collisionKey := strings.ToLower(base)
+		if prev, ok := seenBasenames[collisionKey]; ok {
 			os.RemoveAll(tempDir)
 			return nil, errors2.Errorf("ZIP file `%s` contains multiple files named `%s` (`%s` and `%s`) - flatten the archive so each file name is unique", filepath.Base(zipPath), base, prev, f.Name)
 		}
-		seenBasenames[base] = f.Name
+		seenBasenames[collisionKey] = f.Name
 
 		// Extract file
 		rc, err := f.Open()

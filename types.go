@@ -100,6 +100,12 @@ func (v *VaultEntry) UnmarshalJSON(raw []byte) error {
 				return fmt.Errorf("invalid v4 vault entry \"currentRequestId\": %w", err)
 			}
 		}
+		if currentRequestID == "" {
+			return fmt.Errorf("invalid v4 vault entry: missing or empty \"currentRequestId\"")
+		}
+		if _, ok := requests[currentRequestID]; !ok {
+			return fmt.Errorf("invalid v4 vault entry: \"currentRequestId\" %q not present in \"requests\"", currentRequestID)
+		}
 		v.CurrentRequestID = currentRequestID
 		v.Requests = requests
 		return nil

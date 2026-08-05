@@ -72,4 +72,12 @@ func TestDecodeGcmField(t *testing.T) {
 		_, err := DecodeGcmField("not*valid*base64!", GcmIVBytes)
 		assert.Error(t, err)
 	})
+
+	// A well-formed but short base64 value (e.g. "AA==" decodes to a single zero byte) must
+	// not silently return a wrong-length slice: that would later reach aesGCM.Open, which
+	// panics rather than erroring on an incorrect nonce/tag length.
+	t.Run("valid base64 decoding to the wrong length errors", func(t *testing.T) {
+		_, err := DecodeGcmField("AA==", GcmIVBytes)
+		assert.Error(t, err)
+	})
 }

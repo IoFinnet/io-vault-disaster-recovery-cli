@@ -250,9 +250,18 @@ func (m *MnemonicsFormModel) ensurePrivateKeyFile(files VaultsDataFiles) error {
 			if strings.TrimSpace(input) == "" {
 				return errors2.New("private key path cannot be empty")
 			}
-			if _, err := os.Stat(input); err != nil {
+			info, err := os.Stat(input)
+			if err != nil {
 				return errors2.Errorf("unable to see file `%s` - does it exist?", input)
 			}
+			if info.IsDir() {
+				return errors2.Errorf("private key path `%s` is a directory", input)
+			}
+			f, err := os.Open(input)
+			if err != nil {
+				return errors2.Errorf("unable to read file `%s`", input)
+			}
+			_ = f.Close()
 			return nil
 		})
 	form := huh.NewForm(huh.NewGroup(input)).WithTheme(huh.ThemeBase16())

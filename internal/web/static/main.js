@@ -4,6 +4,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const filesContainer = document.getElementById('files-container');
     const zipFileInput = document.getElementById('zip-file');
     const zipFileName = document.getElementById('zip-file-name');
+    const privateKeyFileInput = document.getElementById('private-key-file');
+    const privateKeyFileName = document.getElementById('private-key-file-name');
     const signersContainer = document.getElementById('signers-container');
     const signerMnemonics = document.getElementById('signer-mnemonics');
     const nextToVaultsBtn = document.getElementById('next-to-vaults');
@@ -93,6 +95,13 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // ZIP file selection and processing
     zipFileInput.addEventListener('change', handleZipFileSelection);
+
+    // Private key (ML-KEM-768 PEM) file selection, needed to decrypt any Virtual Signer .dr files
+    privateKeyFileInput.addEventListener('change', () => {
+        privateKeyFileName.textContent = privateKeyFileInput.files.length > 0
+            ? privateKeyFileInput.files[0].name
+            : 'No file selected';
+    });
 
     // Next button to go to vaults list
     nextToVaultsBtn.addEventListener('click', () => {
@@ -353,12 +362,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         fileGroup.innerHTML = `
             <div class="file-upload">
-                <label for="file-${fileCounter}">Select JSON File</label>
-                <input type="file" id="file-${fileCounter}" class="file-input" accept=".json">
+                <label for="file-${fileCounter}">Select JSON or .dr File</label>
+                <input type="file" id="file-${fileCounter}" class="file-input" accept=".json,.dr">
                 <span class="file-name">No file selected</span>
             </div>
             <div class="mnemonic-input">
-                <label for="mnemonic-${fileCounter}">24-word Mnemonic Phrase</label>
+                <label for="mnemonic-${fileCounter}">24-word Mnemonic Phrase (not needed for a .dr file)</label>
                 <textarea id="mnemonic-${fileCounter}" class="mnemonic" rows="3" placeholder="Enter your 24-word mnemonic phrase for this file..."></textarea>
             </div>
             <button class="remove-file" data-index="${fileCounter}">✕</button>
@@ -481,56 +490,79 @@ document.addEventListener('DOMContentLoaded', () => {
             signerMnemonics.innerHTML = '';
             
             if (files.length === 0) {
-                signerMnemonics.innerHTML = '<div class="no-signers-found">No JSON files found in ZIP archive.</div>';
+                signerMnemonics.innerHTML = '<div class="no-signers-found">No JSON or .dr files found in ZIP archive.</div>';
                 return;
             }
-            
-            // Create mnemonic inputs for each detected signer
+
+            // Create mnemonic inputs for each detected signer. Virtual Signer .dr files are
+            // decrypted with the shared ML-KEM-768 private key (see private-key-file), not a
+            // per-file mnemonic, so they get a simpler group with no mnemonic textarea.
             detectedSigners.forEach(signer => {
                 const signerGroup = document.createElement('div');
                 signerGroup.className = 'signer-mnemonic-group';
-                
+                signerGroup.dataset.filename = signer;
+
+                const isDRFile = signer.toLowerCase().endsWith('.dr');
+                signerGroup.dataset.isDr = isDRFile ? 'true' : 'false';
+
                 // Extract the significant part for the ID
-                const signerId = signer.replace('.json', '');
-                
+                const signerId = isDRFile ? signer.slice(0, -3) : signer.replace('.json', '');
+
                 // Truncate long filenames for the label (keeping full name in display)
                 const truncatedName = signer.length > 40 ? signer.substring(0, 37) + '...' : signer;
-                
-                signerGroup.innerHTML = `
-                    <div class="signer-header">
-                        <label class="signer-checkbox-label">
-                            <input type="checkbox" class="signer-checkbox" data-signer-id="${escapeHTML(signerId)}" checked>
-                            <div class="signer-file-name">${escapeHTML(signer)}</div>
-                        </label>
-                    </div>
-                    <div class="mnemonic-input">
-                        <label for="mnemonic-${escapeHTML(signerId)}">24-word Mnemonic Phrase for ${escapeHTML(truncatedName)}</label>
-                        <textarea id="mnemonic-${escapeHTML(signerId)}" class="mnemonic zip-mnemonic" rows="3" 
-                            placeholder="Enter the 24-word mnemonic phrase..."></textarea>
-                        <input type="hidden" name="filename-${escapeHTML(signerId)}" value="${escapeHTML(signer)}">
+
+                if (isDRFile) {
+                    signerGroup.innerHTML = `
+                        <div class="signer-header">
+                            <label class="signer-checkbox-label">
+                                <input type="checkbox" class="signer-checkbox" data-signer-id="${escapeHTML(signerId)}" checked>
+                                <div class="signer-file-name">${escapeHTML(signer)}</div>
+                            </label>
+                        </div>
+                        <p class="note">Virtual Signer .dr file — decrypted with the private key above, no mnemonic needed.</p>
                         <input type="hidden" name="enabled-${escapeHTML(signerId)}" value="true" class="signer-enabled">
-                    </div>
-                `;
-                
+                    `;
+                } else {
+                    signerGroup.innerHTML = `
+                        <div class="signer-header">
+                            <label class="signer-checkbox-label">
+                                <input type="checkbox" class="signer-checkbox" data-signer-id="${escapeHTML(signerId)}" checked>
+                                <div class="signer-file-name">${escapeHTML(signer)}</div>
+                            </label>
+                        </div>
+                        <div class="mnemonic-input">
+                            <label for="mnemonic-${escapeHTML(signerId)}">24-word Mnemonic Phrase for ${escapeHTML(truncatedName)}</label>
+                            <textarea id="mnemonic-${escapeHTML(signerId)}" class="mnemonic zip-mnemonic" rows="3"
+                                placeholder="Enter the 24-word mnemonic phrase..."></textarea>
+                            <input type="hidden" name="filename-${escapeHTML(signerId)}" value="${escapeHTML(signer)}">
+                            <input type="hidden" name="enabled-${escapeHTML(signerId)}" value="true" class="signer-enabled">
+                        </div>
+                    `;
+                }
+
                 signerMnemonics.appendChild(signerGroup);
-                
+
                 // Add event listener for checkbox
                 const checkbox = signerGroup.querySelector('.signer-checkbox');
                 checkbox.addEventListener('change', function() {
+                    const enabledInput = signerGroup.querySelector('.signer-enabled');
+                    enabledInput.value = this.checked ? "true" : "false";
+
+                    if (isDRFile) {
+                        signerGroup.classList.toggle('disabled', !this.checked);
+                        return;
+                    }
+
                     const signerId = this.getAttribute('data-signer-id');
                     const textarea = document.getElementById(`mnemonic-${signerId}`);
-                    const enabledInput = signerGroup.querySelector('.signer-enabled');
-                    
                     if (this.checked) {
                         // Enable the textarea
                         textarea.disabled = false;
                         signerGroup.classList.remove('disabled');
-                        enabledInput.value = "true";
                     } else {
                         // Disable the textarea
                         textarea.disabled = true;
                         signerGroup.classList.add('disabled');
-                        enabledInput.value = "false";
                     }
                 });
             });
@@ -565,36 +597,46 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         if (!hasFile) {
-            errorMessage.textContent = 'Please select at least one JSON vault file';
+            errorMessage.textContent = 'Please select at least one JSON or .dr vault file';
             errorContainer.style.display = 'flex';
             return false;
         }
 
-        // Check if all files are JSON files
-        let foundNonJsonFile = false;
-        let nonJsonFileName = '';
-        
+        // Check if all files are JSON or .dr files
+        let foundUnsupportedFile = false;
+        let unsupportedFileName = '';
+
         fileInputs.forEach(input => {
             if (input.files.length > 0) {
                 const fileName = input.files[0].name.toLowerCase();
-                if (!fileName.endsWith('.json')) {
-                    foundNonJsonFile = true;
-                    nonJsonFileName = input.files[0].name;
+                if (!fileName.endsWith('.json') && !fileName.endsWith('.dr')) {
+                    foundUnsupportedFile = true;
+                    unsupportedFileName = input.files[0].name;
                     return;
                 }
             }
         });
-        
-        if (foundNonJsonFile) {
-            errorMessage.textContent = `Only JSON files are allowed in this mode. Found non-JSON file: ${nonJsonFileName}`;
+
+        if (foundUnsupportedFile) {
+            errorMessage.textContent = `Only JSON and .dr files are allowed in this mode. Found unsupported file: ${unsupportedFileName}`;
             errorContainer.style.display = 'flex';
             return false;
         }
 
-        // Check if each file has a corresponding mnemonic
+        // Check if a private key was supplied when any .dr file is present — needed to decrypt it.
+        const hasDRFile = Array.from(fileInputs).some(input =>
+            input.files.length > 0 && input.files[0].name.toLowerCase().endsWith('.dr'));
+        if (hasDRFile && privateKeyFileInput.files.length === 0) {
+            errorMessage.textContent = 'Please select the ML-KEM-768 private key PEM file, required to decrypt the selected .dr file(s)';
+            errorContainer.style.display = 'flex';
+            return false;
+        }
+
+        // Check if each JSON file has a corresponding mnemonic — .dr files don't need one, since
+        // they're decrypted with the shared private key instead.
         let valid = true;
         fileInputs.forEach((input, index) => {
-            if (input.files.length > 0) {
+            if (input.files.length > 0 && !input.files[0].name.toLowerCase().endsWith('.dr')) {
                 const mnemonic = mnemonicInputs[index].value.trim();
                 if (!mnemonic) {
                     errorMessage.textContent = `Please enter the mnemonic phrase for ${input.files[0].name}`;
@@ -632,31 +674,38 @@ document.addEventListener('DOMContentLoaded', () => {
             return false;
         }
         
-        // Check if mnemonics are provided for all selected signers
+        // Check if mnemonics are provided for all selected signers (.dr signers need none — they
+        // decrypt with the shared private key checked below instead)
         const signerGroups = document.querySelectorAll('.signer-mnemonic-group');
         let valid = true;
         let atLeastOneSelected = false;
-        
+        let hasSelectedDRFile = false;
+
         signerGroups.forEach((group) => {
             const checkbox = group.querySelector('.signer-checkbox');
             if (!checkbox.checked) {
                 return; // Skip unchecked signers
             }
-            
+
             atLeastOneSelected = true;
-            
+
+            if (group.dataset.isDr === 'true') {
+                hasSelectedDRFile = true;
+                return;
+            }
+
             const signerId = checkbox.getAttribute('data-signer-id');
             const textarea = document.getElementById(`mnemonic-${signerId}`);
             const mnemonic = textarea.value.trim();
             const signerName = group.querySelector('.signer-file-name').textContent;
-            
+
             if (!mnemonic) {
                 errorMessage.textContent = `Please enter the mnemonic phrase for ${signerName}`;
                 errorContainer.style.display = 'flex';
                 valid = false;
                 return;
             }
-            
+
             // Basic validation for mnemonic (24 words)
             const words = mnemonic.split(/\s+/);
             if (words.length !== 24) {
@@ -666,13 +715,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
         });
-        
+
         if (!atLeastOneSelected) {
             errorMessage.textContent = 'Please select at least one signer from the ZIP file';
             errorContainer.style.display = 'flex';
             return false;
         }
-        
+
+        if (valid && hasSelectedDRFile && privateKeyFileInput.files.length === 0) {
+            errorMessage.textContent = 'Please select the ML-KEM-768 private key PEM file, required to decrypt the selected .dr file(s)';
+            errorContainer.style.display = 'flex';
+            return false;
+        }
+
         return valid;
     }
     
@@ -683,6 +738,65 @@ document.addEventListener('DOMContentLoaded', () => {
         
         errorMessage.textContent = message;
         errorContainer.style.display = 'flex';
+    }
+
+    // Append the selected vault files and their mnemonics to formData, for whichever mode
+    // (individual JSON/.dr files, or ZIP archives) is currently active. Shared by loadVaults()
+    // and recoverVault() so both endpoints see identical file/mnemonic handling. Virtual Signer
+    // .dr files carry no mnemonic — they're decrypted with the private key appended separately
+    // by appendPrivateKeyToFormData.
+    function appendFilesAndMnemonicsToFormData(formData) {
+        const activeMode = document.querySelector('input[name="file-type"]:checked').value;
+
+        if (activeMode === 'json') {
+            // JSON mode: Add individual JSON/.dr files and mnemonics (.dr files have none)
+            document.querySelectorAll('.file-input').forEach((input, index) => {
+                if (input.files.length > 0) {
+                    formData.append('files', input.files[0]);
+                    if (!input.files[0].name.toLowerCase().endsWith('.dr')) {
+                        const mnemonicInput = document.querySelectorAll('#json-mode .mnemonic')[index];
+                        formData.append('mnemonics', mnemonicInput.value.trim());
+                    }
+                }
+            });
+        } else {
+            // ZIP mode: Add ZIP files and signer mnemonics
+            if (zipFileInput.files.length > 0) {
+                // Add all ZIP files
+                for (const zipFile of zipFileInput.files) {
+                    formData.append('files', zipFile);
+                }
+
+                // Add mnemonics for detected signers (only if enabled); .dr signer groups have
+                // no mnemonic to send.
+                document.querySelectorAll('.signer-mnemonic-group').forEach((group) => {
+                    const checkbox = group.querySelector('.signer-checkbox');
+
+                    // Only include enabled signers
+                    if (!checkbox.checked) {
+                        return;
+                    }
+
+                    const signerId = checkbox.getAttribute('data-signer-id');
+                    formData.append(`filename_${signerId}`, group.dataset.filename);
+
+                    if (group.dataset.isDr === 'true') {
+                        return;
+                    }
+
+                    const textarea = document.getElementById(`mnemonic-${signerId}`);
+                    formData.append(`mnemonic_${signerId}`, textarea.value.trim());
+                });
+            }
+        }
+    }
+
+    // Append the ML-KEM-768 private key PEM to formData, if the user selected one — needed to
+    // decrypt any Virtual Signer .dr files among the selected inputs.
+    function appendPrivateKeyToFormData(formData) {
+        if (privateKeyFileInput.files.length > 0) {
+            formData.append('privateKeyFile', privateKeyFileInput.files[0]);
+        }
     }
 
     // Load vaults from the selected files
@@ -698,47 +812,10 @@ document.addEventListener('DOMContentLoaded', () => {
         vaultsLoading.style.display = 'block';
         vaultsContainer.style.display = 'none';
 
-        // Create form data with files and mnemonics
+        // Create form data with files, mnemonics, and the private key (if any .dr file needs one)
         const formData = new FormData();
-        
-        // Get the active mode
-        const activeMode = document.querySelector('input[name="file-type"]:checked').value;
-        
-        if (activeMode === 'json') {
-            // JSON mode: Add individual JSON files and mnemonics
-            document.querySelectorAll('.file-input').forEach((input, index) => {
-                if (input.files.length > 0) {
-                    formData.append('files', input.files[0]);
-                    const mnemonicInput = document.querySelectorAll('#json-mode .mnemonic')[index];
-                    formData.append('mnemonics', mnemonicInput.value.trim());
-                }
-            });
-        } else {
-            // ZIP mode: Add ZIP files and signer mnemonics
-            if (zipFileInput.files.length > 0) {
-                // Add all ZIP files
-                for (const zipFile of zipFileInput.files) {
-                    formData.append('files', zipFile);
-                }
-                
-                // Each JSON file in a ZIP needs its own mnemonic
-                
-                // Add mnemonics for detected signers (only if enabled)
-                document.querySelectorAll('.signer-mnemonic-group').forEach((group) => {
-                    const checkbox = group.querySelector('.signer-checkbox');
-                    
-                    // Only include enabled signers
-                    if (checkbox.checked) {
-                        const signerId = checkbox.getAttribute('data-signer-id');
-                        const textarea = document.getElementById(`mnemonic-${signerId}`);
-                        const filename = detectedSigners.find(s => s.replace('.json', '') === signerId);
-                        
-                        formData.append(`mnemonic_${signerId}`, textarea.value.trim());
-                        formData.append(`filename_${signerId}`, filename);
-                    }
-                });
-            }
-        }
+        appendFilesAndMnemonicsToFormData(formData);
+        appendPrivateKeyToFormData(formData);
 
         // Send the API request
         fetch('/api/list-vaults', {
@@ -828,47 +905,10 @@ document.addEventListener('DOMContentLoaded', () => {
         recoveryResults.style.display = 'none';
         recoveryError.style.display = 'none';
 
-        // Create form data with files, mnemonics, and options
+        // Create form data with files, mnemonics, the private key, and options
         const formData = new FormData();
-
-        // Get the active mode
-        const activeMode = document.querySelector('input[name="file-type"]:checked').value;
-        
-        if (activeMode === 'json') {
-            // JSON mode: Add individual JSON files and mnemonics
-            document.querySelectorAll('.file-input').forEach((input, index) => {
-                if (input.files.length > 0) {
-                    formData.append('files', input.files[0]);
-                    const mnemonicInput = document.querySelectorAll('#json-mode .mnemonic')[index];
-                    formData.append('mnemonics', mnemonicInput.value.trim());
-                }
-            });
-        } else {
-            // ZIP mode: Add ZIP files and signer mnemonics
-            if (zipFileInput.files.length > 0) {
-                // Add all ZIP files
-                for (const zipFile of zipFileInput.files) {
-                    formData.append('files', zipFile);
-                }
-                
-                // Each JSON file in a ZIP needs its own mnemonic
-                
-                // Add mnemonics for detected signers (only if enabled)
-                document.querySelectorAll('.signer-mnemonic-group').forEach((group) => {
-                    const checkbox = group.querySelector('.signer-checkbox');
-                    
-                    // Only include enabled signers
-                    if (checkbox.checked) {
-                        const signerId = checkbox.getAttribute('data-signer-id');
-                        const textarea = document.getElementById(`mnemonic-${signerId}`);
-                        const filename = detectedSigners.find(s => s.replace('.json', '') === signerId);
-                        
-                        formData.append(`mnemonic_${signerId}`, textarea.value.trim());
-                        formData.append(`filename_${signerId}`, filename);
-                    }
-                });
-            }
-        }
+        appendFilesAndMnemonicsToFormData(formData);
+        appendPrivateKeyToFormData(formData);
 
         // Add vault ID and advanced options
         formData.append('vaultId', selectedVaultId);
@@ -989,24 +1029,28 @@ document.addEventListener('DOMContentLoaded', () => {
         filesContainer.innerHTML = `
             <div class="file-input-group" data-index="1">
                 <div class="file-upload">
-                    <label for="file-1">Select JSON File</label>
-                    <input type="file" id="file-1" class="file-input" accept=".json">
+                    <label for="file-1">Select JSON or .dr File</label>
+                    <input type="file" id="file-1" class="file-input" accept=".json,.dr">
                     <span class="file-name">No file selected</span>
                 </div>
                 <div class="mnemonic-input">
-                    <label for="mnemonic-1">24-word Mnemonic Phrase</label>
+                    <label for="mnemonic-1">24-word Mnemonic Phrase (not needed for a .dr file)</label>
                     <textarea id="mnemonic-1" class="mnemonic" rows="3" placeholder="Enter your 24-word mnemonic phrase for this file..."></textarea>
                 </div>
                 <button class="remove-file" data-index="1">✕</button>
             </div>
         `;
-        
+
         // Clear ZIP file input
         zipFileInput.value = '';
         zipFileName.textContent = 'No ZIP file selected';
         signersContainer.style.display = 'none';
         signerMnemonics.innerHTML = '';
         detectedSigners = [];
+
+        // Clear the private key file input
+        privateKeyFileInput.value = '';
+        privateKeyFileName.textContent = 'No file selected';
 
         // Reset file counter
         fileCounter = 1;

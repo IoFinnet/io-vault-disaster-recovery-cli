@@ -448,6 +448,47 @@ func TestProcessZipFile_BasenameCollision(t *testing.T) {
 	}
 }
 
+// TestProcessZipFile_BasenameCollisionCaseInsensitive verifies that basenames differing only by
+// case (e.g. "share.json" vs "SHARE.JSON") are also rejected as a collision, since they resolve
+// to the same file on common case-insensitive filesystems and would otherwise let one entry
+// silently overwrite the other on extraction.
+func TestProcessZipFile_BasenameCollisionCaseInsensitive(t *testing.T) {
+	zipPath := filepath.Join(t.TempDir(), "collision-case.zip")
+
+	zipFile, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatalf("failed to create test ZIP file: %v", err)
+	}
+	zipWriter := zip.NewWriter(zipFile)
+
+	for _, name := range []string{"a/share.json", "b/SHARE.JSON"} {
+		w, err := zipWriter.Create(name)
+		if err != nil {
+			t.Fatalf("failed to add entry %s: %v", name, err)
+		}
+		if _, err := w.Write([]byte(`{"key":"value"}`)); err != nil {
+			t.Fatalf("failed to write entry %s: %v", name, err)
+		}
+	}
+	if err := zipWriter.Close(); err != nil {
+		t.Fatalf("failed to close ZIP writer: %v", err)
+	}
+	if err := zipFile.Close(); err != nil {
+		t.Fatalf("failed to close ZIP file: %v", err)
+	}
+
+	extractedFiles, err := ProcessZipFile(zipPath)
+	if len(extractedFiles) > 0 {
+		defer os.RemoveAll(filepath.Dir(extractedFiles[0]))
+	}
+	if err == nil {
+		t.Fatalf("ProcessZipFile() expected an error for case-insensitive basename collision, got nil")
+	}
+	if !strings.Contains(err.Error(), "multiple files named") {
+		t.Fatalf("ProcessZipFile() error = %v, should mention basename collision", err)
+	}
+}
+
 // Helper function to check if a file exists
 func fileExists(path string) bool {
 	_, err := os.Stat(path)

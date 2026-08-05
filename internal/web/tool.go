@@ -131,6 +131,12 @@ func (v *VaultEntry) UnmarshalJSON(raw []byte) error {
 				return fmt.Errorf("invalid v4 vault entry \"currentRequestId\": %w", err)
 			}
 		}
+		if currentRequestID == "" {
+			return fmt.Errorf("invalid v4 vault entry: missing or empty \"currentRequestId\"")
+		}
+		if _, ok := requests[currentRequestID]; !ok {
+			return fmt.Errorf("invalid v4 vault entry: \"currentRequestId\" %q not present in \"requests\"", currentRequestID)
+		}
 		v.CurrentRequestID = currentRequestID
 		v.Requests = requests
 		return nil
@@ -248,7 +254,9 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 				}
 				cipheredVault = cv
 				lastRequestID = requestID
-				warnOnRequestIDDisagreement(vID, lastRequestID, clearVaults, vaultLastRequestIDs)
+				if welp = rejectOnRequestIDDisagreement(vID, lastRequestID, clearVaults, vaultLastRequestIDs); welp != nil {
+					return
+				}
 			}
 
 			// DECRYPT
@@ -297,12 +305,24 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 
 			if entry.IsLegacy {
 				// Legacy flat-nonce JSON: the decrypted payload is a ClearVault object carrying the
-				// vault name, threshold, and its shares as tss-lib "V2" JSON strings.
-				clearVaults[vID] = new(ClearVault)
-				if err = json.Unmarshal(plainload, clearVaults[vID]); err != nil {
+				// vault name, threshold, and its shares as tss-lib "V2" JSON strings. Unmarshal into a
+				// temporary value first and validate its quorum against any quorum already recorded
+				// for this vault (e.g. from a v5 mobile file processed earlier) via the shared
+				// threshold helper, rather than letting this file's ClearVault blindly replace state a
+				// prior file already validated — a conflicting threshold must be a hard error
+				// regardless of file processing order.
+				var legacyVault ClearVault
+				if err = json.Unmarshal(plainload, &legacyVault); err != nil {
 					welp = errors2.Wrapf(err, "invalid saveData format - is this an old backup file? (code: 3)")
 					return
 				}
+				if welp = ensureClearVaultThreshold(clearVaults, vID, legacyVault.Quroum,
+					fmt.Sprintf("legacy backup for vault %s at request %s", vID, lastRequestID)); welp != nil {
+					return
+				}
+				clearVaults[vID].Name = legacyVault.Name
+				clearVaults[vID].SharesLegacy = legacyVault.SharesLegacy
+				clearVaults[vID].Curves = legacyVault.Curves
 				clearVaults[vID].LastRequestID = lastRequestID
 
 				// rack up the shares
@@ -320,7 +340,8 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 				// Build up shares lists
 				// - Ensure that ECDSA shares were found.
 				// - EdDSA shares may not be set for a legacy vault, so we won't catch that as a blocking issue
-				vaultSharesECDSA, vaultSharesEDDSA := make([]*ecdsa_keygen.LocalPartySaveData, 0), make([]*eddsa_keygen.LocalPartySaveData, 0)
+				var vaultSharesECDSA []*ecdsa_keygen.LocalPartySaveData
+				var vaultSharesEDDSA []*eddsa_keygen.LocalPartySaveData
 				// ECDSA
 				if sharesECDSA == nil {
 					welp = fmt.Errorf("no legacy or new shares found for vault %s %s", vID, clearVaults[vID].Name)
@@ -354,6 +375,10 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 				parsedMobile, err := dr.ParseMobileSharePayload(plainload)
 				if err != nil {
 					welp = errors2.Wrapf(err, "invalid saveData format - is this an old backup file? (code: 3)")
+					return
+				}
+				if parsedMobile.VaultId != vID {
+					welp = fmt.Errorf("⚠ mobile backup for vault %s at request %s carries mismatched embedded vault id %s", vID, lastRequestID, parsedMobile.VaultId)
 					return
 				}
 				mobileVaults[vID] = true
@@ -405,7 +430,9 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 			continue
 		}
 		chosen := byRequestID[requestID]
-		warnOnRequestIDDisagreement(vID, requestID, clearVaults, vaultLastRequestIDs)
+		if welp = rejectOnRequestIDDisagreement(vID, requestID, clearVaults, vaultLastRequestIDs); welp != nil {
+			return
+		}
 		if err := ensureClearVaultThreshold(clearVaults, vID, chosen.threshold,
 			fmt.Sprintf(".dr files for vault %s at request %s", vID, requestID)); err != nil {
 			welp = err
@@ -726,19 +753,22 @@ func pickLatestDRRequestID(byRequestID map[string]*drVaultShares, vID string, re
 	return "", fmt.Errorf("⚠ vault %s: found %d root epoch(s) among its .dr files' previousRequestId chain (expected exactly 1); specify -request-id to disambiguate", vID, heads)
 }
 
-// warnOnRequestIDDisagreement records vID's chosen request id and prints a warning if it
-// disagrees with the request id already recorded for vID from a previously-processed v4 JSON
-// entry or the .dr chain's resolved head. Tracked separately from the legacy nonce disagreement
-// warning in pickLastLegacyNonce, since a nonce and a request id are never comparable.
-func warnOnRequestIDDisagreement(vID, requestID string, clearVaults ClearVaultMap, vaultLastRequestIDs map[string]string) {
+// rejectOnRequestIDDisagreement records vID's chosen request id and errors out if it disagrees
+// with the request id already recorded for vID from a previously-processed v4 JSON entry or the
+// .dr chain's resolved head: mixing shares from two different reshare epochs into one
+// reconstruction pool would silently produce a wrong key, so this must be a hard error rather
+// than a warning. Tracked separately from the legacy nonce disagreement warning in
+// pickLastLegacyNonce, since a nonce and a request id are never comparable.
+func rejectOnRequestIDDisagreement(vID, requestID string, clearVaults ClearVaultMap, vaultLastRequestIDs map[string]string) error {
 	if glbRequestID, ok := vaultLastRequestIDs[vID]; ok && glbRequestID != requestID {
 		vaultName := vID
 		if cv, ok2 := clearVaults[vID]; ok2 && cv != nil {
 			vaultName = cv.Name
 		}
-		fmt.Println(ui.PlainTextf("\n⚠ Non matching current request id for vault `%s`. You may have to specify -request-id and -threshold when recovering that vault.", vaultName))
+		return fmt.Errorf("⚠ non matching current request id for vault `%s` (%s vs %s). Specify -request-id and -threshold to disambiguate", vaultName, glbRequestID, requestID)
 	}
 	vaultLastRequestIDs[vID] = requestID
+	return nil
 }
 
 // ensureClearVaultThreshold makes sure a ClearVault entry exists for a vault first seen via a .dr

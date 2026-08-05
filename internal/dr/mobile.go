@@ -41,9 +41,15 @@ type MobileParsed struct {
 	// must then source the threshold from a flag or fail — it must NOT borrow one from a .dr file.
 	HasThreshold bool
 	Threshold    int
-	ECDSA        []*ecdsa_keygen.LocalPartySaveData
-	EdDSA        []*eddsa_keygen.LocalPartySaveData
-	HasEdDSA     bool
+	// VaultId is the vault ID embedded in every share's own AEAD-authenticated payload. The
+	// caller MUST compare this against the outer vault key it filed the payload under (e.g. the
+	// mobile backup's vault map key) and reject a mismatch, so a payload that decrypts correctly
+	// but was mislabelled (or maliciously relabelled) can't reconstruct the wrong vault's key
+	// under the selected vault's identity.
+	VaultId  string
+	ECDSA    []*ecdsa_keygen.LocalPartySaveData
+	EdDSA    []*eddsa_keygen.LocalPartySaveData
+	HasEdDSA bool
 }
 
 // ParseMobileSharePayload decodes a decrypted mobile-backup request payload into tss-lib save data.
@@ -85,6 +91,7 @@ func ParseMobileSharePayload(plaintext []byte) (*MobileParsed, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid base64 in mobile share data (%s/%s): %w", sh.Algorithm, sh.Curve, err)
 		}
+		var shareVaultId string
 		switch strings.ToUpper(sh.Algorithm) {
 		case "ECDSA":
 			var s ECDSASharesAndVaultId
@@ -96,6 +103,7 @@ func ParseMobileSharePayload(plaintext []byte) (*MobileParsed, error) {
 				return nil, err
 			}
 			out.ECDSA = append(out.ECDSA, saves...)
+			shareVaultId = s.VaultId
 		case "EDDSA":
 			var s EdDSASharesAndVaultId
 			if err := json.Unmarshal(raw, &s); err != nil {
@@ -107,8 +115,17 @@ func ParseMobileSharePayload(plaintext []byte) (*MobileParsed, error) {
 			}
 			out.EdDSA = append(out.EdDSA, saves...)
 			out.HasEdDSA = true
+			shareVaultId = s.VaultId
 		default:
 			return nil, fmt.Errorf("unknown mobile share algorithm %q (expected ECDSA or EDDSA)", sh.Algorithm)
+		}
+		if shareVaultId == "" {
+			return nil, fmt.Errorf("mobile share (%s/%s) does not carry a vault id", sh.Algorithm, sh.Curve)
+		}
+		if out.VaultId == "" {
+			out.VaultId = shareVaultId
+		} else if out.VaultId != shareVaultId {
+			return nil, fmt.Errorf("mobile share payload carries disagreeing vault ids (%s vs %s)", out.VaultId, shareVaultId)
 		}
 	}
 	return out, nil

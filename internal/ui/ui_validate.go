@@ -173,12 +173,14 @@ func ValidateFiles(appConfig *config.AppConfig) error {
 	// from the JSON-shape check; they're validated by attempting decryption in runTool instead.
 	for _, file := range processedFiles {
 		if strings.EqualFold(filepath.Ext(file), ".dr") {
-			if _, err := os.Stat(file); err != nil {
+			f, err := os.Open(file)
+			if err != nil {
 				for _, dir := range zipExtractedDirs {
 					os.RemoveAll(dir)
 				}
 				return errors2.Errorf("unable to read file `%s`: %s", file, err)
 			}
+			_ = f.Close()
 			continue
 		}
 

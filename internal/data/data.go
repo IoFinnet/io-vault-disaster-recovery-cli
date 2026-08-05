@@ -42,10 +42,20 @@ var hexOnlyRe = regexp.MustCompile(`^[0-9a-fA-F]+$`)
 // surfaces as a decode/decrypt error rather than silent corruption.
 func DecodeGcmField(value string, byteLen int) ([]byte, error) {
 	v := strings.TrimSpace(value)
+	var decoded []byte
+	var err error
 	if len(v) == byteLen*2 && hexOnlyRe.MatchString(v) {
-		return hex.DecodeString(v)
+		decoded, err = hex.DecodeString(v)
+	} else {
+		decoded, err = base64.StdEncoding.DecodeString(v)
 	}
-	return base64.StdEncoding.DecodeString(v)
+	if err != nil {
+		return nil, err
+	}
+	if len(decoded) != byteLen {
+		return nil, fmt.Errorf("decoded field is %d bytes, expected %d", len(decoded), byteLen)
+	}
+	return decoded, nil
 }
 
 // DEFLATE (customized)

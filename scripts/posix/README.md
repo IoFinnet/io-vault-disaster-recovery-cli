@@ -14,4 +14,4 @@ This script creates a ML-KEM-768 key pair. This key pair can be used for the Vir
                            FIPS 203 "ek" bytes)
 ```
 
-Add the `<basename>_pub.pem` file path to the `DRPKPEMFile` configuration.
+`<basename>_pub.pem` is configured on the separate Virtual Signer service, which uses it to encrypt `.dr` disaster-recovery files. `<basename>_priv.pem` stays with whoever performs recovery: pass its path to this repo's recovery tool via `-private-key` to decrypt those `.dr` files (see the main [README](../../README.md#usage)).
