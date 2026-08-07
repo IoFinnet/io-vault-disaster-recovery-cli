@@ -104,7 +104,26 @@ Run the recovery tool with your backup JSON files, .dr files or ZIP archives con
 ```
 
 .dr files are files created by Virtual Signers. When referencing .dr files with the recovery tool, provide the path to the private key used by the Virtual Signer for Disaster Recovery files. This is the private part of the public/private ML-KEM-768 key pair
-created as the initial step of the Disaster Recovery process. See scripts/posix/gen_mlkem768.sh in this project for a sample script that calls `openssl` to generate the ML-KEM-768 key pair.
+created as the initial step of the Disaster Recovery process.
+
+This project ships sample scripts that call `openssl` to generate that key pair:
+
+| Platform | Script |
+| --- | --- |
+| macOS / Linux | [`scripts/posix/gen_mlkem768.sh`](scripts/posix/gen_mlkem768.sh) ([docs](scripts/posix/README.md)) |
+| Windows | [`scripts/windows/gen_mlkem768.ps1`](scripts/windows/gen_mlkem768.ps1) ([docs](scripts/windows/README.md)) |
+
+Both produce identical output, so a key pair generated on one platform works on the others.
+
+> [!IMPORTANT]
+> Key generation requires **OpenSSL 3.5.0 or later** — ML-KEM support was added in OpenSSL 3.5.
+> Check with `openssl version`. Both scripts probe for ML-KEM-768 support before generating and
+> stop with a clear message if the build is too old. On Windows in particular, the `openssl`
+> bundled with Git for Windows is frequently older than 3.5. This requirement applies only to
+> generating keys; the recovery tool itself has no OpenSSL dependency.
+
+The private key decrypts every `.dr` file the paired Virtual Signer has ever written — keep it
+offline and backed up. `*.pem` is gitignored in this repo so a key cannot be committed by accident.
 
 ``` bash
 ./recovery-tool-mac -private-key sandbox/mlkem768_priv.pem sandbox/file1.json sandbox/019f2838-e9ab-7e0c-8a45-cf8a3ae18e8e.ecdsa.secp256k1.dr sandbox/019f2838-e9ab-7e0c-8a45-cf8a3ae18e8e.eddsa.ed25519.dr
@@ -141,6 +160,38 @@ Replace `mac` with one of the following depending on your computer's OS and arch
 > [!NOTE]
 > The tool will try to auto-detect the optimal "reshare nonce" and "threshold/quroum" of the vault you are trying to recover.
 > However, if you would like to override this behavior, you may specify custom values with `-nonce` and `-threshold` flags respectively.
+
+### .dr file format and version compatibility
+
+Each `.dr` file is a JSON envelope wrapping the encrypted share payload. Alongside the vault and
+request metadata, Virtual Signer stamps two fields describing how the payload was produced:
+
+| Field | Current value | Meaning |
+| --- | --- | --- |
+| `formatVersion` | `1` | Revision of the envelope structure itself |
+| `kemSuite` | `ML-KEM-768+AES-256-GCM` | Key encapsulation mechanism and AEAD used for `dataB64` |
+
+The recovery tool checks both **before** attempting decryption. If a file was produced by a newer
+Virtual Signer using a suite this build does not implement, you get an explicit message naming the
+suite:
+
+```
+.dr file declares KEM suite "ML-KEM-1024+AES-256-GCM", but this recovery tool only supports
+"ML-KEM-768+AES-256-GCM"; use a recovery tool build matching the Virtual Signer that produced this file
+```
+
+rather than a misleading `wrong private key or corrupted file` error. If you see this, you need a
+newer recovery tool build — not a different key.
+
+Older `.dr` files written before these fields existed omit them entirely and remain fully
+supported; they are read as `formatVersion: 1` with the `ML-KEM-768+AES-256-GCM` suite, which is
+the only suite Virtual Signer has ever produced.
+
+> [!NOTE]
+> These envelope fields are outside the AES-GCM authentication tag and are therefore
+> unauthenticated. They are a compatibility and diagnostic aid — a tampered value can only cause
+> the tool to refuse to decrypt, never to decrypt incorrectly. Anything security-relevant (vault
+> ID, threshold) is taken from the authenticated payload after decryption.
 
 ## Browser UI
 

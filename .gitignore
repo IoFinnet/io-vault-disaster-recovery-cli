@@ -6,6 +6,17 @@ bin/*
 
 .aider*
 
+# Keys - ignored by default.
+#
+# The key-generation scripts write <basename>_priv.pem next to themselves, and recovery runs leave
+# operator keys in the working tree, so an untracked ML-KEM private key is the normal state of this
+# repo. No .pem is tracked today and none should be: the private half of a DR key pair decrypts
+# every .dr file the paired Virtual Signer has ever written.
+#
+# If a genuine non-secret fixture is ever needed, add it deliberately with `git add -f`.
+*.pem
+*.key
+
 # Claude Code personal files
 .claude/plans/
 .claude/settings.local.json
