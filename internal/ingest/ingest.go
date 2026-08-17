@@ -30,19 +30,39 @@ import (
 	"github.com/tyler-smith/go-bip39"
 )
 
-// Result is everything the ingestion phase hands to a frontend.
+// Result is everything the ingestion phase hands to a frontend: the folded
+// per-vault share pools plus the per-vault metadata the frontend's reconstruction
+// step validates against.
 type Result struct {
-	Vaults              ClearVaultMap
-	SharesECDSA         VaultAllSharesECDSA
-	SharesEdDSA         VaultAllSharesEdDSA
-	HasEdDSA            map[string]bool
+	// Vaults holds per-vault metadata. Vaults[vID].Quroum is the threshold the
+	// reconstruction step must honor (0 when no input file carried one, in which
+	// case the frontend requires an explicit threshold override).
+	Vaults ClearVaultMap
+
+	// SharesECDSA and SharesEdDSA are the per-vault share pools, merged across
+	// every input file format for the selected epoch.
+	SharesECDSA VaultAllSharesECDSA
+	SharesEdDSA VaultAllSharesEdDSA
+
+	// HasEdDSA marks vaults whose inputs carried EdDSA shares; the reconstruction
+	// step uses it to enforce ECDSA/EdDSA share-count parity.
+	HasEdDSA map[string]bool
+
+	// MobileVaults marks vaults fed by mobile app backups, and MobileFileThreshold
+	// marks which of those carried their own threshold (v5 does, v4 does not);
+	// the reconstruction step requires an explicit threshold for v4-only vaults.
 	MobileVaults        map[string]bool
 	MobileFileThreshold map[string]bool
-	OrderedVaults       []ui.VaultPickerItem
+
+	// OrderedVaults is the stable, display-ordered vault list for pickers.
+	OrderedVaults []ui.VaultPickerItem
 }
 
-// ErrorPresentation controls path/error rendering in formatted error messages.
-// Zero value keeps full paths and raw error text.
+// ErrorPresentation controls how file paths and OS-level errors are rendered
+// inside error messages. The zero value renders both verbatim (full paths, raw
+// error text) — what the CLI wants, since its users debug with real paths. The
+// web frontend passes base-name and path-stripping funcs, because its errors
+// render in a browser and users paste them into support threads.
 type ErrorPresentation struct {
 	Path func(string) string
 	Err  func(error) error
@@ -62,10 +82,21 @@ func (p ErrorPresentation) err(err error) error {
 	return p.Err(err)
 }
 
-// ErrPrivateKeyRequired indicates that a .dr file was provided without a private key PEM.
+// ErrPrivateKeyRequired signals that an input is a Virtual Signer .dr file and no
+// ML-KEM-768 private key PEM was supplied to decrypt it. Frontends detect it with
+// errors.Is and append their own remediation wording (which flag to pass, or which
+// form field to fill), since the shared code cannot know how the caller takes input.
 var ErrPrivateKeyRequired = errors.New("is a Virtual Signer .dr file")
 
-// Ingest decodes and decrypts every input into per-vault share pools.
+// Ingest decodes and decrypts every input backup file — mnemonic-encrypted JSON in
+// its legacy flat-nonce and mobile v4/v5 shapes, and Virtual Signer .dr files —
+// selects each vault's current reshare epoch, and folds all decoded shares into
+// per-vault pools. It performs no key reconstruction: callers take the pools and
+// per-vault metadata from Result and run their own reconstruction step.
+//
+// With vaultID nil or empty, every vault in every file is processed (listing mode,
+// used by both frontends to discover what to offer); with a vaultID set, only that
+// vault's data is decoded, and epoch/threshold conflicts for it are hard errors.
 func Ingest(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride *int,
 	requestIDOverride *string, privateKeyPEM []byte, presentation ErrorPresentation) (res *Result, welp error) {
 

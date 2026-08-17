@@ -23,8 +23,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ingest"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/dr"
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ingest"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/binance-chain/tss-lib/crypto"
 	"github.com/binance-chain/tss-lib/crypto/vss"

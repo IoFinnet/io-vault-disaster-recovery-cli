@@ -826,5 +826,3 @@ func (s *Server) handleListZipFiles(w http.ResponseWriter, r *http.Request) {
 }
 
 // Validation handlers removed - unused in frontend
-
-// The runTool function implementation is in tool.go
