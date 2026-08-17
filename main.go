@@ -23,10 +23,6 @@ import (
 	"github.com/decred/dcrd/dcrec/edwards/v2"
 )
 
-const (
-	v2MagicPrefix = "_V2_"
-)
-
 func main() {
 	vaultID := flag.String("vault-id", "", "(Optional) The vault id to export the keys for.")
 	nonceOverride := flag.Int("nonce", -1, "(Optional) Reshare Nonce override for legacy mnemonic-encrypted JSON files. Try it if the tool advises you to do so.")

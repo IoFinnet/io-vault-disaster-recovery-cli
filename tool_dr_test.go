@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ingest"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/dr"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/binance-chain/tss-lib/crypto"
@@ -107,10 +108,10 @@ func makeVSSSharesEdwards(t *testing.T, threshold, n int) (*big.Int, *crypto.ECP
 func writeLegacyVaultFile(t *testing.T, dir, name, mnemonic, vaultID string, nonce, threshold int, ecdsaShareJSONs []string) string {
 	t.Helper()
 
-	clearVault := ClearVault{
+	clearVault := ingest.ClearVault{
 		Name:   "mixed-format-test-vault",
 		Quroum: threshold,
-		Curves: []ClearVaultCurve{{Algorithm: "ECDSA", Shares: ecdsaShareJSONs}},
+		Curves: []ingest.ClearVaultCurve{{Algorithm: "ECDSA", Shares: ecdsaShareJSONs}},
 	}
 	plaintext, err := json.Marshal(clearVault)
 	require.NoError(t, err)
@@ -131,9 +132,9 @@ func writeLegacyVaultFile(t *testing.T, dir, name, mnemonic, vaultID string, non
 
 	hash := sha512.Sum512(plaintext)
 
-	cipheredVault := CipheredVault{
+	cipheredVault := ingest.CipheredVault{
 		CipherTextB64: base64.StdEncoding.EncodeToString(ciphertext),
-		CipherParams:  CipherParams{IV: hex.EncodeToString(nonceBz), Tag: hex.EncodeToString(tag)},
+		CipherParams:  ingest.CipherParams{IV: hex.EncodeToString(nonceBz), Tag: hex.EncodeToString(tag)},
 		Cipher:        "aes-256-gcm",
 		Hash:          hex.EncodeToString(hash[:]),
 	}
@@ -207,9 +208,9 @@ func writeMobileVaultFile(t *testing.T, dir, name, mnemonic, vaultID, currentReq
 		ciphertext, tag := sealed[:ctLen], sealed[ctLen:]
 		hash := sha512.Sum512(plaintext)
 
-		requestsJSON[requestID] = CipheredVault{
+		requestsJSON[requestID] = ingest.CipheredVault{
 			CipherTextB64: base64.StdEncoding.EncodeToString(ciphertext),
-			CipherParams: CipherParams{
+			CipherParams: ingest.CipherParams{
 				IV:  base64.StdEncoding.EncodeToString(nonceBz),
 				Tag: base64.StdEncoding.EncodeToString(tag),
 			},
@@ -583,6 +584,47 @@ func TestTool_V5MobileJSON_ThresholdMismatch(t *testing.T) {
 
 	files := []ui.VaultsDataFile{{File: path0, Mnemonics: mmI}, {File: path1, Mnemonics: mmI}}
 	_, _, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "threshold mismatch")
+}
+
+// TestTool_LegacyAndV5_ThresholdMismatch_EitherOrder: a legacy file and a v5 mobile file for
+// the same vault that disagree on threshold must fail regardless of file processing order.
+func TestTool_LegacyAndV5_ThresholdMismatch_EitherOrder(t *testing.T) {
+	dirTmp := t.TempDir()
+	vaultID := "mixed-legacy-v5-threshold-mismatch"
+	const nonce = 7
+	const requestID = "mobile-v5-req"
+
+	_, pubA, sharesA := makeVSSSharesS256(t, 2, 2)
+	_, pubB, sharesB := makeVSSSharesS256(t, 3, 3)
+	legacyShareData := &ecdsa_keygen.LocalPartySaveData{
+		LocalSecrets: ecdsa_keygen.LocalSecrets{Xi: sharesA[0].Share, ShareID: sharesA[0].ID},
+		ECDSAPub:     pubA,
+	}
+	legacyShareJSONBytes, err := json.Marshal(legacyShareData)
+	require.NoError(t, err)
+
+	legacyPath := writeLegacyVaultFile(t, dirTmp, "legacy.json", mmI, vaultID, nonce, 2,
+		[]string{string(legacyShareJSONBytes)})
+	mobilePath := writeMobileVaultFile(t, dirTmp, "mobile-v5.json", mmI, vaultID, requestID,
+		map[string]mobileRequestFixture{
+			requestID: {threshold: 3, ecdsa: mobileECDSAPayload(vaultID, sharesB[0], pubB)},
+		})
+
+	filesLegacyThenV5 := []ui.VaultsDataFile{
+		{File: legacyPath, Mnemonics: mmI},
+		{File: mobilePath, Mnemonics: mmI},
+	}
+	_, _, _, _, _, err = runTool(filesLegacyThenV5, &vaultID, nil, nil, nil, nil, nil, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "threshold mismatch")
+
+	filesV5ThenLegacy := []ui.VaultsDataFile{
+		{File: mobilePath, Mnemonics: mmI},
+		{File: legacyPath, Mnemonics: mmI},
+	}
+	_, _, _, _, _, err = runTool(filesV5ThenLegacy, &vaultID, nil, nil, nil, nil, nil, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "threshold mismatch")
 }

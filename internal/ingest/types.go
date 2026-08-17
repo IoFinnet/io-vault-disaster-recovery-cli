@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Full license text available in LICENSE file in repository root.
 
-package main
+package ingest
 
 import (
 	"encoding/json"
@@ -11,6 +11,10 @@ import (
 
 	ecdsa_keygen "github.com/binance-chain/tss-lib/ecdsa/keygen"
 	eddsa_keygen "github.com/binance-chain/tss-lib/eddsa/keygen"
+)
+
+const (
+	v2MagicPrefix = "_V2_"
 )
 
 type (
@@ -77,8 +81,7 @@ type (
 		hasEdDSA          bool
 	}
 
-	SaveData interface {
-	}
+	SaveData interface{}
 )
 
 // UnmarshalJSON detects whether a vault entry is the legacy flat nonce-keyed shape or the v4
