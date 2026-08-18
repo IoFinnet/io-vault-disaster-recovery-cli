@@ -168,8 +168,22 @@ func ValidateFiles(appConfig *config.AppConfig) error {
 	appConfig.Filenames = processedFiles
 	appConfig.ZipExtractedDirs = zipExtractedDirs
 
-	// Second pass: validate all files are readable and proper JSON
+	// Second pass: validate all files are readable and proper JSON.
+	// Virtual Signer .dr files are opaque encrypted binary blobs, not JSON, so they're exempt
+	// from the JSON-shape check; they're validated by attempting decryption in runTool instead.
 	for _, file := range processedFiles {
+		if strings.EqualFold(filepath.Ext(file), ".dr") {
+			f, err := os.Open(file)
+			if err != nil {
+				for _, dir := range zipExtractedDirs {
+					os.RemoveAll(dir)
+				}
+				return errors2.Errorf("unable to read file `%s`: %s", file, err)
+			}
+			_ = f.Close()
+			continue
+		}
+
 		content, err := os.ReadFile(file)
 		if err != nil {
 			// Clean up extracted files before returning error

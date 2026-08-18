@@ -244,8 +244,16 @@ func (s *Server) handleListVaults(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read the ML-KEM-768 private key PEM, if supplied, needed to decrypt any .dr inputs.
+	privateKeyPEM, err := readPrivateKeyPEM(r)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to read private key: %v", err), http.StatusBadRequest)
+		return
+	}
+	defer clear(privateKeyPEM)
+
 	// Run the tool to get vault information
-	_, _, _, vaultsFormInfo, _, err := runTool(vaultsDataFiles, nil, nil, nil, nil, nil)
+	_, _, _, vaultsFormInfo, _, err := runTool(vaultsDataFiles, nil, nil, nil, nil, nil, nil, privateKeyPEM)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to retrieve vault information: %v", err), http.StatusInternalServerError)
 		return
@@ -287,6 +295,11 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 		nonceOverride = &nonce
 	}
 
+	var requestIDOverride *string
+	if requestIDOverrideStr := r.FormValue("requestIdOverride"); requestIDOverrideStr != "" {
+		requestIDOverride = &requestIDOverrideStr
+	}
+
 	quorumOverrideStr := r.FormValue("quorumOverride")
 	var quorumOverride *int
 	if quorumOverrideStr != "" {
@@ -324,9 +337,17 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 	}
 	defer vaultsDataFiles.Zeroize()
 
+	// Read the ML-KEM-768 private key PEM, if supplied, needed to decrypt any .dr inputs.
+	privateKeyPEM, err := readPrivateKeyPEM(r)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to read private key: %v", err), http.StatusBadRequest)
+		return
+	}
+	defer clear(privateKeyPEM)
+
 	// Run the recovery tool
 	result := RecoveryResult{}
-	address, ecSK, edSK, _, exportedKsFile, err := runTool(vaultsDataFiles, &vaultID, nonceOverride, quorumOverride, exportFile, password)
+	address, ecSK, edSK, _, exportedKsFile, err := runTool(vaultsDataFiles, &vaultID, nonceOverride, requestIDOverride, quorumOverride, exportFile, password, privateKeyPEM)
 
 	if err != nil {
 		result.Success = false
@@ -405,14 +426,37 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// readPrivateKeyPEM extracts the ML-KEM-768 private key PEM needed to decrypt any Virtual Signer
+// .dr inputs from the request, accepted either as an uploaded file ("privateKeyFile" multipart
+// field) or pasted PEM text ("privateKey" form field). Returns nil, nil when neither is supplied,
+// which is fine for a recovery that only involves legacy/mobile JSON inputs.
+func readPrivateKeyPEM(r *http.Request) ([]byte, error) {
+	if r.MultipartForm != nil {
+		if files := r.MultipartForm.File["privateKeyFile"]; len(files) > 0 {
+			file, err := files[0].Open()
+			if err != nil {
+				return nil, fmt.Errorf("failed to open private key file: %w", err)
+			}
+			defer file.Close()
+			data, err := io.ReadAll(file)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read private key file: %w", err)
+			}
+			return data, nil
+		}
+	}
+	if pem := r.FormValue("privateKey"); pem != "" {
+		return []byte(pem), nil
+	}
+	return nil, nil
+}
+
 // processFilesAndMnemonics processes the uploaded files and their mnemonics
 func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, error) {
-	// Debug logging to help diagnose form issues
-	// Get file uploads - the frontend might use "files" or file input specific IDs
-	var fileHeaders []*multipart.FileHeader
-	for _, uploadedFiles := range r.MultipartForm.File {
-		fileHeaders = append(fileHeaders, uploadedFiles...)
-	}
+	// Get the vault data file uploads. These always arrive under the "files" field; other
+	// multipart file fields (e.g. "privateKeyFile") carry unrelated data and must not be swept
+	// in here, or they'd be mistaken for a vault data file requiring its own mnemonic.
+	fileHeaders := r.MultipartForm.File["files"]
 
 	if len(fileHeaders) == 0 {
 		return nil, fmt.Errorf("no files uploaded")
@@ -469,10 +513,6 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, 
 
 		closeFiles(&file, outFile)
 
-		if !ziputils.IsZipFile(filePath) {
-			os.Remove(filePath)
-		}
-
 		// Process the file based on its type
 		if ziputils.IsZipFile(filePath) {
 			// Extract JSON files from the ZIP
@@ -493,6 +533,15 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, 
 			for _, extractedFile := range extractedFiles {
 				// Get complete filename and base name without extension
 				fileName := filepath.Base(extractedFile)
+
+				// Virtual Signer .dr files are decrypted with the shared ML-KEM-768 private key
+				// (see readPrivateKeyPEM), not a per-file mnemonic; skip the mnemonic lookup.
+				if strings.EqualFold(filepath.Ext(fileName), ".dr") {
+					vaultsDataFiles = append(vaultsDataFiles, ui.VaultsDataFile{File: extractedFile})
+					jsonFileCount++
+					continue
+				}
+
 				baseName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
 
 				// Look for mnemonic specific to this signer type
@@ -519,6 +568,11 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, 
 					fmt.Println(ui.PlainTextf("Skipping file %s - no mnemonic provided", filepath.Base(extractedFile)))
 				}
 			}
+		} else if strings.EqualFold(filepath.Ext(filePath), ".dr") {
+			// Virtual Signer .dr files are decrypted with the shared ML-KEM-768 private key (see
+			// readPrivateKeyPEM), not a per-file mnemonic.
+			vaultsDataFiles = append(vaultsDataFiles, ui.VaultsDataFile{File: filePath})
+			jsonFileCount++
 		} else {
 			// Handle regular JSON file
 			// Get mnemonics from regular fields

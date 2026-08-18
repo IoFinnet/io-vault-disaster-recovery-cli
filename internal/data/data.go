@@ -7,9 +7,56 @@ package data
 import (
 	"bytes"
 	"compress/flate"
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"regexp"
+	"strings"
 )
+
+// AES-256-GCM fixed field sizes shared by every era of our encrypted vault exports.
+// The nonce is the standard 96-bit (12-byte) GCM IV and the auth tag is 128-bit
+// (16-byte) — both the legacy and current encoders use these sizes.
+const (
+	GcmIVBytes  = 12
+	GcmTagBytes = 16
+)
+
+var hexOnlyRe = regexp.MustCompile(`^[0-9a-fA-F]+$`)
+
+// DecodeGcmField decodes a GCM iv/tag that may be either HEX (legacy
+// react-native-aes-gcm-crypto mobile backups) or base64 (current expo-crypto mobile
+// exports). It mirrors the mobile app's decodeGcmField: we disambiguate by LENGTH
+// rather than by "does it look like hex", because the hex alphabet is a subset of the
+// base64 alphabet — a base64 value can consist entirely of [0-9a-f] and a hex-first
+// heuristic would then silently decode it as the wrong bytes, causing a GCM auth
+// failure that makes the backup look permanently corrupt.
+//
+// For the fixed GCM sizes the two encodings never collide:
+//   - iv  (12 bytes): hex = 24 chars, base64 = 16 chars
+//   - tag (16 bytes): hex = 32 chars, base64 = 24 chars (padded)
+//
+// so an exact 2×byteLen all-hex string is unambiguously hex; anything else is base64.
+// A malformed value that matches neither falls through to base64 and, if wrong,
+// surfaces as a decode/decrypt error rather than silent corruption.
+func DecodeGcmField(value string, byteLen int) ([]byte, error) {
+	v := strings.TrimSpace(value)
+	var decoded []byte
+	var err error
+	if len(v) == byteLen*2 && hexOnlyRe.MatchString(v) {
+		decoded, err = hex.DecodeString(v)
+	} else {
+		decoded, err = base64.StdEncoding.DecodeString(v)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(decoded) != byteLen {
+		return nil, fmt.Errorf("decoded field is %d bytes, expected %d", len(decoded), byteLen)
+	}
+	return decoded, nil
+}
 
 // DEFLATE (customized)
 

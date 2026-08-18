@@ -143,6 +143,18 @@ h3 {
     background-color: var(--light-gray);
 }
 
+.private-key-section {
+    margin-bottom: 1.5rem;
+    padding: 1.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: var(--light-gray);
+}
+
+#private-key-file {
+    display: none;
+}
+
 #signer-mnemonics {
     margin-top: 1rem;
 }

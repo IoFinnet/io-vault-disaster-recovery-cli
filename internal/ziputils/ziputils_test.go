@@ -152,13 +152,6 @@ func TestProcessZipFileWithInvalidContent(t *testing.T) {
 		errContains string
 	}{
 		{
-			name: "ZIP with nested directories",
-			createZip: func(zipPath string) error {
-				return createZipWithNestedDirs(zipPath)
-			},
-			errContains: "contains nested directories",
-		},
-		{
 			name: "ZIP with non-JSON files",
 			createZip: func(zipPath string) error {
 				return createZipWithNonJsonFiles(zipPath)
@@ -219,29 +212,6 @@ func TestProcessZipFileWithInvalidContent(t *testing.T) {
 }
 
 // Helper functions to create test ZIP files
-
-func createZipWithNestedDirs(zipPath string) error {
-	// Create a new ZIP file
-	zipFile, err := os.Create(zipPath)
-	if err != nil {
-		return err
-	}
-	defer zipFile.Close()
-
-	// Create a ZIP writer
-	zipWriter := zip.NewWriter(zipFile)
-	defer zipWriter.Close()
-
-	// Add a JSON file in a nested directory
-	fileWriter, err := zipWriter.Create("nested/dir/file.json")
-	if err != nil {
-		return err
-	}
-
-	// Write valid JSON content
-	_, err = fileWriter.Write([]byte(`{"key": "value"}`))
-	return err
-}
 
 func createZipWithNonJsonFiles(zipPath string) error {
 	// Create a new ZIP file
@@ -323,6 +293,200 @@ func createEmptyZip(zipPath string) error {
 	// Create a ZIP writer and close it without adding any files
 	zipWriter := zip.NewWriter(zipFile)
 	return zipWriter.Close()
+}
+
+// TestProcessZipFile_WithDRFile verifies that a flat ZIP mixing a Virtual Signer .dr file (JSON,
+// per the current on-disk envelope format) alongside a .json file is accepted and both are
+// extracted, since .dr is now a supported extension inside a ZIP.
+func TestProcessZipFile_WithDRFile(t *testing.T) {
+	zipPath := filepath.Join(t.TempDir(), "with_dr.zip")
+
+	zipFile, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatalf("failed to create test ZIP file: %v", err)
+	}
+	zipWriter := zip.NewWriter(zipFile)
+
+	jsonWriter, err := zipWriter.Create("share.json")
+	if err != nil {
+		t.Fatalf("failed to add json entry: %v", err)
+	}
+	if _, err := jsonWriter.Write([]byte(`{"key": "value"}`)); err != nil {
+		t.Fatalf("failed to write json entry: %v", err)
+	}
+
+	drWriter, err := zipWriter.Create("req0.ecdsa.secp256k1.dr")
+	if err != nil {
+		t.Fatalf("failed to add .dr entry: %v", err)
+	}
+	if _, err := drWriter.Write([]byte(`{"vaultId":"v1","requestId":"req0","reshareNonce":1,"algo":"ECDSA","curve":"secp256k1","dataB64":"AAAA"}`)); err != nil {
+		t.Fatalf("failed to write .dr entry: %v", err)
+	}
+
+	if err := zipWriter.Close(); err != nil {
+		t.Fatalf("failed to close ZIP writer: %v", err)
+	}
+	if err := zipFile.Close(); err != nil {
+		t.Fatalf("failed to close ZIP file: %v", err)
+	}
+
+	extractedFiles, err := ProcessZipFile(zipPath)
+	if err != nil {
+		t.Fatalf("ProcessZipFile() unexpected error: %v", err)
+	}
+	if len(extractedFiles) > 0 {
+		defer os.RemoveAll(filepath.Dir(extractedFiles[0]))
+	}
+	if len(extractedFiles) != 2 {
+		t.Fatalf("ProcessZipFile() extracted %d files, want 2", len(extractedFiles))
+	}
+
+	var sawJSON, sawDR bool
+	for _, f := range extractedFiles {
+		switch strings.ToLower(filepath.Ext(f)) {
+		case ".json":
+			sawJSON = true
+		case ".dr":
+			sawDR = true
+		}
+	}
+	if !sawJSON || !sawDR {
+		t.Fatalf("expected both a .json and a .dr file among extracted files, got %v", extractedFiles)
+	}
+}
+
+// TestProcessZipFile_NestedDirsAndMacOSXMetadata verifies that a ZIP whose payload files sit in
+// nested directories, and which carries macOS Finder metadata (a "__MACOSX/" folder of AppleDouble
+// "._" files and a ".DS_Store"), is accepted: payload files are extracted flat by basename and the
+// OS metadata entries are ignored. This mirrors ZIPs produced by macOS Archive Utility.
+func TestProcessZipFile_NestedDirsAndMacOSXMetadata(t *testing.T) {
+	zipPath := filepath.Join(t.TempDir(), "macos_style.zip")
+
+	zipFile, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatalf("failed to create test ZIP file: %v", err)
+	}
+	zipWriter := zip.NewWriter(zipFile)
+
+	entries := map[string]string{
+		"backup/share.json":              `{"key":"value"}`,
+		"backup/req0.ecdsa.secp256k1.dr": `{"vaultId":"v1"}`,
+		"__MACOSX/backup/._share.json":   "AppleDouble junk",
+		"__MACOSX/._backup":              "AppleDouble junk",
+		".DS_Store":                      "Finder metadata",
+	}
+	for name, content := range entries {
+		w, err := zipWriter.Create(name)
+		if err != nil {
+			t.Fatalf("failed to add entry %s: %v", name, err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatalf("failed to write entry %s: %v", name, err)
+		}
+	}
+	if err := zipWriter.Close(); err != nil {
+		t.Fatalf("failed to close ZIP writer: %v", err)
+	}
+	if err := zipFile.Close(); err != nil {
+		t.Fatalf("failed to close ZIP file: %v", err)
+	}
+
+	extractedFiles, err := ProcessZipFile(zipPath)
+	if err != nil {
+		t.Fatalf("ProcessZipFile() unexpected error: %v", err)
+	}
+	if len(extractedFiles) > 0 {
+		defer os.RemoveAll(filepath.Dir(extractedFiles[0]))
+	}
+	if len(extractedFiles) != 2 {
+		t.Fatalf("ProcessZipFile() extracted %d files, want 2 (only the payload files)", len(extractedFiles))
+	}
+	for _, f := range extractedFiles {
+		base := filepath.Base(f)
+		if base != "share.json" && base != "req0.ecdsa.secp256k1.dr" {
+			t.Fatalf("unexpected extracted file %q; metadata should have been skipped", base)
+		}
+	}
+}
+
+// TestProcessZipFile_BasenameCollision verifies that two payload files sharing a basename across
+// different directories are rejected rather than silently overwriting each other when flattened.
+func TestProcessZipFile_BasenameCollision(t *testing.T) {
+	zipPath := filepath.Join(t.TempDir(), "collision.zip")
+
+	zipFile, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatalf("failed to create test ZIP file: %v", err)
+	}
+	zipWriter := zip.NewWriter(zipFile)
+
+	for _, name := range []string{"a/share.json", "b/share.json"} {
+		w, err := zipWriter.Create(name)
+		if err != nil {
+			t.Fatalf("failed to add entry %s: %v", name, err)
+		}
+		if _, err := w.Write([]byte(`{"key":"value"}`)); err != nil {
+			t.Fatalf("failed to write entry %s: %v", name, err)
+		}
+	}
+	if err := zipWriter.Close(); err != nil {
+		t.Fatalf("failed to close ZIP writer: %v", err)
+	}
+	if err := zipFile.Close(); err != nil {
+		t.Fatalf("failed to close ZIP file: %v", err)
+	}
+
+	extractedFiles, err := ProcessZipFile(zipPath)
+	if len(extractedFiles) > 0 {
+		defer os.RemoveAll(filepath.Dir(extractedFiles[0]))
+	}
+	if err == nil {
+		t.Fatalf("ProcessZipFile() expected an error for basename collision, got nil")
+	}
+	if !strings.Contains(err.Error(), "multiple files named") {
+		t.Fatalf("ProcessZipFile() error = %v, should mention basename collision", err)
+	}
+}
+
+// TestProcessZipFile_BasenameCollisionCaseInsensitive verifies that basenames differing only by
+// case (e.g. "share.json" vs "SHARE.JSON") are also rejected as a collision, since they resolve
+// to the same file on common case-insensitive filesystems and would otherwise let one entry
+// silently overwrite the other on extraction.
+func TestProcessZipFile_BasenameCollisionCaseInsensitive(t *testing.T) {
+	zipPath := filepath.Join(t.TempDir(), "collision-case.zip")
+
+	zipFile, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatalf("failed to create test ZIP file: %v", err)
+	}
+	zipWriter := zip.NewWriter(zipFile)
+
+	for _, name := range []string{"a/share.json", "b/SHARE.JSON"} {
+		w, err := zipWriter.Create(name)
+		if err != nil {
+			t.Fatalf("failed to add entry %s: %v", name, err)
+		}
+		if _, err := w.Write([]byte(`{"key":"value"}`)); err != nil {
+			t.Fatalf("failed to write entry %s: %v", name, err)
+		}
+	}
+	if err := zipWriter.Close(); err != nil {
+		t.Fatalf("failed to close ZIP writer: %v", err)
+	}
+	if err := zipFile.Close(); err != nil {
+		t.Fatalf("failed to close ZIP file: %v", err)
+	}
+
+	extractedFiles, err := ProcessZipFile(zipPath)
+	if len(extractedFiles) > 0 {
+		defer os.RemoveAll(filepath.Dir(extractedFiles[0]))
+	}
+	if err == nil {
+		t.Fatalf("ProcessZipFile() expected an error for case-insensitive basename collision, got nil")
+	}
+	if !strings.Contains(err.Error(), "multiple files named") {
+		t.Fatalf("ProcessZipFile() error = %v, should mention basename collision", err)
+	}
 }
 
 // Helper function to check if a file exists
