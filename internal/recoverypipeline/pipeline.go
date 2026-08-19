@@ -88,6 +88,17 @@ func (p ErrorPresentation) err(err error) error {
 // form field to fill), since the shared code cannot know how the caller takes input.
 var ErrPrivateKeyRequired = errors.New("is a Virtual Signer .dr file")
 
+// ErrAmbiguousEpoch signals that a vault's .dr files carry more than one root epoch in their
+// previousRequestId chain, with no override selecting one of them. Frontends detect it with
+// errors.Is and append their own remediation wording (which flag to pass, or which form field to
+// fill), since the shared code cannot know how the caller takes input.
+var ErrAmbiguousEpoch = errors.New("ambiguous epoch")
+
+// ErrRequestIDMismatch signals that a vault's chosen request id disagrees with the request id
+// already recorded for it from another input file. Frontends detect it with errors.Is and append
+// their own remediation wording, for the same reason as ErrAmbiguousEpoch.
+var ErrRequestIDMismatch = errors.New("non matching current request id")
+
 // Options are Prepare's inputs. The zero value means listing mode, CLI-style error
 // presentation, and no overrides.
 type Options struct {
@@ -155,8 +166,9 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 
 		content, err := os.ReadFile(file.File)
 		if err != nil {
-			log.Printf("⚠ failed to read file(%s): %s", file.File, err)
-			welp = fmt.Errorf("⚠ failed to read file (%s): %s", presentation.path(file.File), presentation.err(err))
+			redactedPath, redactedErr := presentation.path(file.File), presentation.err(err)
+			log.Printf("⚠ failed to read file(%s): %s", redactedPath, redactedErr)
+			welp = fmt.Errorf("⚠ failed to read file (%s): %s", redactedPath, redactedErr)
 			return
 		}
 		if err := json.Unmarshal(content, saveData); err != nil {
@@ -192,7 +204,7 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 				for nonce := range entry.LegacyByNonce {
 					nonces[nonce] = true
 				}
-				lastReshareNonce := pickLastLegacyNonce(nonces, vID, clearVaults, nonceOverride, nonceOverrideSet, justListingVaults, vaultLastLegacyNonces)
+				lastReshareNonce := pickLastLegacyNonce(nonces, vID, clearVaults, nonceOverride, nonceOverrideSet, justListingVaults, vaultLastLegacyNonces, presentation)
 				if lastReshareNonce == -1 {
 					//welp = fmt.Errorf("⚠ no share data found for vault `%s` in save file", vID)
 					continue // not a show stopper

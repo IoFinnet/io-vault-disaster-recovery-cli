@@ -44,7 +44,7 @@ func pickLatestDRRequestID(byRequestID map[string]*drVaultShares, vID string, re
 	if heads == 1 || justListingVaults {
 		return head, nil
 	}
-	return "", fmt.Errorf("⚠ vault %s: found %d root epoch(s) among its .dr files' previousRequestId chain (expected exactly 1); specify -request-id to disambiguate", vID, heads)
+	return "", fmt.Errorf("⚠ vault %s: found %d root epoch(s) among its .dr files' previousRequestId chain (expected exactly 1): %w", vID, heads, ErrAmbiguousEpoch)
 }
 
 // rejectOnRequestIDDisagreement records vID's chosen request id and errors out if it disagrees
@@ -59,7 +59,7 @@ func rejectOnRequestIDDisagreement(vID, requestID string, clearVaults ClearVault
 		if cv, ok2 := clearVaults[vID]; ok2 && cv != nil {
 			vaultName = cv.Name
 		}
-		return fmt.Errorf("⚠ non matching current request id for vault `%s` (%s vs %s). Specify -request-id and -threshold to disambiguate", vaultName, glbRequestID, requestID)
+		return fmt.Errorf("⚠ vault `%s`: %w (%s vs %s)", vaultName, ErrRequestIDMismatch, glbRequestID, requestID)
 	}
 	vaultLastRequestIDs[vID] = requestID
 	return nil
@@ -69,8 +69,14 @@ func rejectOnRequestIDDisagreement(vID, requestID string, clearVaults ClearVault
 // in one legacy flat-nonce JSON file (honoring the -nonce override), warning if it disagrees with
 // the nonce already picked for this vault from another legacy file. Returns -1 if no nonce
 // survives the override filter.
+//
+// The disagreement warning is CLI-flag wording (-nonce, -threshold, -vault-id) printed directly to
+// stdout, so it is only meaningful for the CLI frontend; presentation.Path is nil only for the
+// CLI's zero-value ErrorPresentation (see Options doc comment), so it doubles as that signal here.
+// The web frontend gets a neutral warning instead, since it has no such flags and this print
+// reaches the server's log, not the browser.
 func pickLastLegacyNonce(nonces map[int]bool, vID string, clearVaults ClearVaultMap, nonceOverride int, nonceOverrideSet bool,
-	justListingVaults bool, vaultLastLegacyNonces map[string]int) int {
+	justListingVaults bool, vaultLastLegacyNonces map[string]int, presentation ErrorPresentation) int {
 
 	lastReshareNonce := -1
 	for nonce := range nonces {
@@ -90,11 +96,20 @@ func pickLastLegacyNonce(nonces map[int]bool, vID string, clearVaults ClearVault
 		if cv, ok2 := clearVaults[vID]; ok2 && cv != nil {
 			vaultName = cv.Name
 		}
-		fmt.Println(ui.PlainTextf("\n⚠ Non matching reshare nonce for vault `%s`. You may have to specify prior reshare config with -nonce and -threshold when recovering that vault.", vaultName))
-		if lastReshareNonce-1 >= 0 {
-			fmt.Println(ui.PlainTextf("⚠ If you have problems recovering that vault, you could try: -vault-id %s -nonce %d -threshold x. Replace x with previous vault threshold.", vID, lastReshareNonce-1))
+		if presentation.Path == nil {
+			fmt.Println(ui.PlainTextf("\n⚠ Non matching reshare nonce for vault `%s`. You may have to specify prior reshare config with -nonce and -threshold when recovering that vault.", vaultName))
+			if lastReshareNonce-1 >= 0 {
+				fmt.Println(ui.PlainTextf("⚠ If you have problems recovering that vault, you could try: -vault-id %s -nonce %d -threshold x. Replace x with previous vault threshold.", vID, lastReshareNonce-1))
+			} else {
+				fmt.Println()
+			}
 		} else {
-			println()
+			fmt.Println(ui.PlainTextf("\n⚠ Non matching reshare nonce for vault `%s`. You may have to specify a prior reshare config when recovering that vault.", vaultName))
+			if lastReshareNonce-1 >= 0 {
+				fmt.Println(ui.PlainTextf("⚠ If you have problems recovering that vault, try the previous reshare nonce (%d) and that reshare's threshold.", lastReshareNonce-1))
+			} else {
+				fmt.Println()
+			}
 		}
 	}
 	vaultLastLegacyNonces[vID] = lastReshareNonce

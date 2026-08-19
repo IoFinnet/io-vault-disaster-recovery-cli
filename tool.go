@@ -49,11 +49,16 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID string, nonceOverride i
 	}
 	res, err := recoverypipeline.Prepare(vaultsDataFile, opts)
 	if err != nil {
-		if errors.Is(err, recoverypipeline.ErrPrivateKeyRequired) {
+		switch {
+		case errors.Is(err, recoverypipeline.ErrPrivateKeyRequired):
 			welp = fmt.Errorf("%s; use -private-key to supply the ML-KEM-768 private key PEM", err)
-			return
+		case errors.Is(err, recoverypipeline.ErrAmbiguousEpoch):
+			welp = fmt.Errorf("%s; specify -request-id to disambiguate", err)
+		case errors.Is(err, recoverypipeline.ErrRequestIDMismatch):
+			welp = fmt.Errorf("%s. Specify -request-id and -threshold to disambiguate", err)
+		default:
+			welp = err
 		}
-		welp = err
 		return
 	}
 	orderedVaults = res.OrderedVaults
