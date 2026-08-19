@@ -40,7 +40,7 @@ type Result struct {
 	Vaults ClearVaultMap
 
 	// SharesECDSA and SharesEdDSA are the per-vault share pools, merged across
-	// every input file format for the selected epoch.
+	// every input file format for the selected reshare.
 	SharesECDSA VaultAllSharesECDSA
 	SharesEdDSA VaultAllSharesEdDSA
 
@@ -88,6 +88,14 @@ func (p ErrorPresentation) err(err error) error {
 // form field to fill), since the shared code cannot know how the caller takes input.
 var ErrPrivateKeyRequired = errors.New("is a Virtual Signer .dr file")
 
+// ErrAmbiguousRootRequestID signals no single root request id could be picked from a vault's .dr
+// chain. Same errors.Is/per-frontend-remediation pattern as ErrPrivateKeyRequired.
+var ErrAmbiguousRootRequestID = errors.New("ambiguous root request id")
+
+// ErrRequestIDMismatch signals a vault's chosen request id disagrees with one already recorded
+// for it from another input file. Same pattern as ErrAmbiguousRootRequestID.
+var ErrRequestIDMismatch = errors.New("non matching current request id")
+
 // Options are Prepare's inputs. The zero value means listing mode, CLI-style error
 // presentation, and no overrides.
 type Options struct {
@@ -101,13 +109,13 @@ type Options struct {
 
 // Prepare decodes and decrypts every input backup file — mnemonic-encrypted JSON in
 // its legacy flat-nonce and mobile v4/v5 shapes, and Virtual Signer .dr files —
-// selects each vault's current reshare epoch, and folds all decoded shares into
+// selects each vault's current reshare, and folds all decoded shares into
 // per-vault pools. It performs no key reconstruction: callers take the pools and
 // per-vault metadata from Result and run their own reconstruction step.
 //
 // With opts.VaultID empty, every vault in every file is processed (listing mode,
 // used by both frontends to discover what to offer); with opts.VaultID set, only
-// that vault's data is decoded, and epoch/threshold conflicts for it are hard errors.
+// that vault's data is decoded, and reshare/threshold conflicts for it are hard errors.
 func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, welp error) {
 	vaultID := opts.VaultID
 	nonceOverride := opts.NonceOverride
@@ -136,9 +144,9 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 	mobileVaults := make(map[string]bool, len(vaultsDataFile)*16)
 	mobileFileThreshold := make(map[string]bool, len(vaultsDataFile)*16)
 	// .dr files carry a previousRequestId chain pointer (unlike the legacy mnemonic-encrypted
-	// JSON below, one .dr file is one device's shares for one specific epoch, keyed by
+	// JSON below, one .dr file is one device's shares for one specific reshare, keyed by
 	// RequestId), so they're grouped by vault+requestId here and folded in below once every input
-	// file has been seen, walking the chain to find each vault's current epoch.
+	// file has been seen, walking the chain to find each vault's current reshare.
 	drSharesByVaultRequestID := make(map[string]map[string]*drVaultShares, len(vaultsDataFile))
 
 	// Process each vault data file
@@ -155,8 +163,9 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 
 		content, err := os.ReadFile(file.File)
 		if err != nil {
-			log.Printf("⚠ failed to read file(%s): %s", file.File, err)
-			welp = fmt.Errorf("⚠ failed to read file (%s): %s", presentation.path(file.File), presentation.err(err))
+			redactedPath, redactedErr := presentation.path(file.File), presentation.err(err)
+			log.Printf("⚠ failed to read file(%s): %s", redactedPath, redactedErr)
+			welp = fmt.Errorf("⚠ failed to read file (%s): %s", redactedPath, redactedErr)
 			return
 		}
 		if err := json.Unmarshal(content, saveData); err != nil {
@@ -192,7 +201,7 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 				for nonce := range entry.LegacyByNonce {
 					nonces[nonce] = true
 				}
-				lastReshareNonce := pickLastLegacyNonce(nonces, vID, clearVaults, nonceOverride, nonceOverrideSet, justListingVaults, vaultLastLegacyNonces)
+				lastReshareNonce := pickLastLegacyNonce(nonces, vID, clearVaults, nonceOverride, nonceOverrideSet, justListingVaults, vaultLastLegacyNonces, presentation)
 				if lastReshareNonce == -1 {
 					//welp = fmt.Errorf("⚠ no share data found for vault `%s` in save file", vID)
 					continue // not a show stopper
@@ -220,7 +229,7 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 
 			// DECRYPT
 			// iv/tag are hex in legacy exports and base64 in current ones; decode by
-			// field length so either era recovers. See data.DecodeGcmField.
+			// field length so either format recovers. See data.DecodeGcmField.
 			aesNonce, err := data.DecodeGcmField(cipheredVault.CipherParams.IV, data.GcmIVBytes)
 			if err != nil {
 				welp = errors2.Errorf("⚠ failed to decrypt vault %s: %s (on nonce decode)", vID, err)
@@ -382,8 +391,8 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 	}
 
 	// Fold in the .dr shares accumulated above: for each vault, walk the previousRequestId chain
-	// (or honor a -request-id override) to find its current epoch, warning on disagreement with
-	// whatever the legacy/v4 JSON path already picked for that vault, then merge that epoch's
+	// (or honor a -request-id override) to find its current reshare, warning on disagreement with
+	// whatever the legacy/v4 JSON path already picked for that vault, then merge that reshare's
 	// shares into the same pools used by the legacy path so a single recovery run can mix both
 	// file formats for a vault.
 	for vID, byRequestID := range drSharesByVaultRequestID {
@@ -454,7 +463,7 @@ func processDRFile(path string, privateKeyPEM []byte, vaultID string, justListin
 
 	parsed, err := dr.DecryptAndParse(privateKeyPEM, raw)
 	if err != nil {
-		return fmt.Errorf("⚠ failed to decrypt %s: %s", presentation.path(path), err)
+		return fmt.Errorf("⚠ failed to decrypt %s: %s", presentation.path(path), presentation.err(err))
 	}
 
 	// The reconstructed vault ID and threshold come from the decrypted (AEAD-authenticated)
@@ -512,98 +521,6 @@ func processDRFile(path string, privateKeyPEM []byte, vaultID string, justListin
 		entry.eddsa = append(entry.eddsa, shares...)
 		entry.hasEdDSA = true
 	}
-	return nil
-}
-
-// pickLastLegacyNonce selects the reshare nonce to use for a vault from the set of nonces found
-// in one legacy flat-nonce JSON file (honoring the -nonce override), warning if it disagrees with
-// the nonce already picked for this vault from another legacy file. Returns -1 if no nonce
-// survives the override filter.
-func pickLastLegacyNonce(nonces map[int]bool, vID string, clearVaults ClearVaultMap, nonceOverride int, nonceOverrideSet bool,
-	justListingVaults bool, vaultLastLegacyNonces map[string]int) int {
-
-	lastReshareNonce := -1
-	for nonce := range nonces {
-		// support the -nonce flag to override the last reshare nonce we use
-		if !justListingVaults && nonceOverrideSet && nonceOverride != nonce {
-			continue
-		}
-		if nonce > lastReshareNonce {
-			lastReshareNonce = nonce
-		}
-	}
-	if lastReshareNonce == -1 {
-		return -1
-	}
-	if glbLastReShareNonce, ok := vaultLastLegacyNonces[vID]; ok && glbLastReShareNonce != lastReshareNonce {
-		vaultName := vID
-		if cv, ok2 := clearVaults[vID]; ok2 && cv != nil {
-			vaultName = cv.Name
-		}
-		fmt.Println(ui.PlainTextf("\n⚠ Non matching reshare nonce for vault `%s`. You may have to specify prior reshare config with -nonce and -threshold when recovering that vault.", vaultName))
-		if lastReshareNonce-1 >= 0 {
-			fmt.Println(ui.PlainTextf("⚠ If you have problems recovering that vault, you could try: -vault-id %s -nonce %d -threshold x. Replace x with previous vault threshold.", vID, lastReshareNonce-1))
-		} else {
-			println()
-		}
-	}
-	vaultLastLegacyNonces[vID] = lastReshareNonce
-	return lastReshareNonce
-}
-
-// pickLatestDRRequestID selects the current epoch's request id for a vault from its .dr files, by
-// walking the previousRequestId chain built by processDRFile: the request id in byRequestID that
-// is not referenced as any other entry's previousRequestId is the head (most recent) epoch.
-// Honors the -request-id override, used directly instead of chain-walking.
-//
-// Unlike a legacy reshare nonce (where "highest wins" is always well-defined even amid
-// disagreement across files), an ambiguous chain has no safe fallback: if !justListingVaults, an
-// ambiguous chain without an override is a hard error rather than a guess, since a wrong guess
-// here reconstructs the wrong key. During listing (no vault selected yet), ambiguity is tolerated
-// with a best-effort pick, since nothing here yet influences key reconstruction.
-func pickLatestDRRequestID(byRequestID map[string]*drVaultShares, vID string, requestIDOverride string, justListingVaults bool) (string, error) {
-	if !justListingVaults && requestIDOverride != "" {
-		if _, ok := byRequestID[requestIDOverride]; !ok {
-			return "", nil // not a show stopper: this vault has no .dr shares matching the override
-		}
-		return requestIDOverride, nil
-	}
-
-	referenced := make(map[string]bool, len(byRequestID))
-	for _, entry := range byRequestID {
-		if entry.previousRequestId != "" {
-			referenced[entry.previousRequestId] = true
-		}
-	}
-	var head string
-	heads := 0
-	for requestID := range byRequestID {
-		if !referenced[requestID] {
-			head = requestID
-			heads++
-		}
-	}
-	if heads == 1 || justListingVaults {
-		return head, nil
-	}
-	return "", fmt.Errorf("⚠ vault %s: found %d root epoch(s) among its .dr files' previousRequestId chain (expected exactly 1); specify -request-id to disambiguate", vID, heads)
-}
-
-// rejectOnRequestIDDisagreement records vID's chosen request id and errors out if it disagrees
-// with the request id already recorded for vID from a previously-processed v4 JSON entry or the
-// .dr chain's resolved head: mixing shares from two different reshare epochs into one
-// reconstruction pool would silently produce a wrong key, so this must be a hard error rather
-// than a warning. Tracked separately from the legacy nonce disagreement warning in
-// pickLastLegacyNonce, since a nonce and a request id are never comparable.
-func rejectOnRequestIDDisagreement(vID, requestID string, clearVaults ClearVaultMap, vaultLastRequestIDs map[string]string) error {
-	if glbRequestID, ok := vaultLastRequestIDs[vID]; ok && glbRequestID != requestID {
-		vaultName := vID
-		if cv, ok2 := clearVaults[vID]; ok2 && cv != nil {
-			vaultName = cv.Name
-		}
-		return fmt.Errorf("⚠ non matching current request id for vault `%s` (%s vs %s). Specify -request-id and -threshold to disambiguate", vaultName, glbRequestID, requestID)
-	}
-	vaultLastRequestIDs[vID] = requestID
 	return nil
 }
 

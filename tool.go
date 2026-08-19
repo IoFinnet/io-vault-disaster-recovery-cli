@@ -49,11 +49,16 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID string, nonceOverride i
 	}
 	res, err := recoverypipeline.Prepare(vaultsDataFile, opts)
 	if err != nil {
-		if errors.Is(err, recoverypipeline.ErrPrivateKeyRequired) {
+		switch {
+		case errors.Is(err, recoverypipeline.ErrPrivateKeyRequired):
 			welp = fmt.Errorf("%s; use -private-key to supply the ML-KEM-768 private key PEM", err)
-			return
+		case errors.Is(err, recoverypipeline.ErrAmbiguousRootRequestID):
+			welp = fmt.Errorf("%s; specify -request-id to disambiguate", err)
+		case errors.Is(err, recoverypipeline.ErrRequestIDMismatch):
+			welp = fmt.Errorf("%s. Specify -request-id and -threshold to disambiguate", err)
+		default:
+			welp = err
 		}
-		welp = err
 		return
 	}
 	orderedVaults = res.OrderedVaults
@@ -79,7 +84,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID string, nonceOverride i
 		return
 	}
 
-	// Strict per-epoch threshold for mobile vaults: a mobile vault's quorum must come from its own
+	// Strict per-reshare threshold for mobile vaults: a mobile vault's quorum must come from its own
 	// file (v5) or the -threshold flag — never from a .dr file that happens to cover the same vault.
 	// A legacy v4 mobile file carries no threshold, so require the flag rather than silently reusing
 	// a .dr-derived Quroum.
