@@ -17,6 +17,29 @@ const (
 	v2MagicPrefix = "_V2_"
 )
 
+// WarningCode labels warning categories
+type WarningCode string
+
+const (
+	WarningManifestIgnored WarningCode = "manifest.ignored"
+)
+
+// SelectionCandidate holds the fields needed to choose an epoch for one vault.
+type SelectionCandidate struct {
+	VaultID      string
+	RequestID    string
+	Threshold    int
+	HasEdDSA     bool
+	ECDSASharesN int
+	EdDSASharesN int
+	SourceIDs    []string
+}
+
+// SelectionResult records the chosen request id for each vault.
+type SelectionResult struct {
+	Selected map[string]string // vaultID -> requestID
+}
+
 type (
 	SavedData struct {
 		Vaults map[string]VaultEntry `json:"vaults"`
