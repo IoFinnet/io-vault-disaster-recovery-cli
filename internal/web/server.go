@@ -454,7 +454,9 @@ func readPrivateKeysPEM(r *http.Request) ([][]byte, error) {
 	return nil, nil
 }
 
-// clearKeys zeroes every private key so its bytes don't linger in memory after the request.
+// clearKeys zeroes every private key once the request is done with it. This is best effort for a
+// pasted key: FormValue hands back an immutable string, so the copy taken above is what gets
+// cleared and the form's own string survives until it is collected.
 func clearKeys(keys [][]byte) {
 	for _, k := range keys {
 		clear(k)

@@ -278,11 +278,21 @@ func (m *MnemonicsFormModel) ensurePrivateKeyFile(files VaultsDataFiles) error {
 		return err
 	}
 
+	// Repeated paths are dropped here for the same reason as in the -keys parser: one key should
+	// be tried, and counted, once.
 	var paths []string
+	seen := make(map[string]bool)
 	for _, path := range strings.Split(input, ",") {
-		if path = strings.TrimSpace(path); path != "" {
-			paths = append(paths, path)
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
 		}
+		cleaned := filepath.Clean(path)
+		if seen[cleaned] {
+			continue
+		}
+		seen[cleaned] = true
+		paths = append(paths, path)
 	}
 
 	m.privateKeyFiles = paths
