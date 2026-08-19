@@ -10,7 +10,7 @@ type AppConfig struct {
 	QuorumOverride   int
 	ExportKSFile     string
 	PasswordForKS    string
-	PrivateKeyFile   string   // Path to the ML-KEM-768 private key PEM used to decrypt Virtual Signer .dr files
+	PrivateKeyFiles  []string // Paths to ML-KEM-768 private key PEMs used to decrypt Virtual Signer .dr files
 	ZipExtractedDirs []string // Tracks temporary directories created for ZIP extraction
 }
 

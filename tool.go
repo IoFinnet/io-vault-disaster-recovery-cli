@@ -24,7 +24,7 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID string, nonceOverride int, nonceOverrideSet bool, requestIDOverride string, quorumOverride int, exportKSFile, passwordForKS string, privateKeyPEM []byte) (
+func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID string, nonceOverride int, nonceOverrideSet bool, requestIDOverride string, quorumOverride int, exportKSFile, passwordForKS string, privateKeysPEM [][]byte) (
 	address string, ecdsaSK, eddsaSK []byte, orderedVaults []ui.VaultPickerItem, exportedKsFile *string, welp error) {
 
 	if nonceOverrideSet {
@@ -41,7 +41,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID string, nonceOverride i
 	}
 
 	opts := recoverypipeline.Options{
-		PrivateKeyPEM:     privateKeyPEM,
+		PrivateKeysPEM:    privateKeysPEM,
 		VaultID:           vaultID,
 		NonceOverride:     nonceOverride,
 		NonceOverrideSet:  nonceOverrideSet,
@@ -51,7 +51,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID string, nonceOverride i
 	if err != nil {
 		switch {
 		case errors.Is(err, recoverypipeline.ErrPrivateKeyRequired):
-			welp = fmt.Errorf("%s; use -private-key to supply the ML-KEM-768 private key PEM", err)
+			welp = fmt.Errorf("%s; use -keys to supply one or more ML-KEM-768 private key PEM paths", err)
 		case errors.Is(err, recoverypipeline.ErrAmbiguousRootRequestID):
 			welp = fmt.Errorf("%s; specify -request-id to disambiguate", err)
 		case errors.Is(err, recoverypipeline.ErrRequestIDMismatch):

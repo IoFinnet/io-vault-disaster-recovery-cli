@@ -256,15 +256,15 @@ func (s *Server) handleListVaults(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Read the ML-KEM-768 private key PEM, if supplied, needed to decrypt any .dr inputs.
-	privateKeyPEM, err := readPrivateKeyPEM(r)
+	privateKeysPEM, err := readPrivateKeysPEM(r)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to read private key: %v", err), http.StatusBadRequest)
 		return
 	}
-	defer clear(privateKeyPEM)
+	defer clearKeys(privateKeysPEM)
 
 	// Run the tool to get vault information
-	_, _, _, vaultsFormInfo, _, err := runTool(vaultsDataFiles, "", 0, false, "", 0, "", "", privateKeyPEM)
+	_, _, _, vaultsFormInfo, _, err := runTool(vaultsDataFiles, "", 0, false, "", 0, "", "", privateKeysPEM)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to retrieve vault information: %v", err), http.StatusInternalServerError)
 		return
@@ -340,16 +340,16 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 	defer vaultsDataFiles.Zeroize()
 
 	// Read the ML-KEM-768 private key PEM, if supplied, needed to decrypt any .dr inputs.
-	privateKeyPEM, err := readPrivateKeyPEM(r)
+	privateKeysPEM, err := readPrivateKeysPEM(r)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to read private key: %v", err), http.StatusBadRequest)
 		return
 	}
-	defer clear(privateKeyPEM)
+	defer clearKeys(privateKeysPEM)
 
 	// Run the recovery tool
 	result := RecoveryResult{}
-	address, ecSK, edSK, _, exportedKsFile, err := runTool(vaultsDataFiles, vaultID, nonceOverride, nonceOverrideSet, requestIDOverride, quorumOverride, exportFile, passwordForKS, privateKeyPEM)
+	address, ecSK, edSK, _, exportedKsFile, err := runTool(vaultsDataFiles, vaultID, nonceOverride, nonceOverrideSet, requestIDOverride, quorumOverride, exportFile, passwordForKS, privateKeysPEM)
 
 	if err != nil {
 		result.Success = false
@@ -428,11 +428,12 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// readPrivateKeyPEM extracts the ML-KEM-768 private key PEM needed to decrypt any Virtual Signer
+// readPrivateKeysPEM extracts the ML-KEM-768 private key PEM needed to decrypt any Virtual Signer
 // .dr inputs from the request, accepted either as an uploaded file ("privateKeyFile" multipart
-// field) or pasted PEM text ("privateKey" form field). Returns nil, nil when neither is supplied,
-// which is fine for a recovery that only involves legacy/mobile JSON inputs.
-func readPrivateKeyPEM(r *http.Request) ([]byte, error) {
+// field) or pasted PEM text ("privateKey" form field). The web UI stays single-key, so this
+// returns at most one element. Returns nil, nil when neither is supplied, which is fine for a
+// recovery that only involves legacy/mobile JSON inputs.
+func readPrivateKeysPEM(r *http.Request) ([][]byte, error) {
 	if r.MultipartForm != nil {
 		if files := r.MultipartForm.File["privateKeyFile"]; len(files) > 0 {
 			file, err := files[0].Open()
@@ -444,13 +445,20 @@ func readPrivateKeyPEM(r *http.Request) ([]byte, error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to read private key file: %w", err)
 			}
-			return data, nil
+			return [][]byte{data}, nil
 		}
 	}
 	if pem := r.FormValue("privateKey"); pem != "" {
-		return []byte(pem), nil
+		return [][]byte{[]byte(pem)}, nil
 	}
 	return nil, nil
+}
+
+// clearKeys zeroes every private key so its bytes don't linger in memory after the request.
+func clearKeys(keys [][]byte) {
+	for _, k := range keys {
+		clear(k)
+	}
 }
 
 // processFilesAndMnemonics processes the uploaded files and their mnemonics. On success it also
@@ -539,7 +547,7 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, 
 				fileName := filepath.Base(extractedFile)
 
 				// Virtual Signer .dr files are decrypted with the shared ML-KEM-768 private key
-				// (see readPrivateKeyPEM), not a per-file mnemonic; skip the mnemonic lookup.
+				// (see readPrivateKeysPEM), not a per-file mnemonic; skip the mnemonic lookup.
 				if strings.EqualFold(filepath.Ext(fileName), ".dr") {
 					vaultsDataFiles = append(vaultsDataFiles, ui.VaultsDataFile{File: extractedFile})
 					jsonFileCount++
@@ -574,7 +582,7 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, 
 			}
 		} else if strings.EqualFold(filepath.Ext(filePath), ".dr") {
 			// Virtual Signer .dr files are decrypted with the shared ML-KEM-768 private key (see
-			// readPrivateKeyPEM), not a per-file mnemonic.
+			// readPrivateKeysPEM), not a per-file mnemonic.
 			vaultsDataFiles = append(vaultsDataFiles, ui.VaultsDataFile{File: filePath})
 			jsonFileCount++
 		} else {
