@@ -314,7 +314,7 @@ func TestTool_DR_ECDSA_And_EdDSA_Recovery(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path})
 	}
 
-	address, ecSK, edSK, vaultsFormData, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", privPEM)
+	address, ecSK, edSK, vaultsFormData, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEM})
 	require.NoError(t, err)
 	require.Len(t, vaultsFormData, 1)
 	require.Equal(t, vaultID, vaultsFormData[0].VaultID)
@@ -352,7 +352,7 @@ func TestTool_DR_ThresholdMismatch(t *testing.T) {
 		})
 
 	files := []ui.VaultsDataFile{{File: path1}, {File: path2}}
-	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", privPEM)
+	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEM})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "disagrees with another .dr file")
 }
@@ -374,7 +374,7 @@ func TestTool_DR_MissingPrivateKey(t *testing.T) {
 	files := []ui.VaultsDataFile{{File: path}}
 	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "-private-key")
+	require.Contains(t, err.Error(), "-keys")
 }
 
 func TestTool_DR_WrongPrivateKey(t *testing.T) {
@@ -393,7 +393,7 @@ func TestTool_DR_WrongPrivateKey(t *testing.T) {
 		})
 
 	files := []ui.VaultsDataFile{{File: path}}
-	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", wrongPEM)
+	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{wrongPEM})
 	require.Error(t, err)
 }
 
@@ -429,7 +429,7 @@ func TestTool_DR_MixedWithLegacy(t *testing.T) {
 		{File: legacyPath, Mnemonics: mmI},
 		{File: drPath},
 	}
-	address, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", privPEM)
+	address, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEM})
 	require.NoError(t, err)
 
 	_, expectedAddress, err := getTSSPubKeyForEthereum(pub.X(), pub.Y())
@@ -662,7 +662,7 @@ func TestTool_DR_ChainWalk_PicksHead(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path})
 	}
 
-	_, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", privPEM)
+	_, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEM})
 	require.NoError(t, err)
 	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(newSecret)), hex.EncodeToString(ecSK))
 	require.NotEqual(t, hex.EncodeToString(leftPadTo32Bytes(oldSecret)), hex.EncodeToString(ecSK))
@@ -699,7 +699,7 @@ func TestTool_DR_ChainWalk_Ambiguous(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path})
 	}
 
-	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", privPEM)
+	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEM})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "-request-id")
 }
@@ -736,7 +736,7 @@ func TestTool_DR_RequestIDOverride(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path})
 	}
 
-	_, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "epoch-b", 0, "", "", privPEM)
+	_, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "epoch-b", 0, "", "", [][]byte{privPEM})
 	require.NoError(t, err)
 	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(secretB)), hex.EncodeToString(ecSK))
 }
@@ -844,4 +844,165 @@ func TestTool_LegacyNoQuorum_KeepsV5Threshold(t *testing.T) {
 		require.Len(t, orderedVaults, 1)
 		require.Equal(t, 3, orderedVaults[0].Quorum)
 	}
+}
+
+// --- multi-key tests -----------------------------------------------------------------------
+
+// TestTool_DR_MultiKey_SecondKeyDecrypts: the first supplied key is wrong, the second is right;
+// the loop tries every key and recovers.
+func TestTool_DR_MultiKey_SecondKeyDecrypts(t *testing.T) {
+	dirTmp := t.TempDir()
+	priv, privPEM := genMLKEMKeyPEM(t)
+	_, wrongPEM := genMLKEMKeyPEM(t)
+	vaultID := "dr-test-vault-multikey-second"
+
+	secret, pub, shares := makeVSSSharesS256(t, 2, 2)
+	path := writeDRFile(t, dirTmp, "req0.ecdsa.secp256k1.dr", priv.EncapsulationKey(),
+		dr.FileEnvelope{VaultId: vaultID, RequestId: "req0", Algo: "ECDSA", Curve: "secp256k1"},
+		&dr.ECDSASharesAndVaultId{
+			Data:      []*dr.ECDSAShare{{Xi: shares[0].Share, ShareID: shares[0].ID, ECDSAPub: ecPointMirror("secp256k1", pub)}},
+			VaultId:   vaultID,
+			Threshold: 2,
+		})
+	path2 := writeDRFile(t, dirTmp, "req0-b.ecdsa.secp256k1.dr", priv.EncapsulationKey(),
+		dr.FileEnvelope{VaultId: vaultID, RequestId: "req0", Algo: "ECDSA", Curve: "secp256k1"},
+		&dr.ECDSASharesAndVaultId{
+			Data:      []*dr.ECDSAShare{{Xi: shares[1].Share, ShareID: shares[1].ID, ECDSAPub: ecPointMirror("secp256k1", pub)}},
+			VaultId:   vaultID,
+			Threshold: 2,
+		})
+
+	files := []ui.VaultsDataFile{{File: path}, {File: path2}}
+	address, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{wrongPEM, privPEM})
+	require.NoError(t, err)
+	_, expectedAddress, err := getTSSPubKeyForEthereum(pub.X(), pub.Y())
+	require.NoError(t, err)
+	require.Equal(t, expectedAddress, address)
+	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(secret)), hex.EncodeToString(ecSK))
+}
+
+// TestTool_DR_MultiKey_DifferentKeysPerFile: two .dr files for the same vault/request, each
+// encrypted to a different recipient key; supplying both keys lets both files' shares merge.
+func TestTool_DR_MultiKey_DifferentKeysPerFile(t *testing.T) {
+	dirTmp := t.TempDir()
+	privA, privPEMA := genMLKEMKeyPEM(t)
+	privB, privPEMB := genMLKEMKeyPEM(t)
+	vaultID := "dr-test-vault-multikey-perfile"
+
+	secret, pub, shares := makeVSSSharesS256(t, 2, 2)
+	pathA := writeDRFile(t, dirTmp, "deviceA.ecdsa.secp256k1.dr", privA.EncapsulationKey(),
+		dr.FileEnvelope{VaultId: vaultID, RequestId: "req0", Algo: "ECDSA", Curve: "secp256k1"},
+		&dr.ECDSASharesAndVaultId{
+			Data:      []*dr.ECDSAShare{{Xi: shares[0].Share, ShareID: shares[0].ID, ECDSAPub: ecPointMirror("secp256k1", pub)}},
+			VaultId:   vaultID,
+			Threshold: 2,
+		})
+	pathB := writeDRFile(t, dirTmp, "deviceB.ecdsa.secp256k1.dr", privB.EncapsulationKey(),
+		dr.FileEnvelope{VaultId: vaultID, RequestId: "req0", Algo: "ECDSA", Curve: "secp256k1"},
+		&dr.ECDSASharesAndVaultId{
+			Data:      []*dr.ECDSAShare{{Xi: shares[1].Share, ShareID: shares[1].ID, ECDSAPub: ecPointMirror("secp256k1", pub)}},
+			VaultId:   vaultID,
+			Threshold: 2,
+		})
+
+	files := []ui.VaultsDataFile{{File: pathA}, {File: pathB}}
+	address, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEMA, privPEMB})
+	require.NoError(t, err)
+	_, expectedAddress, err := getTSSPubKeyForEthereum(pub.X(), pub.Y())
+	require.NoError(t, err)
+	require.Equal(t, expectedAddress, address)
+	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(secret)), hex.EncodeToString(ecSK))
+}
+
+// TestTool_DR_MultiKey_AllWrong: with more than one key supplied and none of them correct, the
+// error names the file, reports how many keys were tried, and carries no key material.
+func TestTool_DR_MultiKey_AllWrong(t *testing.T) {
+	dirTmp := t.TempDir()
+	priv, _ := genMLKEMKeyPEM(t)
+	_, wrongPEM1 := genMLKEMKeyPEM(t)
+	_, wrongPEM2 := genMLKEMKeyPEM(t)
+	vaultID := "dr-test-vault-multikey-allwrong"
+
+	_, pub, shares := makeVSSSharesS256(t, 2, 2)
+	path := writeDRFile(t, dirTmp, "req0.ecdsa.secp256k1.dr", priv.EncapsulationKey(),
+		dr.FileEnvelope{VaultId: vaultID, RequestId: "req0", Algo: "ECDSA", Curve: "secp256k1"},
+		&dr.ECDSASharesAndVaultId{
+			Data:      []*dr.ECDSAShare{{Xi: shares[0].Share, ShareID: shares[0].ID, ECDSAPub: ecPointMirror("secp256k1", pub)}},
+			VaultId:   vaultID,
+			Threshold: 2,
+		})
+
+	files := []ui.VaultsDataFile{{File: path}}
+	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{wrongPEM1, wrongPEM2})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), filepath.Base(path))
+	require.Contains(t, err.Error(), "tried 2 keys")
+	require.NotContains(t, err.Error(), "PRIVATE KEY")
+	require.NotContains(t, err.Error(), string(wrongPEM1))
+	require.NotContains(t, err.Error(), string(wrongPEM2))
+}
+
+// TestTool_DR_MultiKey_CorruptEnvelope: a corrupt (not-JSON) .dr file fails identically for every
+// key tried, and the loop still surfaces the envelope-level message rather than a key error.
+func TestTool_DR_MultiKey_CorruptEnvelope(t *testing.T) {
+	dirTmp := t.TempDir()
+	_, privPEM1 := genMLKEMKeyPEM(t)
+	_, privPEM2 := genMLKEMKeyPEM(t)
+	vaultID := "dr-test-vault-multikey-corrupt"
+
+	path := filepath.Join(dirTmp, "corrupt.ecdsa.secp256k1.dr")
+	require.NoError(t, os.WriteFile(path, []byte("not json"), 0o600))
+
+	files := []ui.VaultsDataFile{{File: path}}
+	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEM1, privPEM2})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not a JSON envelope")
+}
+
+// TestTool_DR_MultiKey_EmptyKeyList: an explicitly empty (non-nil) key slice reproduces
+// ErrPrivateKeyRequired exactly like the nil case.
+func TestTool_DR_MultiKey_EmptyKeyList(t *testing.T) {
+	dirTmp := t.TempDir()
+	priv, _ := genMLKEMKeyPEM(t)
+	vaultID := "dr-test-vault-multikey-empty"
+
+	_, pub, shares := makeVSSSharesS256(t, 2, 2)
+	path := writeDRFile(t, dirTmp, "req0.ecdsa.secp256k1.dr", priv.EncapsulationKey(),
+		dr.FileEnvelope{VaultId: vaultID, RequestId: "req0", Algo: "ECDSA", Curve: "secp256k1"},
+		&dr.ECDSASharesAndVaultId{
+			Data:      []*dr.ECDSAShare{{Xi: shares[0].Share, ShareID: shares[0].ID, ECDSAPub: ecPointMirror("secp256k1", pub)}},
+			VaultId:   vaultID,
+			Threshold: 2,
+		})
+
+	files := []ui.VaultsDataFile{{File: path}}
+	_, err := recoverypipeline.Prepare(files, recoverypipeline.Options{
+		VaultID:        vaultID,
+		PrivateKeysPEM: [][]byte{},
+	})
+	require.Error(t, err)
+	require.True(t, errors.Is(err, recoverypipeline.ErrPrivateKeyRequired))
+}
+
+// TestTool_DR_SingleWrongKey_NoTriedSuffix: with exactly one key supplied, the failure message
+// keeps its single-key wording verbatim - no "(tried N keys)" suffix.
+func TestTool_DR_SingleWrongKey_NoTriedSuffix(t *testing.T) {
+	dirTmp := t.TempDir()
+	priv, _ := genMLKEMKeyPEM(t)
+	_, wrongPEM := genMLKEMKeyPEM(t)
+	vaultID := "dr-test-vault-singlewrongkey"
+
+	_, pub, shares := makeVSSSharesS256(t, 2, 2)
+	path := writeDRFile(t, dirTmp, "req0.ecdsa.secp256k1.dr", priv.EncapsulationKey(),
+		dr.FileEnvelope{VaultId: vaultID, RequestId: "req0", Algo: "ECDSA", Curve: "secp256k1"},
+		&dr.ECDSASharesAndVaultId{
+			Data:      []*dr.ECDSAShare{{Xi: shares[0].Share, ShareID: shares[0].ID, ECDSAPub: ecPointMirror("secp256k1", pub)}},
+			VaultId:   vaultID,
+			Threshold: 2,
+		})
+
+	files := []ui.VaultsDataFile{{File: path}}
+	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{wrongPEM})
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "tried")
 }

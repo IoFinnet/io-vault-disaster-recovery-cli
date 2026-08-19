@@ -24,11 +24,11 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID string, nonceOverride int, nonceOverrideSet bool, requestIDOverride string, quorumOverride int, exportKSFile, passwordForKS string, privateKeyPEM []byte) (
+func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID string, nonceOverride int, nonceOverrideSet bool, requestIDOverride string, quorumOverride int, exportKSFile, passwordForKS string, privateKeysPEM [][]byte) (
 	address string, ecdsaSK, eddsaSK []byte, orderedVaults []ui.VaultPickerItem, exportedKsFile *string, welp error) {
 
 	opts := recoverypipeline.Options{
-		PrivateKeyPEM:     privateKeyPEM,
+		PrivateKeysPEM:    privateKeysPEM,
 		Presentation:      recoverypipeline.ErrorPresentation{Path: filepath.Base, Err: fileutils.StripPathFromError},
 		VaultID:           vaultID,
 		NonceOverride:     nonceOverride,

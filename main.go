@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/bittensor"
@@ -27,6 +29,60 @@ func main() {
 	os.Exit(run())
 }
 
+// keyPathsFlag collects private key PEM paths from repeated flags and from comma-separated values.
+type keyPathsFlag []string
+
+// String is nil-receiver safe: the flag package calls it on a zero value when printing defaults.
+func (f *keyPathsFlag) String() string {
+	if f == nil {
+		return ""
+	}
+	return strings.Join(*f, ",")
+}
+
+// Set accepts a single path or a comma-separated list. Repeated paths are dropped so the same key
+// isn't tried twice, and reported as one in the "tried N keys" count.
+func (f *keyPathsFlag) Set(value string) error {
+	seen := make(map[string]bool, len(*f))
+	for _, existing := range *f {
+		seen[filepath.Clean(existing)] = true
+	}
+	for _, token := range strings.Split(value, ",") {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			return fmt.Errorf("key path cannot be empty")
+		}
+		cleaned := filepath.Clean(token)
+		if seen[cleaned] {
+			continue
+		}
+		seen[cleaned] = true
+		*f = append(*f, token)
+	}
+	return nil
+}
+
+// readPrivateKeys stops at the first unreadable path, naming it in the error. The keys read up to
+// that point are still returned, so the caller's clearKeys defer covers them.
+func readPrivateKeys(paths []string) ([][]byte, error) {
+	keys := make([][]byte, 0, len(paths))
+	for _, path := range paths {
+		key, err := os.ReadFile(path)
+		if err != nil {
+			return keys, fmt.Errorf("⚠ unable to read private key file `%s`: %s", path, err)
+		}
+		keys = append(keys, key)
+	}
+	return keys, nil
+}
+
+// clearKeys zeroes every private key so its bytes don't linger in memory after the run.
+func clearKeys(keys [][]byte) {
+	for _, k := range keys {
+		clear(k)
+	}
+}
+
 // run returns an exit code instead of calling os.Exit, so deferred cleanup runs on every path.
 func run() int {
 	vaultID := flag.String("vault-id", "", "(Optional) The vault id to export the keys for.")
@@ -35,7 +91,9 @@ func run() int {
 	quorumOverride := flag.Int("threshold", 0, "(Optional) Vault Quorum (Threshold) override. Try it if the tool advises you to do so.")
 	passwordForKS := flag.String("password", "", "(Optional) Encryption password for the Ethereum wallet v3 file; use with -export")
 	exportKSFile := flag.String("export", "wallet.json", "(Optional) Filename to export a Ethereum wallet v3 JSON to; use with -password.")
-	privateKeyFile := flag.String("private-key", "", "(Required when recovering from Virtual Signer .dr files) Path to the ML-KEM-768 private key PEM.")
+	var keyPaths keyPathsFlag
+	flag.Var(&keyPaths, "keys", "(Required when recovering from Virtual Signer .dr files) Path(s) to ML-KEM-768 private key PEM files. Repeatable, or comma-separated.")
+	flag.Var(&keyPaths, "private-key", "(Alias for -keys) Path to an ML-KEM-768 private key PEM.")
 
 	// Note: Transaction modes have been removed - use scripts in scripts/ directory instead
 
@@ -102,7 +160,7 @@ func run() int {
 		QuorumOverride:   *quorumOverride,
 		ExportKSFile:     *exportKSFile,
 		PasswordForKS:    *passwordForKS,
-		PrivateKeyFile:   *privateKeyFile,
+		PrivateKeyFiles:  keyPaths,
 		ZipExtractedDirs: []string{}, // Initialize empty slice for tracking ZIP dirs
 	}
 
@@ -155,23 +213,20 @@ func run() int {
 
 	defer vaultsDataFiles.Zeroize()
 
-	// Read the ML-KEM-768 private key PEM, if a path was supplied via -private-key or entered
-	// interactively above (for .dr files); config.GlobalConfig.PrivateKeyFile reflects either source.
-	var privateKeyPEM []byte
-	if config.GlobalConfig.PrivateKeyFile != "" {
-		var err2 error
-		privateKeyPEM, err2 = os.ReadFile(config.GlobalConfig.PrivateKeyFile)
-		if err2 != nil {
-			fmt.Print(ui.ErrorBox(fmt.Errorf("⚠ unable to read private key file `%s`: %s", config.GlobalConfig.PrivateKeyFile, err2)))
-			return 1
-		}
+	// Read every ML-KEM-768 private key PEM (for .dr files). The paths come from -keys,
+	// -private-key, or the interactive prompt above; PrivateKeyFiles reflects all of those.
+	privateKeysPEM, err := readPrivateKeys(config.GlobalConfig.PrivateKeyFiles)
+	defer clearKeys(privateKeysPEM)
+	if err != nil {
+		fmt.Print(ui.ErrorBox(err))
+		return 1
 	}
 
 	/**
 	 * Retrieve vaults information and select a vault
 	 */
 
-	_, _, _, vaultsFormInfo, _, err := runTool(*vaultsDataFiles, "", *nonceOverride, *nonceOverride > -1, *requestIDOverride, *quorumOverride, *exportKSFile, *passwordForKS, privateKeyPEM)
+	_, _, _, vaultsFormInfo, _, err := runTool(*vaultsDataFiles, "", *nonceOverride, *nonceOverride > -1, *requestIDOverride, *quorumOverride, *exportKSFile, *passwordForKS, privateKeysPEM)
 	if err != nil {
 		fmt.Println(ui.ErrorBox(err))
 		fmt.Println()
@@ -212,7 +267,7 @@ func run() int {
 		lipgloss.NewStyle().Bold(true).Render(ui.PlainTextf("RECOVERING VAULT \"%s\" WITH ID %s\n", selectedVault.Name, selectedVault.VaultID)),
 	)
 
-	address, ecSK, edSK, _, exportedKsFile, err := runTool(*vaultsDataFiles, selectedVault.VaultID, *nonceOverride, *nonceOverride > -1, *requestIDOverride, *quorumOverride, *exportKSFile, *passwordForKS, privateKeyPEM)
+	address, ecSK, edSK, _, exportedKsFile, err := runTool(*vaultsDataFiles, selectedVault.VaultID, *nonceOverride, *nonceOverride > -1, *requestIDOverride, *quorumOverride, *exportKSFile, *passwordForKS, privateKeysPEM)
 	if err != nil {
 		fmt.Println(ui.ErrorBox(err))
 		fmt.Println()

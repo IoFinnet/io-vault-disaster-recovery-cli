@@ -28,10 +28,10 @@ type (
 
 	// MnemonicsFormModel is a struct that represents the model for the mnemonics entry.
 	MnemonicsFormModel struct {
-		filenames      []string
-		totalFiles     int
-		extractedAll   bool
-		privateKeyFile string
+		filenames       []string
+		totalFiles      int
+		extractedAll    bool
+		privateKeyFiles []string
 	}
 )
 
@@ -55,10 +55,10 @@ func (files *VaultsDataFiles) Zeroize() {
 
 func NewMnemonicsForm(config config.AppConfig) MnemonicsFormModel {
 	return MnemonicsFormModel{
-		filenames:      config.Filenames,
-		totalFiles:     len(config.Filenames),
-		extractedAll:   false,
-		privateKeyFile: config.PrivateKeyFile,
+		filenames:       config.Filenames,
+		totalFiles:      len(config.Filenames),
+		extractedAll:    false,
+		privateKeyFiles: config.PrivateKeyFiles,
 	}
 }
 
@@ -225,9 +225,9 @@ func (m *MnemonicsFormModel) Run() (*VaultsDataFiles, error) {
 	return &filesWithMnemonics, nil
 }
 
-// ensurePrivateKeyFile prompts once for the ML-KEM-768 private key PEM path if any .dr file is
-// present and no path was already supplied via -private-key, then records it in the global config
-// for main.go to read and load after this form returns.
+// ensurePrivateKeyFile prompts once for one or more ML-KEM-768 private key PEM paths if any .dr
+// file is present and no path was already supplied via -keys/-private-key, then records them in
+// the global config for main.go to read and load after this form returns.
 func (m *MnemonicsFormModel) ensurePrivateKeyFile(files VaultsDataFiles) error {
 	hasDRFile := false
 	for _, f := range files {
@@ -236,41 +236,67 @@ func (m *MnemonicsFormModel) ensurePrivateKeyFile(files VaultsDataFiles) error {
 			break
 		}
 	}
-	if !hasDRFile || m.privateKeyFile != "" {
+	if !hasDRFile || len(m.privateKeyFiles) > 0 {
 		return nil
 	}
 
-	var path string
-	input := huh.NewInput().
+	var input string
+	field := huh.NewInput().
 		Key("privateKeyFile").
 		Title("Virtual Signer .dr files detected").
-		Description("Enter the path to the ML-KEM-768 private key PEM file").
-		Value(&path).
-		Validate(func(input string) error {
-			if strings.TrimSpace(input) == "" {
+		Description("Enter the path to the ML-KEM-768 private key PEM file, separate multiple paths with commas").
+		Value(&input).
+		Validate(func(value string) error {
+			paths := strings.Split(value, ",")
+			nonEmpty := false
+			for _, path := range paths {
+				path = strings.TrimSpace(path)
+				if path == "" {
+					continue
+				}
+				nonEmpty = true
+				info, err := os.Stat(path)
+				if err != nil {
+					return errors2.Errorf("unable to see file `%s` - does it exist?", path)
+				}
+				if info.IsDir() {
+					return errors2.Errorf("private key path `%s` is a directory", path)
+				}
+				f, err := os.Open(path)
+				if err != nil {
+					return errors2.Errorf("unable to read file `%s`", path)
+				}
+				_ = f.Close()
+			}
+			if !nonEmpty {
 				return errors2.New("private key path cannot be empty")
 			}
-			info, err := os.Stat(input)
-			if err != nil {
-				return errors2.Errorf("unable to see file `%s` - does it exist?", input)
-			}
-			if info.IsDir() {
-				return errors2.Errorf("private key path `%s` is a directory", input)
-			}
-			f, err := os.Open(input)
-			if err != nil {
-				return errors2.Errorf("unable to read file `%s`", input)
-			}
-			_ = f.Close()
 			return nil
 		})
-	form := huh.NewForm(huh.NewGroup(input)).WithTheme(huh.ThemeBase16())
+	form := huh.NewForm(huh.NewGroup(field)).WithTheme(huh.ThemeBase16())
 	if err := form.Run(); err != nil {
 		return err
 	}
 
-	m.privateKeyFile = path
-	config.GlobalConfig.PrivateKeyFile = path
+	// Repeated paths are dropped here for the same reason as in the -keys parser: one key should
+	// be tried, and counted, once.
+	var paths []string
+	seen := make(map[string]bool)
+	for _, path := range strings.Split(input, ",") {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		cleaned := filepath.Clean(path)
+		if seen[cleaned] {
+			continue
+		}
+		seen[cleaned] = true
+		paths = append(paths, path)
+	}
+
+	m.privateKeyFiles = paths
+	config.GlobalConfig.PrivateKeyFiles = paths
 	return nil
 }
 

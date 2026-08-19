@@ -103,7 +103,7 @@ type Options struct {
 	NonceOverride     int // read only when NonceOverrideSet
 	NonceOverrideSet  bool
 	RequestIDOverride string
-	PrivateKeyPEM     []byte
+	PrivateKeysPEM    [][]byte
 	Presentation      ErrorPresentation
 }
 
@@ -121,7 +121,7 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 	nonceOverride := opts.NonceOverride
 	nonceOverrideSet := opts.NonceOverrideSet
 	requestIDOverride := opts.RequestIDOverride
-	privateKeyPEM := opts.PrivateKeyPEM
+	privateKeysPEM := opts.PrivateKeysPEM
 	presentation := opts.Presentation
 
 	justListingVaults := vaultID == ""
@@ -152,7 +152,7 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 	// Process each vault data file
 	for _, file := range vaultsDataFile {
 		if strings.EqualFold(filepath.Ext(file.File), ".dr") {
-			if err := processDRFile(file.File, privateKeyPEM, vaultID, justListingVaults, drSharesByVaultRequestID, presentation); err != nil {
+			if err := processDRFile(file.File, privateKeysPEM, vaultID, justListingVaults, drSharesByVaultRequestID, presentation); err != nil {
 				welp = err
 				return
 			}
@@ -449,10 +449,10 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 // processDRFile decrypts a Virtual Signer .dr file and folds its shares into the same per-vault
 // share pools the legacy mnemonic-encrypted path populates, so a single recovery run can mix both
 // file formats for the same vault.
-func processDRFile(path string, privateKeyPEM []byte, vaultID string, justListingVaults bool,
+func processDRFile(path string, privateKeysPEM [][]byte, vaultID string, justListingVaults bool,
 	drSharesByVaultRequestID map[string]map[string]*drVaultShares, presentation ErrorPresentation) error {
 
-	if len(privateKeyPEM) == 0 {
+	if len(privateKeysPEM) == 0 {
 		return fmt.Errorf("⚠ %s %w", presentation.path(path), ErrPrivateKeyRequired)
 	}
 
@@ -461,9 +461,27 @@ func processDRFile(path string, privateKeyPEM []byte, vaultID string, justListin
 		return fmt.Errorf("⚠ failed to read file(%s): %s", presentation.path(path), presentation.err(err))
 	}
 
-	parsed, err := dr.DecryptAndParse(privateKeyPEM, raw)
-	if err != nil {
-		return fmt.Errorf("⚠ failed to decrypt %s: %s", presentation.path(path), presentation.err(err))
+	// Try every key. DecryptAndParse rejects a bad envelope before spending a decapsulation, so a
+	// file that is corrupt or in an unsupported format fails the same cheap way for every key —
+	// which is also why the first attempt's error is the one worth reporting.
+	var parsed *dr.Parsed
+	var firstErr error
+	for _, keyPEM := range privateKeysPEM {
+		p, err := dr.DecryptAndParse(keyPEM, raw)
+		if err == nil {
+			parsed = p
+			break
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
+	if parsed == nil {
+		if len(privateKeysPEM) > 1 {
+			return fmt.Errorf("⚠ failed to decrypt %s: %s (tried %d keys)",
+				presentation.path(path), presentation.err(firstErr), len(privateKeysPEM))
+		}
+		return fmt.Errorf("⚠ failed to decrypt %s: %s", presentation.path(path), presentation.err(firstErr))
 	}
 
 	// The reconstructed vault ID and threshold come from the decrypted (AEAD-authenticated)
