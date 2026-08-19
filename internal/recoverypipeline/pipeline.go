@@ -253,9 +253,16 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 					welp = errors2.Wrapf(err, "invalid saveData format - is this an old backup file? (code: 3)")
 					return
 				}
-				if welp = ensureClearVaultThreshold(clearVaults, vID, legacyVault.Quroum,
-					fmt.Sprintf("legacy backup for vault %s at request %s", vID, lastRequestID)); welp != nil {
-					return
+				if legacyVault.Quroum > 0 {
+					if welp = ensureClearVaultThreshold(clearVaults, vID, legacyVault.Quroum,
+						fmt.Sprintf("legacy backup for vault %s at request %s", vID, lastRequestID)); welp != nil {
+						return
+					}
+				} else if _, ok := clearVaults[vID]; !ok {
+					// Legacy backup with no quorum recorded: register the vault so it still lists and can
+					// reconstruct once a -threshold flag supplies the quorum. A quorum already established
+					// by another file for this vault is left alone.
+					clearVaults[vID] = &ClearVault{Name: vID}
 				}
 				clearVaults[vID].Name = legacyVault.Name
 				clearVaults[vID].SharesLegacy = legacyVault.SharesLegacy
@@ -415,7 +422,7 @@ func processDRFile(path string, privateKeyPEM []byte, vaultID *string, justListi
 	drSharesByVaultRequestID map[string]map[string]*drVaultShares, presentation ErrorPresentation) error {
 
 	if len(privateKeyPEM) == 0 {
-		return fmt.Errorf("⚠ %s %w", path, ErrPrivateKeyRequired)
+		return fmt.Errorf("⚠ %s %w", presentation.path(path), ErrPrivateKeyRequired)
 	}
 
 	raw, err := os.ReadFile(path)
@@ -578,12 +585,13 @@ func rejectOnRequestIDDisagreement(vID, requestID string, clearVaults ClearVault
 	return nil
 }
 
-// ensureClearVaultThreshold makes sure a ClearVault entry exists for a vault first seen via a .dr
-// file (which carries no vault Name, only a VaultId), and errors out if a .dr file's threshold
-// disagrees with a threshold already established for this vault from another input file.
-func ensureClearVaultThreshold(clearVaults ClearVaultMap, vID string, threshold int, path string) error {
+// ensureClearVaultThreshold makes sure a ClearVault entry exists for a vault (a vault first seen
+// via a .dr file carries no Name, only a VaultId), and errors out if a legacy, mobile or .dr input
+// states a threshold that disagrees with one already established for this vault from another input
+// file. source is a human-readable description of the input file, used in error messages.
+func ensureClearVaultThreshold(clearVaults ClearVaultMap, vID string, threshold int, source string) error {
 	if threshold < 1 {
-		return fmt.Errorf("⚠ %s does not carry a valid threshold", filepath.Base(path))
+		return fmt.Errorf("⚠ %s does not carry a valid threshold", source)
 	}
 	existing, ok := clearVaults[vID]
 	if !ok {

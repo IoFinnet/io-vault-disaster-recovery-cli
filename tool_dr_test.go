@@ -16,6 +16,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -741,4 +742,108 @@ func TestTool_DR_RequestIDOverride(t *testing.T) {
 	_, ecSK, _, _, _, err := runTool(files, &vaultID, nil, &requestIDOverride, nil, nil, nil, privPEM)
 	require.NoError(t, err)
 	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(secretB)), hex.EncodeToString(ecSK))
+}
+
+// TestPrepare_MissingPrivateKey_PathRedactedForWeb: the web frontend appends its own remediation
+// to ErrPrivateKeyRequired without running its path stripper, so Prepare must already have applied
+// the caller's path presentation. The CLI keeps full paths (see TestTool_DR_MissingPrivateKey).
+func TestPrepare_MissingPrivateKey_PathRedactedForWeb(t *testing.T) {
+	dirTmp := t.TempDir()
+	priv, _ := genMLKEMKeyPEM(t)
+	vaultID := "dr-test-vault-nokey-web"
+
+	_, pub, shares := makeVSSSharesS256(t, 2, 2)
+	path := writeDRFile(t, dirTmp, "req0.ecdsa.secp256k1.dr", priv.EncapsulationKey(),
+		dr.FileEnvelope{VaultId: vaultID, RequestId: "req0", Algo: "ECDSA", Curve: "secp256k1"},
+		&dr.ECDSASharesAndVaultId{
+			Data:      []*dr.ECDSAShare{{Xi: shares[0].Share, ShareID: shares[0].ID, ECDSAPub: ecPointMirror("secp256k1", pub)}},
+			VaultId:   vaultID,
+			Threshold: 2,
+		})
+
+	files := []ui.VaultsDataFile{{File: path}}
+	_, err := recoverypipeline.Prepare(files, &vaultID, nil, nil, nil,
+		recoverypipeline.ErrorPresentation{Path: filepath.Base})
+	require.Error(t, err)
+	require.True(t, errors.Is(err, recoverypipeline.ErrPrivateKeyRequired))
+	require.Contains(t, err.Error(), filepath.Base(path))
+	require.NotContains(t, err.Error(), dirTmp)
+}
+
+// TestTool_LegacyNoQuorum_ListsAndRecoversWithFlag: a legacy backup that records no quorum still
+// lists, and reconstructs once -threshold supplies one.
+func TestTool_LegacyNoQuorum_ListsAndRecoversWithFlag(t *testing.T) {
+	dirTmp := t.TempDir()
+	vaultID := "legacy-test-vault-no-quorum"
+	const threshold, n = 2, 2
+
+	secret, pub, shares := makeVSSSharesS256(t, threshold, n)
+	shareJSONs := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		shareData := &ecdsa_keygen.LocalPartySaveData{
+			LocalSecrets: ecdsa_keygen.LocalSecrets{Xi: shares[i].Share, ShareID: shares[i].ID},
+			ECDSAPub:     pub,
+		}
+		shareJSON, err := json.Marshal(shareData)
+		require.NoError(t, err)
+		shareJSONs = append(shareJSONs, string(shareJSON))
+	}
+	// threshold: 0 → the legacy payload carries no quorum.
+	legacyPath := writeLegacyVaultFile(t, dirTmp, "legacy.json", mmI, vaultID, 0, 0, shareJSONs)
+	files := []ui.VaultsDataFile{{File: legacyPath, Mnemonics: mmI}}
+
+	// Listing mode: the vault shows up with quorum 0 rather than failing the run.
+	emptyVaultID := ""
+	_, _, _, orderedVaults, _, err := runTool(files, &emptyVaultID, nil, nil, nil, nil, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, orderedVaults, 1)
+	require.Equal(t, vaultID, orderedVaults[0].VaultID)
+	require.Equal(t, 0, orderedVaults[0].Quorum)
+
+	// No -threshold → hard error at reconstruction.
+	_, _, _, _, _, err = runTool(files, &vaultID, nil, nil, nil, nil, nil, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no threshold")
+
+	// With -threshold → recovers correctly.
+	quorum := threshold
+	address, ecSK, _, _, _, err := runTool(files, &vaultID, nil, nil, &quorum, nil, nil, nil)
+	require.NoError(t, err)
+	_, expectedAddress, err := getTSSPubKeyForEthereum(pub.X(), pub.Y())
+	require.NoError(t, err)
+	require.Equal(t, expectedAddress, address)
+	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(secret)), hex.EncodeToString(ecSK))
+}
+
+// TestTool_LegacyNoQuorum_KeepsV5Threshold: a legacy backup with no quorum neither errors out nor
+// overwrites the threshold a v5 mobile file already established for the same vault.
+func TestTool_LegacyNoQuorum_KeepsV5Threshold(t *testing.T) {
+	dirTmp := t.TempDir()
+	vaultID := "legacy-no-quorum-with-v5"
+	const requestID = "mobile-v5-req"
+
+	_, pubA, sharesA := makeVSSSharesS256(t, 2, 2)
+	_, pubB, sharesB := makeVSSSharesS256(t, 3, 3)
+	legacyShareData := &ecdsa_keygen.LocalPartySaveData{
+		LocalSecrets: ecdsa_keygen.LocalSecrets{Xi: sharesA[0].Share, ShareID: sharesA[0].ID},
+		ECDSAPub:     pubA,
+	}
+	legacyShareJSON, err := json.Marshal(legacyShareData)
+	require.NoError(t, err)
+	legacyPath := writeLegacyVaultFile(t, dirTmp, "legacy.json", mmI, vaultID, 0, 0, []string{string(legacyShareJSON)})
+	mobilePath := writeMobileVaultFile(t, dirTmp, "mobile-v5.json", mmI, vaultID, requestID,
+		map[string]mobileRequestFixture{
+			requestID: {threshold: 3, ecdsa: mobileECDSAPayload(vaultID, sharesB[0], pubB)},
+		})
+
+	for _, order := range [][]ui.VaultsDataFile{
+		{{File: legacyPath, Mnemonics: mmI}, {File: mobilePath, Mnemonics: mmI}},
+		{{File: mobilePath, Mnemonics: mmI}, {File: legacyPath, Mnemonics: mmI}},
+	} {
+		emptyVaultID := ""
+		_, _, _, orderedVaults, _, err := runTool(order, &emptyVaultID, nil, nil, nil, nil, nil, nil)
+		require.NoError(t, err)
+		require.Len(t, orderedVaults, 1)
+		require.Equal(t, 3, orderedVaults[0].Quorum)
+	}
 }
