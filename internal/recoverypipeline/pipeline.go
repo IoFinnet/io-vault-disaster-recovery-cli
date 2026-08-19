@@ -154,6 +154,12 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 			welp = fmt.Errorf("⚠ failed to generate key from mnemonic, are your words correct? %s", err)
 			return
 		}
+		// This key is the mnemonic's entropy, so it must not survive in memory. Deferring inside
+		// the loop is deliberate: every decrypt step below can return early, and a defer is the
+		// only cleanup that covers all of those paths. The loop body still clears the key at the
+		// end of its own iteration, so a key is zeroed as soon as its file is done; this defer is
+		// the backstop for the error returns. Input files are few, so the piled-up defers are fine.
+		defer clear(aesKey32)
 
 		// decrypt the vaults into clear vaults
 		for vID, entry := range saveData.Vaults {
