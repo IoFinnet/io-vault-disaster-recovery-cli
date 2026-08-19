@@ -93,7 +93,7 @@ var ErrPrivateKeyRequired = errors.New("is a Virtual Signer .dr file")
 var ErrAmbiguousRootRequestID = errors.New("ambiguous root request id")
 
 // ErrRequestIDMismatch signals a vault's chosen request id disagrees with one already recorded
-// for it from another input file. Same pattern as ErrAmbiguousEpoch.
+// for it from another input file. Same pattern as ErrAmbiguousRootRequestID.
 var ErrRequestIDMismatch = errors.New("non matching current request id")
 
 // Options are Prepare's inputs. The zero value means listing mode, CLI-style error
