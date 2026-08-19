@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Full license text available in LICENSE file in repository root.
 
-package ingest
+package recoverypipeline
 
 import (
 	"encoding/json"

@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/fileutils"
-	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ingest"
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/recoverypipeline"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/binance-chain/tss-lib/crypto"
 	"github.com/binance-chain/tss-lib/crypto/vss"
@@ -27,10 +27,10 @@ import (
 func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride *int, requestIDOverride *string, quorumOverride *int, exportKSFile, passwordForKS *string, privateKeyPEM []byte) (
 	address string, ecdsaSK, eddsaSK []byte, orderedVaults []ui.VaultPickerItem, exportedKsFile *string, welp error) {
 
-	res, err := ingest.Ingest(vaultsDataFile, vaultID, nonceOverride, requestIDOverride, privateKeyPEM,
-		ingest.ErrorPresentation{Path: filepath.Base, Err: fileutils.StripPathFromError})
+	res, err := recoverypipeline.Prepare(vaultsDataFile, vaultID, nonceOverride, requestIDOverride, privateKeyPEM,
+		recoverypipeline.ErrorPresentation{Path: filepath.Base, Err: fileutils.StripPathFromError})
 	if err != nil {
-		if errors.Is(err, ingest.ErrPrivateKeyRequired) {
+		if errors.Is(err, recoverypipeline.ErrPrivateKeyRequired) {
 			welp = fmt.Errorf("%s; supply the ML-KEM-768 private key PEM to decrypt it", err)
 			return
 		}

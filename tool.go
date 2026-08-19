@@ -11,7 +11,7 @@ import (
 	"math/big"
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/fileutils"
-	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ingest"
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/recoverypipeline"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/binance-chain/tss-lib/crypto"
 	"github.com/binance-chain/tss-lib/crypto/vss"
@@ -40,9 +40,9 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 		println()
 	}
 
-	res, err := ingest.Ingest(vaultsDataFile, vaultID, nonceOverride, requestIDOverride, privateKeyPEM, ingest.ErrorPresentation{})
+	res, err := recoverypipeline.Prepare(vaultsDataFile, vaultID, nonceOverride, requestIDOverride, privateKeyPEM, recoverypipeline.ErrorPresentation{})
 	if err != nil {
-		if errors.Is(err, ingest.ErrPrivateKeyRequired) {
+		if errors.Is(err, recoverypipeline.ErrPrivateKeyRequired) {
 			welp = fmt.Errorf("%s; use -private-key to supply the ML-KEM-768 private key PEM", err)
 			return
 		}

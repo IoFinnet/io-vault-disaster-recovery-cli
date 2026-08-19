@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Full license text available in LICENSE file in repository root.
 
-package ingest
+package recoverypipeline
 
 import (
 	"crypto/aes"
@@ -88,7 +88,7 @@ func (p ErrorPresentation) err(err error) error {
 // form field to fill), since the shared code cannot know how the caller takes input.
 var ErrPrivateKeyRequired = errors.New("is a Virtual Signer .dr file")
 
-// Ingest decodes and decrypts every input backup file — mnemonic-encrypted JSON in
+// Prepare decodes and decrypts every input backup file — mnemonic-encrypted JSON in
 // its legacy flat-nonce and mobile v4/v5 shapes, and Virtual Signer .dr files —
 // selects each vault's current reshare epoch, and folds all decoded shares into
 // per-vault pools. It performs no key reconstruction: callers take the pools and
@@ -97,7 +97,7 @@ var ErrPrivateKeyRequired = errors.New("is a Virtual Signer .dr file")
 // With vaultID nil or empty, every vault in every file is processed (listing mode,
 // used by both frontends to discover what to offer); with a vaultID set, only that
 // vault's data is decoded, and epoch/threshold conflicts for it are hard errors.
-func Ingest(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride *int,
+func Prepare(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride *int,
 	requestIDOverride *string, privateKeyPEM []byte, presentation ErrorPresentation) (res *Result, welp error) {
 
 	justListingVaults := vaultID == nil || *vaultID == ""

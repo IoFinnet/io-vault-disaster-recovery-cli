@@ -24,7 +24,7 @@ import (
 	"testing"
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/dr"
-	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ingest"
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/recoverypipeline"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/binance-chain/tss-lib/crypto"
 	"github.com/binance-chain/tss-lib/crypto/vss"
@@ -108,10 +108,10 @@ func makeVSSSharesEdwards(t *testing.T, threshold, n int) (*big.Int, *crypto.ECP
 func writeLegacyVaultFile(t *testing.T, dir, name, mnemonic, vaultID string, nonce, threshold int, ecdsaShareJSONs []string) string {
 	t.Helper()
 
-	clearVault := ingest.ClearVault{
+	clearVault := recoverypipeline.ClearVault{
 		Name:   "mixed-format-test-vault",
 		Quroum: threshold,
-		Curves: []ingest.ClearVaultCurve{{Algorithm: "ECDSA", Shares: ecdsaShareJSONs}},
+		Curves: []recoverypipeline.ClearVaultCurve{{Algorithm: "ECDSA", Shares: ecdsaShareJSONs}},
 	}
 	plaintext, err := json.Marshal(clearVault)
 	require.NoError(t, err)
@@ -132,9 +132,9 @@ func writeLegacyVaultFile(t *testing.T, dir, name, mnemonic, vaultID string, non
 
 	hash := sha512.Sum512(plaintext)
 
-	cipheredVault := ingest.CipheredVault{
+	cipheredVault := recoverypipeline.CipheredVault{
 		CipherTextB64: base64.StdEncoding.EncodeToString(ciphertext),
-		CipherParams:  ingest.CipherParams{IV: hex.EncodeToString(nonceBz), Tag: hex.EncodeToString(tag)},
+		CipherParams:  recoverypipeline.CipherParams{IV: hex.EncodeToString(nonceBz), Tag: hex.EncodeToString(tag)},
 		Cipher:        "aes-256-gcm",
 		Hash:          hex.EncodeToString(hash[:]),
 	}
@@ -208,9 +208,9 @@ func writeMobileVaultFile(t *testing.T, dir, name, mnemonic, vaultID, currentReq
 		ciphertext, tag := sealed[:ctLen], sealed[ctLen:]
 		hash := sha512.Sum512(plaintext)
 
-		requestsJSON[requestID] = ingest.CipheredVault{
+		requestsJSON[requestID] = recoverypipeline.CipheredVault{
 			CipherTextB64: base64.StdEncoding.EncodeToString(ciphertext),
-			CipherParams: ingest.CipherParams{
+			CipherParams: recoverypipeline.CipherParams{
 				IV:  base64.StdEncoding.EncodeToString(nonceBz),
 				Tag: base64.StdEncoding.EncodeToString(tag),
 			},
