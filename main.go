@@ -24,6 +24,11 @@ import (
 )
 
 func main() {
+	os.Exit(run())
+}
+
+// run returns an exit code instead of calling os.Exit, so deferred cleanup runs on every path.
+func run() int {
 	vaultID := flag.String("vault-id", "", "(Optional) The vault id to export the keys for.")
 	nonceOverride := flag.Int("nonce", -1, "(Optional) Reshare Nonce override for legacy mnemonic-encrypted JSON files. Try it if the tool advises you to do so.")
 	requestIDOverride := flag.String("request-id", "", "(Optional) Request id override for Virtual Signer .dr files / v4 JSON exports. Try it if the tool advises you to do so.")
@@ -65,17 +70,17 @@ func main() {
 			fmt.Println("\nNOTE: Inside a ZIP, .json/.dr files may be in any directory; macOS __MACOSX metadata is ignored")
 			fmt.Println("\nOptional flags:")
 			flag.PrintDefaults()
-			return
+			return 0
 		} else {
 			fmt.Println("\nInvalid choice. Please run the tool again and select 1 or 2.")
-			return
+			return 0
 		}
 	}
 
 	// Launch browser UI if selected
 	if *webMode {
 		launchWebInterface(*webPort, *noBrowser)
-		return
+		return 0
 	}
 
 	// Validate files for CLI mode
@@ -88,7 +93,7 @@ func main() {
 		fmt.Println("\nNOTE: Inside a ZIP, .json/.dr files may be in any directory; macOS __MACOSX metadata is ignored")
 		fmt.Println("\nOptional flags:")
 		flag.PrintDefaults()
-		return
+		return 0
 	}
 
 	appConfig := config.AppConfig{
@@ -104,10 +109,22 @@ func main() {
 	// Initialize the global config so ui_input can track ZIP dirs
 	config.GlobalConfig = appConfig
 
+	// ui_input can append to config.GlobalConfig.ZipExtractedDirs directly, so check both.
+	defer func() {
+		dirsToCleanup := append(appConfig.ZipExtractedDirs, config.GlobalConfig.ZipExtractedDirs...)
+		for _, dir := range dirsToCleanup {
+			if err := os.RemoveAll(dir); err != nil {
+				fmt.Println(ui.PlainTextf("⚠ failed to clean up temporary directory %s: %v", dir, err))
+				continue
+			}
+			fmt.Println(ui.PlainTextf("Cleaning up temporary directory: %s", dir))
+		}
+	}()
+
 	// First validate that files exist and are readable
 	if err := ui.ValidateFiles(&appConfig); err != nil {
 		fmt.Print(ui.ErrorBox(err))
-		os.Exit(1)
+		return 1
 	}
 
 	// Validate the exportKSFile is valid and does not already exist, only when the password is provided.
@@ -117,7 +134,7 @@ func main() {
 		err := ui.ValidateExportFilenameForCli(*exportKSFile)
 		if err != nil {
 			fmt.Print(ui.ErrorBox(err))
-			os.Exit(1)
+			return 1
 		}
 	}
 
@@ -128,31 +145,12 @@ func main() {
 	f := ui.NewMnemonicsForm(appConfig)
 	vaultsDataFiles, err := f.Run()
 	if err != nil {
-		// if err := f.Run(&vaultsDataFiles); err != nil {
 		fmt.Println(ui.ErrorBox(err))
-
-		// Clean up any temporary directories from ZIP extraction
-		// Include both directories from appConfig and also any added to GlobalConfig by ui_input
-		dirsToCleanup := append(appConfig.ZipExtractedDirs, config.GlobalConfig.ZipExtractedDirs...)
-		for _, dir := range dirsToCleanup {
-			fmt.Println(ui.PlainTextf("Cleaning up temporary directory: %s", dir))
-			os.RemoveAll(dir)
-		}
-
-		os.Exit(1)
+		return 1
 	}
 	if vaultsDataFiles == nil {
 		fmt.Println("No vaults data files were selected.")
-
-		// Clean up any temporary directories from ZIP extraction
-		// Include both directories from appConfig and also any added to GlobalConfig by ui_input
-		dirsToCleanup := append(appConfig.ZipExtractedDirs, config.GlobalConfig.ZipExtractedDirs...)
-		for _, dir := range dirsToCleanup {
-			fmt.Println(ui.PlainTextf("Cleaning up temporary directory: %s", dir))
-			os.RemoveAll(dir)
-		}
-
-		os.Exit(0)
+		return 0
 	}
 
 	defer vaultsDataFiles.Zeroize()
@@ -165,7 +163,7 @@ func main() {
 		privateKeyPEM, err2 = os.ReadFile(config.GlobalConfig.PrivateKeyFile)
 		if err2 != nil {
 			fmt.Print(ui.ErrorBox(fmt.Errorf("⚠ unable to read private key file `%s`: %s", config.GlobalConfig.PrivateKeyFile, err2)))
-			os.Exit(1)
+			return 1
 		}
 	}
 
@@ -178,16 +176,7 @@ func main() {
 		fmt.Println(ui.ErrorBox(err))
 		fmt.Println()
 		fmt.Println("Are the words you entered correct? Are you using the newest files?")
-
-		// Clean up any temporary directories from ZIP extraction
-		// Include both directories from appConfig and also any added to GlobalConfig by ui_input
-		dirsToCleanup := append(appConfig.ZipExtractedDirs, config.GlobalConfig.ZipExtractedDirs...)
-		for _, dir := range dirsToCleanup {
-			fmt.Println(ui.PlainTextf("Cleaning up temporary directory: %s", dir))
-			os.RemoveAll(dir)
-		}
-
-		os.Exit(1)
+		return 1
 	}
 
 	var selectedVaultId string
@@ -196,7 +185,7 @@ func main() {
 		selectedVaultId, err = ui.RunVaultPickerForm(vaultsFormInfo)
 		if err != nil {
 			fmt.Println(ui.ErrorBox(err))
-			os.Exit(1)
+			return 1
 		}
 	} else {
 		// Use the vault ID provided by CLI argument
@@ -213,7 +202,7 @@ func main() {
 	}
 	if selectedVault.VaultID == "" {
 		fmt.Println(ui.ErrorBox(fmt.Errorf("vault with ID %s not found", selectedVaultId)))
-		os.Exit(1)
+		return 1
 	}
 
 	/**
@@ -228,16 +217,7 @@ func main() {
 		fmt.Println(ui.ErrorBox(err))
 		fmt.Println()
 		fmt.Println("Are the words you entered correct? Are you using the newest files?")
-
-		// Clean up any temporary directories from ZIP extraction
-		// Include both directories from appConfig and also any added to GlobalConfig by ui_input
-		dirsToCleanup := append(appConfig.ZipExtractedDirs, config.GlobalConfig.ZipExtractedDirs...)
-		for _, dir := range dirsToCleanup {
-			fmt.Println(ui.PlainTextf("Cleaning up temporary directory: %s", dir))
-			os.RemoveAll(dir)
-		}
-
-		os.Exit(1)
+		return 1
 	}
 	defer func() {
 		clear(ecSK)
@@ -245,8 +225,7 @@ func main() {
 	}()
 	if ecSK == nil {
 		// only listing vaults
-		os.Exit(0)
-		return
+		return 0
 	}
 
 	fmt.Println(ui.SuccessBox())
@@ -306,13 +285,7 @@ func main() {
 	}
 	fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.\n")
 
-	// Clean up any temporary directories from ZIP extraction
-	// Include both directories from appConfig and also any added to GlobalConfig by ui_input
-	dirsToCleanup := append(appConfig.ZipExtractedDirs, config.GlobalConfig.ZipExtractedDirs...)
-	for _, dir := range dirsToCleanup {
-		fmt.Println(ui.PlainTextf("Cleaning up temporary directory: %s", dir))
-		os.RemoveAll(dir)
-	}
+	return 0
 }
 
 // launchWebInterface starts the http server and optionally opens the browser

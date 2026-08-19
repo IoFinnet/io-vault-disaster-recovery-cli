@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/bittensor"
@@ -65,11 +66,12 @@ type Server struct {
 	config  ServerConfig
 	tempDir string
 	// exportDir is never cleaned up on server shutdown, because it stores files the users can download and use later.
-	exportDir        string
-	server           *http.Server
-	listener         net.Listener
-	actualPort       int      // the port the server actually bound to
-	zipExtractedDirs []string // Tracks temporary directories created for ZIP extractions
+	exportDir          string
+	server             *http.Server
+	listener           net.Listener
+	actualPort         int // the port the server actually bound to
+	zipExtractedDirsMu sync.Mutex
+	zipExtractedDirs   map[string]struct{} // ZIP extraction dirs not yet cleaned up; handlers run concurrently, so guard with zipExtractedDirsMu
 }
 
 // NewServer creates a new http server instance
@@ -89,7 +91,7 @@ func NewServer(config ServerConfig) (*Server, error) {
 		config:           config,
 		tempDir:          tempDir,
 		exportDir:        workingDir,
-		zipExtractedDirs: make([]string, 0),
+		zipExtractedDirs: make(map[string]struct{}),
 	}, nil
 }
 
@@ -206,9 +208,17 @@ func (s *Server) Stop() error {
 		}
 	}
 
-	// Clean up any ZIP extracted directories
-	for _, dir := range s.zipExtractedDirs {
-		os.RemoveAll(dir)
+	// Clean up any ZIP extracted directories left over from requests
+	s.zipExtractedDirsMu.Lock()
+	dirs := make([]string, 0, len(s.zipExtractedDirs))
+	for dir := range s.zipExtractedDirs {
+		dirs = append(dirs, dir)
+	}
+	s.zipExtractedDirsMu.Unlock()
+	for _, dir := range dirs {
+		if err := os.RemoveAll(dir); err != nil {
+			log.Printf("warning: failed to clean up temporary directory %s: %v", dir, err)
+		}
 	}
 
 	// Clean up temporary files
@@ -231,11 +241,12 @@ func (s *Server) handleListVaults(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Process files and mnemonics
-	vaultsDataFiles, err := s.processFilesAndMnemonics(r)
+	vaultsDataFiles, reqCleanup, err := s.processFilesAndMnemonics(r)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to process files: %v", err), http.StatusBadRequest)
 		return
 	}
+	defer reqCleanup()
 	defer vaultsDataFiles.Zeroize()
 
 	// If no vault data files were processed, return an error
@@ -320,11 +331,12 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Process files and mnemonics
-	vaultsDataFiles, err := s.processFilesAndMnemonics(r)
+	vaultsDataFiles, reqCleanup, err := s.processFilesAndMnemonics(r)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to process files: %v", err), http.StatusBadRequest)
 		return
 	}
+	defer reqCleanup()
 	defer vaultsDataFiles.Zeroize()
 
 	// Read the ML-KEM-768 private key PEM, if supplied, needed to decrypt any .dr inputs.
@@ -441,15 +453,17 @@ func readPrivateKeyPEM(r *http.Request) ([]byte, error) {
 	return nil, nil
 }
 
-// processFilesAndMnemonics processes the uploaded files and their mnemonics
-func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, error) {
+// processFilesAndMnemonics processes the uploaded files and their mnemonics. On success it also
+// returns a cleanup func the caller must defer to remove this request's ZIP-extracted dirs; on
+// error, extracted dirs are already removed before returning and the cleanup func is a no-op.
+func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, func(), error) {
 	// Get the vault data file uploads. These always arrive under the "files" field; other
 	// multipart file fields (e.g. "privateKeyFile") carry unrelated data and must not be swept
 	// in here, or they'd be mistaken for a vault data file requiring its own mnemonic.
 	fileHeaders := r.MultipartForm.File["files"]
 
 	if len(fileHeaders) == 0 {
-		return nil, fmt.Errorf("no files uploaded")
+		return nil, noopCleanup, fmt.Errorf("no files uploaded")
 	}
 
 	vaultsDataFiles := make([]ui.VaultsDataFile, 0)
@@ -479,7 +493,7 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, 
 		if err != nil {
 			cleanUpZipExtractedDirs()
 			closeFiles(&file, nil)
-			return nil, fmt.Errorf("failed to open file %s: %w", fileHeader.Filename, err)
+			return nil, noopCleanup, fmt.Errorf("failed to open file %s: %w", fileHeader.Filename, err)
 		}
 
 		// Create a file in the temp directory
@@ -490,7 +504,7 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, 
 			closeFiles(&file, outFile)
 			os.Remove(filePath)
 			log.Printf("⚠ failed to create temporary file %s: %v", filePath, err)
-			return nil, fmt.Errorf("failed to create temporary file %s: %w", filepath.Base(fileHeader.Filename), fileutils.StripPathFromError(err))
+			return nil, noopCleanup, fmt.Errorf("failed to create temporary file %s: %w", filepath.Base(fileHeader.Filename), fileutils.StripPathFromError(err))
 		}
 
 		// Copy the file content
@@ -498,7 +512,7 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, 
 			cleanUpZipExtractedDirs()
 			closeFiles(&file, outFile)
 			os.Remove(filePath)
-			return nil, fmt.Errorf("failed to copy file content: %w", err)
+			return nil, noopCleanup, fmt.Errorf("failed to copy file content: %w", err)
 		}
 
 		closeFiles(&file, outFile)
@@ -511,7 +525,7 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, 
 			os.Remove(filePath)
 			if err != nil {
 				cleanUpZipExtractedDirs()
-				return nil, err
+				return nil, noopCleanup, err
 			}
 
 			// Track the extracted directory for cleanup
@@ -543,7 +557,7 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, 
 					mnemonic := ui.CleanMnemonicInput(mnemonicValues[0])
 					if err := ui.ValidateMnemonics(mnemonic); err != nil {
 						cleanUpZipExtractedDirs()
-						return nil, fmt.Errorf("invalid mnemonic for signer %s: %w", baseName, err)
+						return nil, noopCleanup, fmt.Errorf("invalid mnemonic for signer %s: %w", baseName, err)
 					}
 
 					// Add the file with its specific mnemonic
@@ -590,13 +604,13 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, 
 
 			if len(mnemonicValues) == 0 {
 				cleanUpZipExtractedDirs()
-				return nil, fmt.Errorf("no mnemonics provided for JSON file %s", fileHeader.Filename)
+				return nil, noopCleanup, fmt.Errorf("no mnemonics provided for JSON file %s", fileHeader.Filename)
 			}
 
 			mnemonic := ui.CleanMnemonicInput(mnemonicValues[mnemonicIndex])
 			if err := ui.ValidateMnemonics(mnemonic); err != nil {
 				cleanUpZipExtractedDirs()
-				return nil, fmt.Errorf("invalid mnemonic for file %s: %w", fileHeader.Filename, err)
+				return nil, noopCleanup, fmt.Errorf("invalid mnemonic for file %s: %w", fileHeader.Filename, err)
 			}
 
 			// Add the file to the vaultsDataFiles
@@ -611,12 +625,15 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, 
 	// Ensure we have at least one JSON file to process
 	if jsonFileCount == 0 {
 		cleanUpZipExtractedDirs()
-		return nil, fmt.Errorf("no valid JSON files were uploaded (directly or in ZIP archives)")
+		return nil, noopCleanup, fmt.Errorf("no valid JSON files were uploaded (directly or in ZIP archives)")
 	}
 
-	// Store the list of extracted directories in the server for later cleanup
-	s.zipExtractedDirs = append(s.zipExtractedDirs, zipExtractedDirs...)
-	return vaultsDataFiles, nil
+	// Keep the extracted dirs on the server too, as a fallback for Stop() in case the
+	// caller's deferred cleanup below doesn't run (e.g. process killed mid-request).
+	s.trackZipExtractedDirs(zipExtractedDirs)
+
+	reqCleanup := func() { s.cleanupRequestDirs(zipExtractedDirs) }
+	return vaultsDataFiles, reqCleanup, nil
 }
 
 // securityHeaders wraps an http.Handler to add security headers to every response.
@@ -730,6 +747,11 @@ func (s *Server) handleListZipFiles(w http.ResponseWriter, r *http.Request) {
 	// Track all extracted files
 	allExtractedFiles := []string{}
 
+	// Extracted dirs from this request; cleaned up on every return path below,
+	// with a copy also kept on the server as a Stop() fallback.
+	requestExtractedDirs := []string{}
+	defer func() { s.cleanupRequestDirs(requestExtractedDirs) }()
+
 	onZipFileProcessingFinished := func(file *multipart.File, outFile *os.File, filePath *string) {
 		if file != nil {
 			(*file).Close()
@@ -782,7 +804,8 @@ func (s *Server) handleListZipFiles(w http.ResponseWriter, r *http.Request) {
 		// Track the extracted directory for cleanup
 		if len(extractedFiles) > 0 {
 			extractDir := filepath.Dir(extractedFiles[0])
-			s.zipExtractedDirs = append(s.zipExtractedDirs, extractDir)
+			requestExtractedDirs = append(requestExtractedDirs, extractDir)
+			s.trackZipExtractedDirs([]string{extractDir})
 			allExtractedFiles = append(allExtractedFiles, extractedFiles...)
 		}
 	}
@@ -812,6 +835,38 @@ func (s *Server) handleListZipFiles(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(fileNames); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
 		return
+	}
+}
+
+// noopCleanup is returned by processFilesAndMnemonics on error paths, so callers can
+// unconditionally defer the returned cleanup func without a nil check.
+func noopCleanup() {}
+
+// trackZipExtractedDirs records dirs on the server for the Stop() fallback cleanup.
+// Handlers run concurrently, so the set is guarded by a mutex.
+func (s *Server) trackZipExtractedDirs(dirs []string) {
+	if len(dirs) == 0 {
+		return
+	}
+	s.zipExtractedDirsMu.Lock()
+	for _, dir := range dirs {
+		s.zipExtractedDirs[dir] = struct{}{}
+	}
+	s.zipExtractedDirsMu.Unlock()
+}
+
+// cleanupRequestDirs removes a request's ZIP extraction dirs and drops them from the Stop()
+// fallback set, so the set doesn't grow with every request on a long-running server.
+func (s *Server) cleanupRequestDirs(dirs []string) {
+	for _, dir := range dirs {
+		if err := os.RemoveAll(dir); err != nil {
+			log.Printf("warning: failed to clean up request temp directory %s: %v", dir, err)
+			continue
+		}
+		log.Printf("cleaned up request temp directory: %s", dir)
+		s.zipExtractedDirsMu.Lock()
+		delete(s.zipExtractedDirs, dir)
+		s.zipExtractedDirsMu.Unlock()
 	}
 }
 
