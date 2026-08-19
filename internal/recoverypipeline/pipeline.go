@@ -88,19 +88,35 @@ func (p ErrorPresentation) err(err error) error {
 // form field to fill), since the shared code cannot know how the caller takes input.
 var ErrPrivateKeyRequired = errors.New("is a Virtual Signer .dr file")
 
+// Options are Prepare's inputs. The zero value means listing mode, CLI-style error
+// presentation, and no overrides.
+type Options struct {
+	VaultID           string
+	NonceOverride     int // read only when NonceOverrideSet
+	NonceOverrideSet  bool
+	RequestIDOverride string
+	PrivateKeyPEM     []byte
+	Presentation      ErrorPresentation
+}
+
 // Prepare decodes and decrypts every input backup file — mnemonic-encrypted JSON in
 // its legacy flat-nonce and mobile v4/v5 shapes, and Virtual Signer .dr files —
 // selects each vault's current reshare epoch, and folds all decoded shares into
 // per-vault pools. It performs no key reconstruction: callers take the pools and
 // per-vault metadata from Result and run their own reconstruction step.
 //
-// With vaultID nil or empty, every vault in every file is processed (listing mode,
-// used by both frontends to discover what to offer); with a vaultID set, only that
-// vault's data is decoded, and epoch/threshold conflicts for it are hard errors.
-func Prepare(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride *int,
-	requestIDOverride *string, privateKeyPEM []byte, presentation ErrorPresentation) (res *Result, welp error) {
+// With opts.VaultID empty, every vault in every file is processed (listing mode,
+// used by both frontends to discover what to offer); with opts.VaultID set, only
+// that vault's data is decoded, and epoch/threshold conflicts for it are hard errors.
+func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, welp error) {
+	vaultID := opts.VaultID
+	nonceOverride := opts.NonceOverride
+	nonceOverrideSet := opts.NonceOverrideSet
+	requestIDOverride := opts.RequestIDOverride
+	privateKeyPEM := opts.PrivateKeyPEM
+	presentation := opts.Presentation
 
-	justListingVaults := vaultID == nil || *vaultID == ""
+	justListingVaults := vaultID == ""
 
 	// Internal & returned data structures
 	clearVaults := make(ClearVaultMap, len(vaultsDataFile)*16)
@@ -164,7 +180,7 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 		// decrypt the vaults into clear vaults
 		for vID, entry := range saveData.Vaults {
 			// only look at the vault we're interested in, if one was supplied
-			if !justListingVaults && vID != *vaultID {
+			if !justListingVaults && vID != vaultID {
 				continue
 			}
 
@@ -176,7 +192,7 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 				for nonce := range entry.LegacyByNonce {
 					nonces[nonce] = true
 				}
-				lastReshareNonce := pickLastLegacyNonce(nonces, vID, clearVaults, nonceOverride, justListingVaults, vaultLastLegacyNonces)
+				lastReshareNonce := pickLastLegacyNonce(nonces, vID, clearVaults, nonceOverride, nonceOverrideSet, justListingVaults, vaultLastLegacyNonces)
 				if lastReshareNonce == -1 {
 					//welp = fmt.Errorf("⚠ no share data found for vault `%s` in save file", vID)
 					continue // not a show stopper
@@ -188,8 +204,8 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 				// asks for a different one this file doesn't have (not a show stopper - this
 				// file simply doesn't contribute to this vault).
 				requestID := entry.CurrentRequestID
-				if !justListingVaults && requestIDOverride != nil && *requestIDOverride != "" {
-					requestID = *requestIDOverride
+				if !justListingVaults && requestIDOverride != "" {
+					requestID = requestIDOverride
 				}
 				cv, ok := entry.Requests[requestID]
 				if !ok {
@@ -424,7 +440,7 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 // processDRFile decrypts a Virtual Signer .dr file and folds its shares into the same per-vault
 // share pools the legacy mnemonic-encrypted path populates, so a single recovery run can mix both
 // file formats for the same vault.
-func processDRFile(path string, privateKeyPEM []byte, vaultID *string, justListingVaults bool,
+func processDRFile(path string, privateKeyPEM []byte, vaultID string, justListingVaults bool,
 	drSharesByVaultRequestID map[string]map[string]*drVaultShares, presentation ErrorPresentation) error {
 
 	if len(privateKeyPEM) == 0 {
@@ -453,7 +469,7 @@ func processDRFile(path string, privateKeyPEM []byte, vaultID *string, justListi
 	}
 
 	// only look at the vault we're interested in, if one was supplied
-	if !justListingVaults && vID != *vaultID {
+	if !justListingVaults && vID != vaultID {
 		return nil
 	}
 	if threshold < 1 {
@@ -503,13 +519,13 @@ func processDRFile(path string, privateKeyPEM []byte, vaultID *string, justListi
 // in one legacy flat-nonce JSON file (honoring the -nonce override), warning if it disagrees with
 // the nonce already picked for this vault from another legacy file. Returns -1 if no nonce
 // survives the override filter.
-func pickLastLegacyNonce(nonces map[int]bool, vID string, clearVaults ClearVaultMap, nonceOverride *int,
+func pickLastLegacyNonce(nonces map[int]bool, vID string, clearVaults ClearVaultMap, nonceOverride int, nonceOverrideSet bool,
 	justListingVaults bool, vaultLastLegacyNonces map[string]int) int {
 
 	lastReshareNonce := -1
 	for nonce := range nonces {
 		// support the -nonce flag to override the last reshare nonce we use
-		if !justListingVaults && nonceOverride != nil && *nonceOverride > -1 && *nonceOverride != nonce {
+		if !justListingVaults && nonceOverrideSet && nonceOverride != nonce {
 			continue
 		}
 		if nonce > lastReshareNonce {
@@ -545,12 +561,12 @@ func pickLastLegacyNonce(nonces map[int]bool, vID string, clearVaults ClearVault
 // ambiguous chain without an override is a hard error rather than a guess, since a wrong guess
 // here reconstructs the wrong key. During listing (no vault selected yet), ambiguity is tolerated
 // with a best-effort pick, since nothing here yet influences key reconstruction.
-func pickLatestDRRequestID(byRequestID map[string]*drVaultShares, vID string, requestIDOverride *string, justListingVaults bool) (string, error) {
-	if !justListingVaults && requestIDOverride != nil && *requestIDOverride != "" {
-		if _, ok := byRequestID[*requestIDOverride]; !ok {
+func pickLatestDRRequestID(byRequestID map[string]*drVaultShares, vID string, requestIDOverride string, justListingVaults bool) (string, error) {
+	if !justListingVaults && requestIDOverride != "" {
+		if _, ok := byRequestID[requestIDOverride]; !ok {
 			return "", nil // not a show stopper: this vault has no .dr shares matching the override
 		}
-		return *requestIDOverride, nil
+		return requestIDOverride, nil
 	}
 
 	referenced := make(map[string]bool, len(byRequestID))

@@ -24,23 +24,30 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride *int, requestIDOverride *string, quorumOverride *int, exportKSFile, passwordForKS *string, privateKeyPEM []byte) (
+func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID string, nonceOverride int, nonceOverrideSet bool, requestIDOverride string, quorumOverride int, exportKSFile, passwordForKS string, privateKeyPEM []byte) (
 	address string, ecdsaSK, eddsaSK []byte, orderedVaults []ui.VaultPickerItem, exportedKsFile *string, welp error) {
 
-	if nonceOverride != nil && *nonceOverride > -1 {
-		fmt.Printf("\n⚠ Using reshare nonce override: %d. Be sure to set the threshold of the vault at this reshare point with -threshold, or recovery will produce incorrect data.\n", *nonceOverride)
+	if nonceOverrideSet {
+		fmt.Printf("\n⚠ Using reshare nonce override: %d. Be sure to set the threshold of the vault at this reshare point with -threshold, or recovery will produce incorrect data.\n", nonceOverride)
 	}
-	if requestIDOverride != nil && *requestIDOverride != "" {
-		fmt.Printf("\n⚠ Using request id override: %s. Be sure to set the threshold of the vault at this reshare point with -threshold, or recovery will produce incorrect data.\n", *requestIDOverride)
+	if requestIDOverride != "" {
+		fmt.Printf("\n⚠ Using request id override: %s. Be sure to set the threshold of the vault at this reshare point with -threshold, or recovery will produce incorrect data.\n", requestIDOverride)
 	}
-	if quorumOverride != nil && *quorumOverride > 0 {
-		fmt.Printf("\n⚠ Using vault quorum override: %d.\n", *quorumOverride)
+	if quorumOverride > 0 {
+		fmt.Printf("\n⚠ Using vault quorum override: %d.\n", quorumOverride)
 	}
-	if (nonceOverride != nil && *nonceOverride > -1) || (requestIDOverride != nil && *requestIDOverride != "") || (quorumOverride != nil && *quorumOverride > 0) {
+	if nonceOverrideSet || requestIDOverride != "" || quorumOverride > 0 {
 		println()
 	}
 
-	res, err := recoverypipeline.Prepare(vaultsDataFile, vaultID, nonceOverride, requestIDOverride, privateKeyPEM, recoverypipeline.ErrorPresentation{})
+	opts := recoverypipeline.Options{
+		PrivateKeyPEM:     privateKeyPEM,
+		VaultID:           vaultID,
+		NonceOverride:     nonceOverride,
+		NonceOverrideSet:  nonceOverrideSet,
+		RequestIDOverride: requestIDOverride,
+	}
+	res, err := recoverypipeline.Prepare(vaultsDataFile, opts)
 	if err != nil {
 		if errors.Is(err, recoverypipeline.ErrPrivateKeyRequired) {
 			welp = fmt.Errorf("%s; use -private-key to supply the ML-KEM-768 private key PEM", err)
@@ -51,7 +58,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 	}
 	orderedVaults = res.OrderedVaults
 
-	justListingVaults := vaultID == nil || *vaultID == ""
+	justListingVaults := vaultID == ""
 	if justListingVaults {
 		return "", nil, nil, orderedVaults, nil, nil
 	}
@@ -62,13 +69,13 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 	mobileVaults, mobileFileThreshold := res.MobileVaults, res.MobileFileThreshold
 
 	println()
-	if _, ok := vaultAllSharesECDSA[*vaultID]; !ok {
-		welp = fmt.Errorf("⚠ provided files do not contain data for vault `%s` with the expected reshare nonce", *vaultID)
+	if _, ok := vaultAllSharesECDSA[vaultID]; !ok {
+		welp = fmt.Errorf("⚠ provided files do not contain data for vault `%s` with the expected reshare nonce", vaultID)
 		return
 	}
-	if vaultHasEDDSA[*vaultID] && len(vaultAllSharesEDDSA[*vaultID]) != len(vaultAllSharesECDSA[*vaultID]) {
+	if vaultHasEDDSA[vaultID] && len(vaultAllSharesEDDSA[vaultID]) != len(vaultAllSharesECDSA[vaultID]) {
 		welp = fmt.Errorf("⚠ count of EDDSA shares %d != count of ECDSA shares %d for vault `%s`",
-			len(vaultAllSharesEDDSA[*vaultID]), len(vaultAllSharesECDSA[*vaultID]), *vaultID)
+			len(vaultAllSharesEDDSA[vaultID]), len(vaultAllSharesECDSA[vaultID]), vaultID)
 		return
 	}
 
@@ -76,27 +83,27 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 	// file (v5) or the -threshold flag — never from a .dr file that happens to cover the same vault.
 	// A legacy v4 mobile file carries no threshold, so require the flag rather than silently reusing
 	// a .dr-derived Quroum.
-	if mobileVaults[*vaultID] && !mobileFileThreshold[*vaultID] && (quorumOverride == nil || *quorumOverride <= 0) {
-		welp = fmt.Errorf("⚠ vault %s: mobile backup carries no threshold (re-export with an updated app for v5, or pass -threshold)", *vaultID)
+	if mobileVaults[vaultID] && !mobileFileThreshold[vaultID] && quorumOverride <= 0 {
+		welp = fmt.Errorf("⚠ vault %s: mobile backup carries no threshold (re-export with an updated app for v5, or pass -threshold)", vaultID)
 		return
 	}
-	tPlus1 := clearVaults[*vaultID].Quroum
-	if quorumOverride != nil && *quorumOverride > 0 {
-		tPlus1 = *quorumOverride
+	tPlus1 := clearVaults[vaultID].Quroum
+	if quorumOverride > 0 {
+		tPlus1 = quorumOverride
 	}
 	if tPlus1 < 1 {
-		welp = fmt.Errorf("⚠ vault %s: no threshold available for reconstruction (pass -threshold)", *vaultID)
+		welp = fmt.Errorf("⚠ vault %s: no threshold available for reconstruction (pass -threshold)", vaultID)
 		return
 	}
-	vssSharesECDSA := make(vss.Shares, len(vaultAllSharesECDSA[*vaultID]))
-	vssSharesEDDSA := make(vss.Shares, len(vaultAllSharesEDDSA[*vaultID]))
-	if len(vaultAllSharesECDSA[*vaultID]) < tPlus1 {
+	vssSharesECDSA := make(vss.Shares, len(vaultAllSharesECDSA[vaultID]))
+	vssSharesEDDSA := make(vss.Shares, len(vaultAllSharesEDDSA[vaultID]))
+	if len(vaultAllSharesECDSA[vaultID]) < tPlus1 {
 		welp = fmt.Errorf("⚠ not enough shares. are you using the newest files? (need %d, have %d)",
-			tPlus1, len(vaultAllSharesECDSA[*vaultID]))
+			tPlus1, len(vaultAllSharesECDSA[vaultID]))
 		return
 	}
 	var share0ECDSAPubKey, share0EDDSAPubKey *crypto.ECPoint
-	for i, el := range vaultAllSharesECDSA[*vaultID] {
+	for i, el := range vaultAllSharesECDSA[vaultID] {
 		vssSharesECDSA[i] = &vss.Share{
 			Threshold: tPlus1 - 1,
 			ID:        el.ShareID,
@@ -106,8 +113,8 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 			share0ECDSAPubKey = el.ECDSAPub
 		}
 	}
-	if vaultHasEDDSA[*vaultID] {
-		for i, el := range vaultAllSharesEDDSA[*vaultID] {
+	if vaultHasEDDSA[vaultID] {
+		for i, el := range vaultAllSharesEDDSA[vaultID] {
 			vssSharesEDDSA[i] = &vss.Share{
 				Threshold: tPlus1 - 1,
 				ID:        el.ShareID,
@@ -124,7 +131,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 	if ecdsaSKI, welp = vssSharesECDSA.ReConstruct(tss.S256()); welp != nil {
 		return
 	}
-	if vaultHasEDDSA[*vaultID] {
+	if vaultHasEDDSA[vaultID] {
 		if eddsaSKI, welp = vssSharesEDDSA.ReConstruct(tss.Edwards()); welp != nil {
 			return
 		}
@@ -145,7 +152,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 	}
 
 	// if applicable, ensure the EDDSA PK matches our expected share 0 PK
-	if vaultHasEDDSA[*vaultID] {
+	if vaultHasEDDSA[vaultID] {
 		_, edPK, err := edwards.PrivKeyFromScalar(eddsaSK)
 		if err != nil {
 			welp = err
@@ -168,9 +175,9 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 	}
 
 	// write out keystore file
-	if exportKSFile != nil && len(*exportKSFile) > 0 {
-		if passwordForKS == nil || len(*passwordForKS) == 0 {
-			fmt.Println(ui.PlainTextf("NOTE: -password flag is required to export wallet v3 file `%s`. A wallet v3 file will not be created this time.\n", *exportKSFile))
+	if len(exportKSFile) > 0 {
+		if len(passwordForKS) == 0 {
+			fmt.Println(ui.PlainTextf("NOTE: -password flag is required to export wallet v3 file `%s`. A wallet v3 file will not be created this time.\n", exportKSFile))
 			return
 		}
 		ksUuid, err2 := uuid.NewRandom()
@@ -183,17 +190,17 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 			Address:    common.HexToAddress(address),
 			PrivateKey: privKey.ToECDSA(),
 		}
-		keyfile, err2 := keystore.EncryptKey(key, *passwordForKS, keystore.StandardScryptN, keystore.StandardScryptP)
+		keyfile, err2 := keystore.EncryptKey(key, passwordForKS, keystore.StandardScryptN, keystore.StandardScryptP)
 		if err2 != nil {
-			welp = fmt.Errorf("⚠ could not create the wallet v3 file json %s: %v", *exportKSFile, err2)
+			welp = fmt.Errorf("⚠ could not create the wallet v3 file json %s: %v", exportKSFile, err2)
 			return
 		}
-		if err := fileutils.WriteToNewFile(*exportKSFile, keyfile, fileutils.PermissionOwnerRW); err != nil {
-			welp = fmt.Errorf("⚠ could not write the wallet v3 file %s: %v", *exportKSFile, err)
+		if err := fileutils.WriteToNewFile(exportKSFile, keyfile, fileutils.PermissionOwnerRW); err != nil {
+			welp = fmt.Errorf("⚠ could not write the wallet v3 file %s: %v", exportKSFile, err)
 			return
 		}
-		exportedKsFile = exportKSFile
-		fmt.Println(ui.PlainTextf("\nWrote a MetaMask wallet v3 (for ECDSA key only) to: %s\n", *exportKSFile))
+		exportedKsFile = &exportKSFile
+		fmt.Println(ui.PlainTextf("\nWrote a MetaMask wallet v3 (for ECDSA key only) to: %s\n", exportKSFile))
 	}
 	return address, ecdsaSK, eddsaSK, orderedVaults, exportedKsFile, nil
 }

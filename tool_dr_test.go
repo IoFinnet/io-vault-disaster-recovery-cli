@@ -314,7 +314,7 @@ func TestTool_DR_ECDSA_And_EdDSA_Recovery(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path})
 	}
 
-	address, ecSK, edSK, vaultsFormData, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, privPEM)
+	address, ecSK, edSK, vaultsFormData, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", privPEM)
 	require.NoError(t, err)
 	require.Len(t, vaultsFormData, 1)
 	require.Equal(t, vaultID, vaultsFormData[0].VaultID)
@@ -352,7 +352,7 @@ func TestTool_DR_ThresholdMismatch(t *testing.T) {
 		})
 
 	files := []ui.VaultsDataFile{{File: path1}, {File: path2}}
-	_, _, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, privPEM)
+	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", privPEM)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "disagrees with another .dr file")
 }
@@ -372,7 +372,7 @@ func TestTool_DR_MissingPrivateKey(t *testing.T) {
 		})
 
 	files := []ui.VaultsDataFile{{File: path}}
-	_, _, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, nil)
+	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "-private-key")
 }
@@ -393,7 +393,7 @@ func TestTool_DR_WrongPrivateKey(t *testing.T) {
 		})
 
 	files := []ui.VaultsDataFile{{File: path}}
-	_, _, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, wrongPEM)
+	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", wrongPEM)
 	require.Error(t, err)
 }
 
@@ -429,7 +429,7 @@ func TestTool_DR_MixedWithLegacy(t *testing.T) {
 		{File: legacyPath, Mnemonics: mmI},
 		{File: drPath},
 	}
-	address, ecSK, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, privPEM)
+	address, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", privPEM)
 	require.NoError(t, err)
 
 	_, expectedAddress, err := getTSSPubKeyForEthereum(pub.X(), pub.Y())
@@ -455,7 +455,7 @@ func TestTool_V5MobileJSON_Recovery(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path, Mnemonics: mmI})
 	}
 
-	address, ecSK, _, vaultsFormData, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, nil)
+	address, ecSK, _, vaultsFormData, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
 	require.NoError(t, err)
 	require.Len(t, vaultsFormData, 1)
 	require.Equal(t, vaultID, vaultsFormData[0].VaultID)
@@ -488,7 +488,7 @@ func TestTool_V5MobileJSON_ECDSAAndEdDSA(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path, Mnemonics: mmI})
 	}
 
-	address, ecSK, edSK, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, nil)
+	address, ecSK, edSK, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
 	require.NoError(t, err)
 
 	_, expectedAddress, err := getTSSPubKeyForEthereum(ecPub.X(), ecPub.Y())
@@ -522,14 +522,13 @@ func TestTool_V5MobileJSON_PerEpochThreshold(t *testing.T) {
 	}
 
 	// Default (currentRequestId = epoch B): reconstructs secretB with epoch B's threshold (3).
-	_, ecSK, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, nil)
+	_, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
 	require.NoError(t, err)
 	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(secretB)), hex.EncodeToString(ecSK))
 
 	// -request-id epoch A: reconstructs secretA with epoch A's threshold (2), proving the threshold
 	// tracks the chosen epoch's own payload, not a single vault-wide value.
-	reqAOverride := reqA
-	_, ecSKA, _, _, _, err := runTool(files, &vaultID, nil, &reqAOverride, nil, nil, nil, nil)
+	_, ecSKA, _, _, _, err := runTool(files, vaultID, 0, false, reqA, 0, "", "", nil)
 	require.NoError(t, err)
 	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(secretA)), hex.EncodeToString(ecSKA))
 }
@@ -554,13 +553,12 @@ func TestTool_V4MobileJSON_NoThreshold_RequiresFlag(t *testing.T) {
 	}
 
 	// No -threshold → hard error (no threshold in file, none supplied).
-	_, _, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, nil)
+	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no threshold")
 
 	// With -threshold → recovers correctly.
-	quorum := threshold
-	address, ecSK, _, _, _, err := runTool(files, &vaultID, nil, nil, &quorum, nil, nil, nil)
+	address, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", threshold, "", "", nil)
 	require.NoError(t, err)
 	_, expectedAddress, err := getTSSPubKeyForEthereum(pub.X(), pub.Y())
 	require.NoError(t, err)
@@ -584,7 +582,7 @@ func TestTool_V5MobileJSON_ThresholdMismatch(t *testing.T) {
 		map[string]mobileRequestFixture{requestID: {threshold: 3, ecdsa: mobileECDSAPayload(vaultID, shares[1], pub)}}) // disagrees
 
 	files := []ui.VaultsDataFile{{File: path0, Mnemonics: mmI}, {File: path1, Mnemonics: mmI}}
-	_, _, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, nil)
+	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "threshold mismatch")
 }
@@ -617,7 +615,7 @@ func TestTool_LegacyAndV5_ThresholdMismatch_EitherOrder(t *testing.T) {
 		{File: legacyPath, Mnemonics: mmI},
 		{File: mobilePath, Mnemonics: mmI},
 	}
-	_, _, _, _, _, err = runTool(filesLegacyThenV5, &vaultID, nil, nil, nil, nil, nil, nil)
+	_, _, _, _, _, err = runTool(filesLegacyThenV5, vaultID, 0, false, "", 0, "", "", nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "threshold mismatch")
 
@@ -625,7 +623,7 @@ func TestTool_LegacyAndV5_ThresholdMismatch_EitherOrder(t *testing.T) {
 		{File: mobilePath, Mnemonics: mmI},
 		{File: legacyPath, Mnemonics: mmI},
 	}
-	_, _, _, _, _, err = runTool(filesV5ThenLegacy, &vaultID, nil, nil, nil, nil, nil, nil)
+	_, _, _, _, _, err = runTool(filesV5ThenLegacy, vaultID, 0, false, "", 0, "", "", nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "threshold mismatch")
 }
@@ -664,7 +662,7 @@ func TestTool_DR_ChainWalk_PicksHead(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path})
 	}
 
-	_, ecSK, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, privPEM)
+	_, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", privPEM)
 	require.NoError(t, err)
 	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(newSecret)), hex.EncodeToString(ecSK))
 	require.NotEqual(t, hex.EncodeToString(leftPadTo32Bytes(oldSecret)), hex.EncodeToString(ecSK))
@@ -701,7 +699,7 @@ func TestTool_DR_ChainWalk_Ambiguous(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path})
 	}
 
-	_, _, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, privPEM)
+	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", privPEM)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "-request-id")
 }
@@ -738,8 +736,7 @@ func TestTool_DR_RequestIDOverride(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path})
 	}
 
-	requestIDOverride := "epoch-b"
-	_, ecSK, _, _, _, err := runTool(files, &vaultID, nil, &requestIDOverride, nil, nil, nil, privPEM)
+	_, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "epoch-b", 0, "", "", privPEM)
 	require.NoError(t, err)
 	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(secretB)), hex.EncodeToString(ecSK))
 }
@@ -762,8 +759,10 @@ func TestPrepare_MissingPrivateKey_PathRedactedForWeb(t *testing.T) {
 		})
 
 	files := []ui.VaultsDataFile{{File: path}}
-	_, err := recoverypipeline.Prepare(files, &vaultID, nil, nil, nil,
-		recoverypipeline.ErrorPresentation{Path: filepath.Base})
+	_, err := recoverypipeline.Prepare(files, recoverypipeline.Options{
+		VaultID:      vaultID,
+		Presentation: recoverypipeline.ErrorPresentation{Path: filepath.Base},
+	})
 	require.Error(t, err)
 	require.True(t, errors.Is(err, recoverypipeline.ErrPrivateKeyRequired))
 	require.Contains(t, err.Error(), filepath.Base(path))
@@ -794,20 +793,19 @@ func TestTool_LegacyNoQuorum_ListsAndRecoversWithFlag(t *testing.T) {
 
 	// Listing mode: the vault shows up with quorum 0 rather than failing the run.
 	emptyVaultID := ""
-	_, _, _, orderedVaults, _, err := runTool(files, &emptyVaultID, nil, nil, nil, nil, nil, nil)
+	_, _, _, orderedVaults, _, err := runTool(files, emptyVaultID, 0, false, "", 0, "", "", nil)
 	require.NoError(t, err)
 	require.Len(t, orderedVaults, 1)
 	require.Equal(t, vaultID, orderedVaults[0].VaultID)
 	require.Equal(t, 0, orderedVaults[0].Quorum)
 
 	// No -threshold → hard error at reconstruction.
-	_, _, _, _, _, err = runTool(files, &vaultID, nil, nil, nil, nil, nil, nil)
+	_, _, _, _, _, err = runTool(files, vaultID, 0, false, "", 0, "", "", nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no threshold")
 
 	// With -threshold → recovers correctly.
-	quorum := threshold
-	address, ecSK, _, _, _, err := runTool(files, &vaultID, nil, nil, &quorum, nil, nil, nil)
+	address, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", threshold, "", "", nil)
 	require.NoError(t, err)
 	_, expectedAddress, err := getTSSPubKeyForEthereum(pub.X(), pub.Y())
 	require.NoError(t, err)
@@ -841,7 +839,7 @@ func TestTool_LegacyNoQuorum_KeepsV5Threshold(t *testing.T) {
 		{{File: mobilePath, Mnemonics: mmI}, {File: legacyPath, Mnemonics: mmI}},
 	} {
 		emptyVaultID := ""
-		_, _, _, orderedVaults, _, err := runTool(order, &emptyVaultID, nil, nil, nil, nil, nil, nil)
+		_, _, _, orderedVaults, _, err := runTool(order, emptyVaultID, 0, false, "", 0, "", "", nil)
 		require.NoError(t, err)
 		require.Len(t, orderedVaults, 1)
 		require.Equal(t, 3, orderedVaults[0].Quorum)

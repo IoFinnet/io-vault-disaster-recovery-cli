@@ -253,7 +253,7 @@ func (s *Server) handleListVaults(w http.ResponseWriter, r *http.Request) {
 	defer clear(privateKeyPEM)
 
 	// Run the tool to get vault information
-	_, _, _, vaultsFormInfo, _, err := runTool(vaultsDataFiles, nil, nil, nil, nil, nil, nil, privateKeyPEM)
+	_, _, _, vaultsFormInfo, _, err := runTool(vaultsDataFiles, "", 0, false, "", 0, "", "", privateKeyPEM)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to retrieve vault information: %v", err), http.StatusInternalServerError)
 		return
@@ -287,46 +287,36 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get optional parameters
-	nonceOverrideStr := r.FormValue("nonceOverride")
-	var nonceOverride *int
-	if nonceOverrideStr != "" {
-		var nonce int
-		fmt.Sscanf(nonceOverrideStr, "%d", &nonce)
-		nonceOverride = &nonce
+	nonceOverride := 0
+	nonceOverrideProvided := false
+	if nonceOverrideStr := r.FormValue("nonceOverride"); nonceOverrideStr != "" {
+		nonceOverrideProvided = true
+		fmt.Sscanf(nonceOverrideStr, "%d", &nonceOverride)
 	}
+	nonceOverrideSet := nonceOverrideProvided && nonceOverride > -1
 
-	var requestIDOverride *string
-	if requestIDOverrideStr := r.FormValue("requestIdOverride"); requestIDOverrideStr != "" {
-		requestIDOverride = &requestIDOverrideStr
-	}
+	requestIDOverride := r.FormValue("requestIdOverride")
 
-	quorumOverrideStr := r.FormValue("quorumOverride")
-	var quorumOverride *int
-	if quorumOverrideStr != "" {
-		var quorum int
-		fmt.Sscanf(quorumOverrideStr, "%d", &quorum)
-		quorumOverride = &quorum
+	quorumOverride := 0
+	if quorumOverrideStr := r.FormValue("quorumOverride"); quorumOverrideStr != "" {
+		fmt.Sscanf(quorumOverrideStr, "%d", &quorumOverride)
 	}
 
 	passwordForKS := r.FormValue("password")
-	var password *string
-	if passwordForKS != "" {
-		password = &passwordForKS
-	}
 
 	exportKSFile := r.FormValue("exportFile")
-	if exportKSFile != "" && password == nil {
+	if exportKSFile != "" && passwordForKS == "" {
 		http.Error(w, "Password is required when exporting keystore file", http.StatusBadRequest)
 		return
 	}
-	var exportFile *string
+	exportFile := ""
 	if exportKSFile != "" {
 		scopedPath, err := ui.ScopeExportPathForWeb(exportKSFile, s.exportDir)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Invalid export filename: %v", err), http.StatusBadRequest)
 			return
 		}
-		exportFile = &scopedPath
+		exportFile = scopedPath
 	}
 
 	// Process files and mnemonics
@@ -347,7 +337,7 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 
 	// Run the recovery tool
 	result := RecoveryResult{}
-	address, ecSK, edSK, _, exportedKsFile, err := runTool(vaultsDataFiles, &vaultID, nonceOverride, requestIDOverride, quorumOverride, exportFile, password, privateKeyPEM)
+	address, ecSK, edSK, _, exportedKsFile, err := runTool(vaultsDataFiles, vaultID, nonceOverride, nonceOverrideSet, requestIDOverride, quorumOverride, exportFile, passwordForKS, privateKeyPEM)
 
 	if err != nil {
 		result.Success = false
