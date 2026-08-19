@@ -30,7 +30,7 @@ import (
 	"github.com/tyler-smith/go-bip39"
 )
 
-// Result is everything the ingestion phase hands to a frontend: the folded
+// Result is everything the prepare phase hands to a frontend: the folded
 // per-vault share pools plus the per-vault metadata the frontend's reconstruction
 // step validates against.
 type Result struct {
