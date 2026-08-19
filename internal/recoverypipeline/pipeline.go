@@ -40,7 +40,7 @@ type Result struct {
 	Vaults ClearVaultMap
 
 	// SharesECDSA and SharesEdDSA are the per-vault share pools, merged across
-	// every input file format for the selected epoch.
+	// every input file format for the selected reshare.
 	SharesECDSA VaultAllSharesECDSA
 	SharesEdDSA VaultAllSharesEdDSA
 
@@ -88,15 +88,12 @@ func (p ErrorPresentation) err(err error) error {
 // form field to fill), since the shared code cannot know how the caller takes input.
 var ErrPrivateKeyRequired = errors.New("is a Virtual Signer .dr file")
 
-// ErrAmbiguousEpoch signals that a vault's .dr files carry more than one root epoch in their
-// previousRequestId chain, with no override selecting one of them. Frontends detect it with
-// errors.Is and append their own remediation wording (which flag to pass, or which form field to
-// fill), since the shared code cannot know how the caller takes input.
-var ErrAmbiguousEpoch = errors.New("ambiguous epoch")
+// ErrAmbiguousRootRequestID signals no single root request id could be picked from a vault's .dr
+// chain. Same errors.Is/per-frontend-remediation pattern as ErrPrivateKeyRequired.
+var ErrAmbiguousRootRequestID = errors.New("ambiguous root request id")
 
-// ErrRequestIDMismatch signals that a vault's chosen request id disagrees with the request id
-// already recorded for it from another input file. Frontends detect it with errors.Is and append
-// their own remediation wording, for the same reason as ErrAmbiguousEpoch.
+// ErrRequestIDMismatch signals a vault's chosen request id disagrees with one already recorded
+// for it from another input file. Same pattern as ErrAmbiguousEpoch.
 var ErrRequestIDMismatch = errors.New("non matching current request id")
 
 // Options are Prepare's inputs. The zero value means listing mode, CLI-style error
@@ -112,13 +109,13 @@ type Options struct {
 
 // Prepare decodes and decrypts every input backup file — mnemonic-encrypted JSON in
 // its legacy flat-nonce and mobile v4/v5 shapes, and Virtual Signer .dr files —
-// selects each vault's current reshare epoch, and folds all decoded shares into
+// selects each vault's current reshare, and folds all decoded shares into
 // per-vault pools. It performs no key reconstruction: callers take the pools and
 // per-vault metadata from Result and run their own reconstruction step.
 //
 // With opts.VaultID empty, every vault in every file is processed (listing mode,
 // used by both frontends to discover what to offer); with opts.VaultID set, only
-// that vault's data is decoded, and epoch/threshold conflicts for it are hard errors.
+// that vault's data is decoded, and reshare/threshold conflicts for it are hard errors.
 func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, welp error) {
 	vaultID := opts.VaultID
 	nonceOverride := opts.NonceOverride
@@ -147,9 +144,9 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 	mobileVaults := make(map[string]bool, len(vaultsDataFile)*16)
 	mobileFileThreshold := make(map[string]bool, len(vaultsDataFile)*16)
 	// .dr files carry a previousRequestId chain pointer (unlike the legacy mnemonic-encrypted
-	// JSON below, one .dr file is one device's shares for one specific epoch, keyed by
+	// JSON below, one .dr file is one device's shares for one specific reshare, keyed by
 	// RequestId), so they're grouped by vault+requestId here and folded in below once every input
-	// file has been seen, walking the chain to find each vault's current epoch.
+	// file has been seen, walking the chain to find each vault's current reshare.
 	drSharesByVaultRequestID := make(map[string]map[string]*drVaultShares, len(vaultsDataFile))
 
 	// Process each vault data file
@@ -232,7 +229,7 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 
 			// DECRYPT
 			// iv/tag are hex in legacy exports and base64 in current ones; decode by
-			// field length so either era recovers. See data.DecodeGcmField.
+			// field length so either format recovers. See data.DecodeGcmField.
 			aesNonce, err := data.DecodeGcmField(cipheredVault.CipherParams.IV, data.GcmIVBytes)
 			if err != nil {
 				welp = errors2.Errorf("⚠ failed to decrypt vault %s: %s (on nonce decode)", vID, err)
@@ -394,8 +391,8 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 	}
 
 	// Fold in the .dr shares accumulated above: for each vault, walk the previousRequestId chain
-	// (or honor a -request-id override) to find its current epoch, warning on disagreement with
-	// whatever the legacy/v4 JSON path already picked for that vault, then merge that epoch's
+	// (or honor a -request-id override) to find its current reshare, warning on disagreement with
+	// whatever the legacy/v4 JSON path already picked for that vault, then merge that reshare's
 	// shares into the same pools used by the legacy path so a single recovery run can mix both
 	// file formats for a vault.
 	for vID, byRequestID := range drSharesByVaultRequestID {

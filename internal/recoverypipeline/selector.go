@@ -9,16 +9,10 @@ import (
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 )
 
-// pickLatestDRRequestID selects the current epoch's request id for a vault from its .dr files, by
-// walking the previousRequestId chain built by processDRFile: the request id in byRequestID that
-// is not referenced as any other entry's previousRequestId is the head (most recent) epoch.
-// Honors the -request-id override, used directly instead of chain-walking.
-//
-// Unlike a legacy reshare nonce (where "highest wins" is always well-defined even amid
-// disagreement across files), an ambiguous chain has no safe fallback: if !justListingVaults, an
-// ambiguous chain without an override is a hard error rather than a guess, since a wrong guess
-// here reconstructs the wrong key. During listing (no vault selected yet), ambiguity is tolerated
-// with a best-effort pick, since nothing here yet influences key reconstruction.
+// pickLatestDRRequestID picks a vault's current reshare by walking the .dr previousRequestId
+// chain for the one request id no other entry references, honoring -request-id if set. An
+// ambiguous chain is a hard error once a vault is selected (a wrong guess reconstructs the wrong
+// key), but tolerated with a best-effort pick during listing.
 func pickLatestDRRequestID(byRequestID map[string]*drVaultShares, vID string, requestIDOverride string, justListingVaults bool) (string, error) {
 	if !justListingVaults && requestIDOverride != "" {
 		if _, ok := byRequestID[requestIDOverride]; !ok {
@@ -44,15 +38,11 @@ func pickLatestDRRequestID(byRequestID map[string]*drVaultShares, vID string, re
 	if heads == 1 || justListingVaults {
 		return head, nil
 	}
-	return "", fmt.Errorf("⚠ vault %s: found %d root epoch(s) among its .dr files' previousRequestId chain (expected exactly 1): %w", vID, heads, ErrAmbiguousEpoch)
+	return "", fmt.Errorf("⚠ vault %s: found %d root epoch(s) among its .dr files' previousRequestId chain (expected exactly 1): %w", vID, heads, ErrAmbiguousRootRequestID)
 }
 
-// rejectOnRequestIDDisagreement records vID's chosen request id and errors out if it disagrees
-// with the request id already recorded for vID from a previously-processed v4 JSON entry or the
-// .dr chain's resolved head: mixing shares from two different reshare epochs into one
-// reconstruction pool would silently produce a wrong key, so this must be a hard error rather
-// than a warning. Tracked separately from the legacy nonce disagreement warning in
-// pickLastLegacyNonce, since a nonce and a request id are never comparable.
+// rejectOnRequestIDDisagreement hard-errors if vID's chosen request id disagrees with one already
+// recorded for it, since mixing shares from two reshares would silently produce a wrong key.
 func rejectOnRequestIDDisagreement(vID, requestID string, clearVaults ClearVaultMap, vaultLastRequestIDs map[string]string) error {
 	if glbRequestID, ok := vaultLastRequestIDs[vID]; ok && glbRequestID != requestID {
 		vaultName := vID
@@ -65,16 +55,10 @@ func rejectOnRequestIDDisagreement(vID, requestID string, clearVaults ClearVault
 	return nil
 }
 
-// pickLastLegacyNonce selects the reshare nonce to use for a vault from the set of nonces found
-// in one legacy flat-nonce JSON file (honoring the -nonce override), warning if it disagrees with
-// the nonce already picked for this vault from another legacy file. Returns -1 if no nonce
-// survives the override filter.
-//
-// The disagreement warning is CLI-flag wording (-nonce, -threshold, -vault-id) printed directly to
-// stdout, so it is only meaningful for the CLI frontend; presentation.Path is nil only for the
-// CLI's zero-value ErrorPresentation (see Options doc comment), so it doubles as that signal here.
-// The web frontend gets a neutral warning instead, since it has no such flags and this print
-// reaches the server's log, not the browser.
+// pickLastLegacyNonce picks the highest nonce surviving the -nonce override, warning if it
+// disagrees with another legacy file's pick for the same vault. The warning's CLI-flag wording is
+// swapped for a neutral one when presentation.Path is set (the web frontend). Returns -1 if no
+// nonce survives the override.
 func pickLastLegacyNonce(nonces map[int]bool, vID string, clearVaults ClearVaultMap, nonceOverride int, nonceOverrideSet bool,
 	justListingVaults bool, vaultLastLegacyNonces map[string]int, presentation ErrorPresentation) int {
 

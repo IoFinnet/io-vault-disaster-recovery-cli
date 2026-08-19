@@ -24,7 +24,7 @@ const (
 	WarningManifestIgnored WarningCode = "manifest.ignored"
 )
 
-// SelectionCandidate holds the fields needed to choose an epoch for one vault.
+// SelectionCandidate holds the fields needed to choose a request id for one vault.
 type SelectionCandidate struct {
 	VaultID      string
 	RequestID    string
@@ -49,7 +49,7 @@ type (
 	// Two on-disk shapes exist, detected and normalized by UnmarshalJSON:
 	//   - legacy (real, already-existing exports, and the only shape this tool ever produced):
 	//     a flat map of reshare-nonce-string -> CipheredVault, e.g. {"2": {...}, "3": {...}}.
-	//     There is no signal for "which epoch is current" beyond the nonce itself, so these are
+	//     There is no signal for "which reshare is current" beyond the nonce itself, so these are
 	//     decoded into LegacyByNonce and picked by highest nonce (same as always).
 	//   - v4 mobile app export: {"currentRequestId": "<uuid>", "requests": {"<uuid>": {...}}}.
 	//     The exporter (which has live access to io-sign) directly names the current request,
@@ -81,10 +81,10 @@ type (
 		Name         string   `json:"name"`
 		Quroum       int      `json:"threshold"`
 		SharesLegacy []string `json:"shares"`
-		// LastRequestID is the identifier of the epoch actually chosen for this vault: the
+		// LastRequestID is the identifier of the reshare actually chosen for this vault: the
 		// request id string for a .dr file or v4 JSON entry, or the legacy reshare nonce
 		// formatted as a string for an old flat-nonce JSON entry (there is no request id in
-		// that case, so the nonce stands in as the epoch's identifier).
+		// that case, so the nonce stands in as that identifier).
 		LastRequestID string            `json:"-"`
 		Curves        []ClearVaultCurve `json:"curves"`
 	}
@@ -92,10 +92,10 @@ type (
 	VaultAllSharesECDSA map[string][]*ecdsa_keygen.LocalPartySaveData
 	VaultAllSharesEdDSA map[string][]*eddsa_keygen.LocalPartySaveData
 
-	// drVaultShares accumulates one reshare epoch's worth of .dr shares for a vault (one .dr file
+	// drVaultShares accumulates one reshare's worth of .dr shares for a vault (one .dr file
 	// per device per algorithm, all sharing the same RequestId), pending the "pick the current
-	// epoch" selection in runTool. previousRequestId is that epoch's chain pointer (empty for a
-	// keygen-originated epoch), used to walk the chain across a vault's .dr files.
+	// reshare" selection in runTool. previousRequestId is that reshare's chain pointer (empty for
+	// a keygen-originated reshare), used to walk the chain across a vault's .dr files.
 	drVaultShares struct {
 		threshold         int
 		previousRequestId string
