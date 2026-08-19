@@ -71,7 +71,7 @@ type Server struct {
 	listener           net.Listener
 	actualPort         int // the port the server actually bound to
 	zipExtractedDirsMu sync.Mutex
-	zipExtractedDirs   []string // Tracks temporary directories created for ZIP extractions; handlers run concurrently, so guard with zipExtractedDirsMu
+	zipExtractedDirs   map[string]struct{} // ZIP extraction dirs not yet cleaned up; handlers run concurrently, so guard with zipExtractedDirsMu
 }
 
 // NewServer creates a new http server instance
@@ -91,7 +91,7 @@ func NewServer(config ServerConfig) (*Server, error) {
 		config:           config,
 		tempDir:          tempDir,
 		exportDir:        workingDir,
-		zipExtractedDirs: make([]string, 0),
+		zipExtractedDirs: make(map[string]struct{}),
 	}, nil
 }
 
@@ -210,7 +210,10 @@ func (s *Server) Stop() error {
 
 	// Clean up any ZIP extracted directories left over from requests
 	s.zipExtractedDirsMu.Lock()
-	dirs := s.zipExtractedDirs
+	dirs := make([]string, 0, len(s.zipExtractedDirs))
+	for dir := range s.zipExtractedDirs {
+		dirs = append(dirs, dir)
+	}
 	s.zipExtractedDirsMu.Unlock()
 	for _, dir := range dirs {
 		if err := os.RemoveAll(dir); err != nil {
@@ -629,15 +632,7 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, 
 	// caller's deferred cleanup below doesn't run (e.g. process killed mid-request).
 	s.trackZipExtractedDirs(zipExtractedDirs)
 
-	reqCleanup := func() {
-		for _, dir := range zipExtractedDirs {
-			if err := os.RemoveAll(dir); err != nil {
-				log.Printf("warning: failed to clean up request temp directory %s: %v", dir, err)
-				continue
-			}
-			log.Printf("cleaned up request temp directory: %s", dir)
-		}
-	}
+	reqCleanup := func() { s.cleanupRequestDirs(zipExtractedDirs) }
 	return vaultsDataFiles, reqCleanup, nil
 }
 
@@ -755,15 +750,7 @@ func (s *Server) handleListZipFiles(w http.ResponseWriter, r *http.Request) {
 	// Extracted dirs from this request; cleaned up on every return path below,
 	// with a copy also kept on the server as a Stop() fallback.
 	requestExtractedDirs := []string{}
-	defer func() {
-		for _, dir := range requestExtractedDirs {
-			if err := os.RemoveAll(dir); err != nil {
-				log.Printf("warning: failed to clean up request temp directory %s: %v", dir, err)
-				continue
-			}
-			log.Printf("cleaned up request temp directory: %s", dir)
-		}
-	}()
+	defer func() { s.cleanupRequestDirs(requestExtractedDirs) }()
 
 	onZipFileProcessingFinished := func(file *multipart.File, outFile *os.File, filePath *string) {
 		if file != nil {
@@ -856,14 +843,31 @@ func (s *Server) handleListZipFiles(w http.ResponseWriter, r *http.Request) {
 func noopCleanup() {}
 
 // trackZipExtractedDirs records dirs on the server for the Stop() fallback cleanup.
-// Handlers run concurrently, so appends are guarded by a mutex.
+// Handlers run concurrently, so the set is guarded by a mutex.
 func (s *Server) trackZipExtractedDirs(dirs []string) {
 	if len(dirs) == 0 {
 		return
 	}
 	s.zipExtractedDirsMu.Lock()
-	s.zipExtractedDirs = append(s.zipExtractedDirs, dirs...)
+	for _, dir := range dirs {
+		s.zipExtractedDirs[dir] = struct{}{}
+	}
 	s.zipExtractedDirsMu.Unlock()
+}
+
+// cleanupRequestDirs removes a request's ZIP extraction dirs and drops them from the Stop()
+// fallback set, so the set doesn't grow with every request on a long-running server.
+func (s *Server) cleanupRequestDirs(dirs []string) {
+	for _, dir := range dirs {
+		if err := os.RemoveAll(dir); err != nil {
+			log.Printf("warning: failed to clean up request temp directory %s: %v", dir, err)
+			continue
+		}
+		log.Printf("cleaned up request temp directory: %s", dir)
+		s.zipExtractedDirsMu.Lock()
+		delete(s.zipExtractedDirs, dir)
+		s.zipExtractedDirsMu.Unlock()
+	}
 }
 
 // Validation handlers removed - unused in frontend
