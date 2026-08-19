@@ -16,6 +16,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -24,6 +25,7 @@ import (
 	"testing"
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/dr"
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/recoverypipeline"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/binance-chain/tss-lib/crypto"
 	"github.com/binance-chain/tss-lib/crypto/vss"
@@ -107,10 +109,10 @@ func makeVSSSharesEdwards(t *testing.T, threshold, n int) (*big.Int, *crypto.ECP
 func writeLegacyVaultFile(t *testing.T, dir, name, mnemonic, vaultID string, nonce, threshold int, ecdsaShareJSONs []string) string {
 	t.Helper()
 
-	clearVault := ClearVault{
+	clearVault := recoverypipeline.ClearVault{
 		Name:   "mixed-format-test-vault",
 		Quroum: threshold,
-		Curves: []ClearVaultCurve{{Algorithm: "ECDSA", Shares: ecdsaShareJSONs}},
+		Curves: []recoverypipeline.ClearVaultCurve{{Algorithm: "ECDSA", Shares: ecdsaShareJSONs}},
 	}
 	plaintext, err := json.Marshal(clearVault)
 	require.NoError(t, err)
@@ -131,9 +133,9 @@ func writeLegacyVaultFile(t *testing.T, dir, name, mnemonic, vaultID string, non
 
 	hash := sha512.Sum512(plaintext)
 
-	cipheredVault := CipheredVault{
+	cipheredVault := recoverypipeline.CipheredVault{
 		CipherTextB64: base64.StdEncoding.EncodeToString(ciphertext),
-		CipherParams:  CipherParams{IV: hex.EncodeToString(nonceBz), Tag: hex.EncodeToString(tag)},
+		CipherParams:  recoverypipeline.CipherParams{IV: hex.EncodeToString(nonceBz), Tag: hex.EncodeToString(tag)},
 		Cipher:        "aes-256-gcm",
 		Hash:          hex.EncodeToString(hash[:]),
 	}
@@ -207,9 +209,9 @@ func writeMobileVaultFile(t *testing.T, dir, name, mnemonic, vaultID, currentReq
 		ciphertext, tag := sealed[:ctLen], sealed[ctLen:]
 		hash := sha512.Sum512(plaintext)
 
-		requestsJSON[requestID] = CipheredVault{
+		requestsJSON[requestID] = recoverypipeline.CipheredVault{
 			CipherTextB64: base64.StdEncoding.EncodeToString(ciphertext),
-			CipherParams: CipherParams{
+			CipherParams: recoverypipeline.CipherParams{
 				IV:  base64.StdEncoding.EncodeToString(nonceBz),
 				Tag: base64.StdEncoding.EncodeToString(tag),
 			},
@@ -312,7 +314,7 @@ func TestTool_DR_ECDSA_And_EdDSA_Recovery(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path})
 	}
 
-	address, ecSK, edSK, vaultsFormData, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, privPEM)
+	address, ecSK, edSK, vaultsFormData, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", privPEM)
 	require.NoError(t, err)
 	require.Len(t, vaultsFormData, 1)
 	require.Equal(t, vaultID, vaultsFormData[0].VaultID)
@@ -350,7 +352,7 @@ func TestTool_DR_ThresholdMismatch(t *testing.T) {
 		})
 
 	files := []ui.VaultsDataFile{{File: path1}, {File: path2}}
-	_, _, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, privPEM)
+	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", privPEM)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "disagrees with another .dr file")
 }
@@ -370,7 +372,7 @@ func TestTool_DR_MissingPrivateKey(t *testing.T) {
 		})
 
 	files := []ui.VaultsDataFile{{File: path}}
-	_, _, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, nil)
+	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "-private-key")
 }
@@ -391,7 +393,7 @@ func TestTool_DR_WrongPrivateKey(t *testing.T) {
 		})
 
 	files := []ui.VaultsDataFile{{File: path}}
-	_, _, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, wrongPEM)
+	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", wrongPEM)
 	require.Error(t, err)
 }
 
@@ -427,7 +429,7 @@ func TestTool_DR_MixedWithLegacy(t *testing.T) {
 		{File: legacyPath, Mnemonics: mmI},
 		{File: drPath},
 	}
-	address, ecSK, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, privPEM)
+	address, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", privPEM)
 	require.NoError(t, err)
 
 	_, expectedAddress, err := getTSSPubKeyForEthereum(pub.X(), pub.Y())
@@ -453,7 +455,7 @@ func TestTool_V5MobileJSON_Recovery(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path, Mnemonics: mmI})
 	}
 
-	address, ecSK, _, vaultsFormData, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, nil)
+	address, ecSK, _, vaultsFormData, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
 	require.NoError(t, err)
 	require.Len(t, vaultsFormData, 1)
 	require.Equal(t, vaultID, vaultsFormData[0].VaultID)
@@ -486,7 +488,7 @@ func TestTool_V5MobileJSON_ECDSAAndEdDSA(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path, Mnemonics: mmI})
 	}
 
-	address, ecSK, edSK, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, nil)
+	address, ecSK, edSK, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
 	require.NoError(t, err)
 
 	_, expectedAddress, err := getTSSPubKeyForEthereum(ecPub.X(), ecPub.Y())
@@ -520,14 +522,13 @@ func TestTool_V5MobileJSON_PerEpochThreshold(t *testing.T) {
 	}
 
 	// Default (currentRequestId = epoch B): reconstructs secretB with epoch B's threshold (3).
-	_, ecSK, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, nil)
+	_, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
 	require.NoError(t, err)
 	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(secretB)), hex.EncodeToString(ecSK))
 
 	// -request-id epoch A: reconstructs secretA with epoch A's threshold (2), proving the threshold
 	// tracks the chosen epoch's own payload, not a single vault-wide value.
-	reqAOverride := reqA
-	_, ecSKA, _, _, _, err := runTool(files, &vaultID, nil, &reqAOverride, nil, nil, nil, nil)
+	_, ecSKA, _, _, _, err := runTool(files, vaultID, 0, false, reqA, 0, "", "", nil)
 	require.NoError(t, err)
 	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(secretA)), hex.EncodeToString(ecSKA))
 }
@@ -552,13 +553,12 @@ func TestTool_V4MobileJSON_NoThreshold_RequiresFlag(t *testing.T) {
 	}
 
 	// No -threshold → hard error (no threshold in file, none supplied).
-	_, _, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, nil)
+	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no threshold")
 
 	// With -threshold → recovers correctly.
-	quorum := threshold
-	address, ecSK, _, _, _, err := runTool(files, &vaultID, nil, nil, &quorum, nil, nil, nil)
+	address, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", threshold, "", "", nil)
 	require.NoError(t, err)
 	_, expectedAddress, err := getTSSPubKeyForEthereum(pub.X(), pub.Y())
 	require.NoError(t, err)
@@ -582,7 +582,48 @@ func TestTool_V5MobileJSON_ThresholdMismatch(t *testing.T) {
 		map[string]mobileRequestFixture{requestID: {threshold: 3, ecdsa: mobileECDSAPayload(vaultID, shares[1], pub)}}) // disagrees
 
 	files := []ui.VaultsDataFile{{File: path0, Mnemonics: mmI}, {File: path1, Mnemonics: mmI}}
-	_, _, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, nil)
+	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "threshold mismatch")
+}
+
+// TestTool_LegacyAndV5_ThresholdMismatch_EitherOrder: a legacy file and a v5 mobile file for
+// the same vault that disagree on threshold must fail regardless of file processing order.
+func TestTool_LegacyAndV5_ThresholdMismatch_EitherOrder(t *testing.T) {
+	dirTmp := t.TempDir()
+	vaultID := "mixed-legacy-v5-threshold-mismatch"
+	const nonce = 7
+	const requestID = "mobile-v5-req"
+
+	_, pubA, sharesA := makeVSSSharesS256(t, 2, 2)
+	_, pubB, sharesB := makeVSSSharesS256(t, 3, 3)
+	legacyShareData := &ecdsa_keygen.LocalPartySaveData{
+		LocalSecrets: ecdsa_keygen.LocalSecrets{Xi: sharesA[0].Share, ShareID: sharesA[0].ID},
+		ECDSAPub:     pubA,
+	}
+	legacyShareJSONBytes, err := json.Marshal(legacyShareData)
+	require.NoError(t, err)
+
+	legacyPath := writeLegacyVaultFile(t, dirTmp, "legacy.json", mmI, vaultID, nonce, 2,
+		[]string{string(legacyShareJSONBytes)})
+	mobilePath := writeMobileVaultFile(t, dirTmp, "mobile-v5.json", mmI, vaultID, requestID,
+		map[string]mobileRequestFixture{
+			requestID: {threshold: 3, ecdsa: mobileECDSAPayload(vaultID, sharesB[0], pubB)},
+		})
+
+	filesLegacyThenV5 := []ui.VaultsDataFile{
+		{File: legacyPath, Mnemonics: mmI},
+		{File: mobilePath, Mnemonics: mmI},
+	}
+	_, _, _, _, _, err = runTool(filesLegacyThenV5, vaultID, 0, false, "", 0, "", "", nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "threshold mismatch")
+
+	filesV5ThenLegacy := []ui.VaultsDataFile{
+		{File: mobilePath, Mnemonics: mmI},
+		{File: legacyPath, Mnemonics: mmI},
+	}
+	_, _, _, _, _, err = runTool(filesV5ThenLegacy, vaultID, 0, false, "", 0, "", "", nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "threshold mismatch")
 }
@@ -621,7 +662,7 @@ func TestTool_DR_ChainWalk_PicksHead(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path})
 	}
 
-	_, ecSK, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, privPEM)
+	_, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", privPEM)
 	require.NoError(t, err)
 	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(newSecret)), hex.EncodeToString(ecSK))
 	require.NotEqual(t, hex.EncodeToString(leftPadTo32Bytes(oldSecret)), hex.EncodeToString(ecSK))
@@ -658,7 +699,7 @@ func TestTool_DR_ChainWalk_Ambiguous(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path})
 	}
 
-	_, _, _, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, privPEM)
+	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", privPEM)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "-request-id")
 }
@@ -695,8 +736,112 @@ func TestTool_DR_RequestIDOverride(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path})
 	}
 
-	requestIDOverride := "epoch-b"
-	_, ecSK, _, _, _, err := runTool(files, &vaultID, nil, &requestIDOverride, nil, nil, nil, privPEM)
+	_, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "epoch-b", 0, "", "", privPEM)
 	require.NoError(t, err)
 	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(secretB)), hex.EncodeToString(ecSK))
+}
+
+// TestPrepare_MissingPrivateKey_PathRedactedForWeb: the web frontend appends its own remediation
+// to ErrPrivateKeyRequired without running its path stripper, so Prepare must already have applied
+// the caller's path presentation. The CLI keeps full paths (see TestTool_DR_MissingPrivateKey).
+func TestPrepare_MissingPrivateKey_PathRedactedForWeb(t *testing.T) {
+	dirTmp := t.TempDir()
+	priv, _ := genMLKEMKeyPEM(t)
+	vaultID := "dr-test-vault-nokey-web"
+
+	_, pub, shares := makeVSSSharesS256(t, 2, 2)
+	path := writeDRFile(t, dirTmp, "req0.ecdsa.secp256k1.dr", priv.EncapsulationKey(),
+		dr.FileEnvelope{VaultId: vaultID, RequestId: "req0", Algo: "ECDSA", Curve: "secp256k1"},
+		&dr.ECDSASharesAndVaultId{
+			Data:      []*dr.ECDSAShare{{Xi: shares[0].Share, ShareID: shares[0].ID, ECDSAPub: ecPointMirror("secp256k1", pub)}},
+			VaultId:   vaultID,
+			Threshold: 2,
+		})
+
+	files := []ui.VaultsDataFile{{File: path}}
+	_, err := recoverypipeline.Prepare(files, recoverypipeline.Options{
+		VaultID:      vaultID,
+		Presentation: recoverypipeline.ErrorPresentation{Path: filepath.Base},
+	})
+	require.Error(t, err)
+	require.True(t, errors.Is(err, recoverypipeline.ErrPrivateKeyRequired))
+	require.Contains(t, err.Error(), filepath.Base(path))
+	require.NotContains(t, err.Error(), dirTmp)
+}
+
+// TestTool_LegacyNoQuorum_ListsAndRecoversWithFlag: a legacy backup that records no quorum still
+// lists, and reconstructs once -threshold supplies one.
+func TestTool_LegacyNoQuorum_ListsAndRecoversWithFlag(t *testing.T) {
+	dirTmp := t.TempDir()
+	vaultID := "legacy-test-vault-no-quorum"
+	const threshold, n = 2, 2
+
+	secret, pub, shares := makeVSSSharesS256(t, threshold, n)
+	shareJSONs := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		shareData := &ecdsa_keygen.LocalPartySaveData{
+			LocalSecrets: ecdsa_keygen.LocalSecrets{Xi: shares[i].Share, ShareID: shares[i].ID},
+			ECDSAPub:     pub,
+		}
+		shareJSON, err := json.Marshal(shareData)
+		require.NoError(t, err)
+		shareJSONs = append(shareJSONs, string(shareJSON))
+	}
+	// threshold: 0 → the legacy payload carries no quorum.
+	legacyPath := writeLegacyVaultFile(t, dirTmp, "legacy.json", mmI, vaultID, 0, 0, shareJSONs)
+	files := []ui.VaultsDataFile{{File: legacyPath, Mnemonics: mmI}}
+
+	// Listing mode: the vault shows up with quorum 0 rather than failing the run.
+	emptyVaultID := ""
+	_, _, _, orderedVaults, _, err := runTool(files, emptyVaultID, 0, false, "", 0, "", "", nil)
+	require.NoError(t, err)
+	require.Len(t, orderedVaults, 1)
+	require.Equal(t, vaultID, orderedVaults[0].VaultID)
+	require.Equal(t, 0, orderedVaults[0].Quorum)
+
+	// No -threshold → hard error at reconstruction.
+	_, _, _, _, _, err = runTool(files, vaultID, 0, false, "", 0, "", "", nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no threshold")
+
+	// With -threshold → recovers correctly.
+	address, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", threshold, "", "", nil)
+	require.NoError(t, err)
+	_, expectedAddress, err := getTSSPubKeyForEthereum(pub.X(), pub.Y())
+	require.NoError(t, err)
+	require.Equal(t, expectedAddress, address)
+	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(secret)), hex.EncodeToString(ecSK))
+}
+
+// TestTool_LegacyNoQuorum_KeepsV5Threshold: a legacy backup with no quorum neither errors out nor
+// overwrites the threshold a v5 mobile file already established for the same vault.
+func TestTool_LegacyNoQuorum_KeepsV5Threshold(t *testing.T) {
+	dirTmp := t.TempDir()
+	vaultID := "legacy-no-quorum-with-v5"
+	const requestID = "mobile-v5-req"
+
+	_, pubA, sharesA := makeVSSSharesS256(t, 2, 2)
+	_, pubB, sharesB := makeVSSSharesS256(t, 3, 3)
+	legacyShareData := &ecdsa_keygen.LocalPartySaveData{
+		LocalSecrets: ecdsa_keygen.LocalSecrets{Xi: sharesA[0].Share, ShareID: sharesA[0].ID},
+		ECDSAPub:     pubA,
+	}
+	legacyShareJSON, err := json.Marshal(legacyShareData)
+	require.NoError(t, err)
+	legacyPath := writeLegacyVaultFile(t, dirTmp, "legacy.json", mmI, vaultID, 0, 0, []string{string(legacyShareJSON)})
+	mobilePath := writeMobileVaultFile(t, dirTmp, "mobile-v5.json", mmI, vaultID, requestID,
+		map[string]mobileRequestFixture{
+			requestID: {threshold: 3, ecdsa: mobileECDSAPayload(vaultID, sharesB[0], pubB)},
+		})
+
+	for _, order := range [][]ui.VaultsDataFile{
+		{{File: legacyPath, Mnemonics: mmI}, {File: mobilePath, Mnemonics: mmI}},
+		{{File: mobilePath, Mnemonics: mmI}, {File: legacyPath, Mnemonics: mmI}},
+	} {
+		emptyVaultID := ""
+		_, _, _, orderedVaults, _, err := runTool(order, emptyVaultID, 0, false, "", 0, "", "", nil)
+		require.NoError(t, err)
+		require.Len(t, orderedVaults, 1)
+		require.Equal(t, 3, orderedVaults[0].Quorum)
+	}
 }

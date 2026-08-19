@@ -23,10 +23,6 @@ import (
 	"github.com/decred/dcrd/dcrec/edwards/v2"
 )
 
-const (
-	v2MagicPrefix = "_V2_"
-)
-
 func main() {
 	vaultID := flag.String("vault-id", "", "(Optional) The vault id to export the keys for.")
 	nonceOverride := flag.Int("nonce", -1, "(Optional) Reshare Nonce override for legacy mnemonic-encrypted JSON files. Try it if the tool advises you to do so.")
@@ -177,7 +173,7 @@ func main() {
 	 * Retrieve vaults information and select a vault
 	 */
 
-	_, _, _, vaultsFormInfo, _, err := runTool(*vaultsDataFiles, nil, nonceOverride, requestIDOverride, quorumOverride, exportKSFile, passwordForKS, privateKeyPEM)
+	_, _, _, vaultsFormInfo, _, err := runTool(*vaultsDataFiles, "", *nonceOverride, *nonceOverride > -1, *requestIDOverride, *quorumOverride, *exportKSFile, *passwordForKS, privateKeyPEM)
 	if err != nil {
 		fmt.Println(ui.ErrorBox(err))
 		fmt.Println()
@@ -227,7 +223,7 @@ func main() {
 		lipgloss.NewStyle().Bold(true).Render(ui.PlainTextf("RECOVERING VAULT \"%s\" WITH ID %s\n", selectedVault.Name, selectedVault.VaultID)),
 	)
 
-	address, ecSK, edSK, _, exportedKsFile, err := runTool(*vaultsDataFiles, &selectedVault.VaultID, nonceOverride, requestIDOverride, quorumOverride, exportKSFile, passwordForKS, privateKeyPEM)
+	address, ecSK, edSK, _, exportedKsFile, err := runTool(*vaultsDataFiles, selectedVault.VaultID, *nonceOverride, *nonceOverride > -1, *requestIDOverride, *quorumOverride, *exportKSFile, *passwordForKS, privateKeyPEM)
 	if err != nil {
 		fmt.Println(ui.ErrorBox(err))
 		fmt.Println()
