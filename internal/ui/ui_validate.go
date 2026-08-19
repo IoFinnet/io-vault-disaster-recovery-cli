@@ -150,10 +150,12 @@ func ValidateFiles(appConfig *config.AppConfig) error {
 				return err
 			}
 
-			// Track temp directory for cleanup (extract path from any file)
+			// Record on appConfig right away, so a later ZIP failing in this loop
+			// doesn't lose track of dirs already extracted.
 			if len(extractedFiles) > 0 {
 				extractDir := filepath.Dir(extractedFiles[0])
 				zipExtractedDirs = append(zipExtractedDirs, extractDir)
+				appConfig.ZipExtractedDirs = zipExtractedDirs
 			}
 
 			// Add extracted files to the processed list
