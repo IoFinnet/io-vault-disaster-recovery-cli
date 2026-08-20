@@ -857,7 +857,15 @@ func getTSSPubKeyForEthereum(x, y *big.Int) (*secp256k1.PublicKey, string, error
 	if x == nil || y == nil {
 		return nil, "", errors.New("invalid public key coordinates")
 	}
-	pubKey, err := secp256k1.ParsePubKey(append([]byte{0x04}, append(x.Bytes(), y.Bytes()...)...))
+	// big.Int.Bytes() strips leading zero bytes, so a coordinate whose high byte is zero
+	// (~1/256 per coordinate) would otherwise yield a 63/64-byte buffer that ParsePubKey
+	// rejects as "malformed public key: invalid length". Both coordinates must be
+	// zero-padded to a fixed 32 bytes for the 0x04-prefixed uncompressed encoding.
+	uncompressed := make([]byte, 0, 65)
+	uncompressed = append(uncompressed, 0x04)
+	uncompressed = append(uncompressed, leftPadTo32Bytes(x)...)
+	uncompressed = append(uncompressed, leftPadTo32Bytes(y)...)
+	pubKey, err := secp256k1.ParsePubKey(uncompressed)
 	if err != nil {
 		return nil, "", err
 	}
