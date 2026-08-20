@@ -126,7 +126,7 @@ func ValidateFiles(appConfig *config.AppConfig) error {
 		uniqueFiles[file] = struct{}{}
 
 		switch {
-		case ziputils.IsZipFile(file) && ziputils.IsBundleZip(file):
+		case isBundleZip(file):
 			isBundle[file] = struct{}{}
 			if firstBundleFile == "" {
 				firstBundleFile = file
