@@ -52,15 +52,6 @@ func makeLegacyZip(t *testing.T, shareJSON []byte) string {
 	})
 }
 
-func cleanupZipExtractedDirs(t *testing.T, cfg *config.AppConfig) {
-	t.Helper()
-	t.Cleanup(func() {
-		for _, dir := range cfg.ZipExtractedDirs {
-			_ = os.RemoveAll(dir)
-		}
-	})
-}
-
 func TestValidateFiles(t *testing.T) {
 	shareJSON := []byte(`{"share":1}`)
 
@@ -87,25 +78,93 @@ func TestValidateFiles(t *testing.T) {
 		assert.Empty(t, cfg.ZipExtractedDirs)
 	})
 
-	t.Run("bundle with legacy zip allowed in this commit", func(t *testing.T) {
-		// Becomes the Q4 hard error in commit 2; documents commit-1 behavior and will be inverted there.
-		// Also covers legacy extraction + byte identity (no separate legacy-only case).
+	t.Run("bundle with loose .json", func(t *testing.T) {
+		// Non-vault JSON peeks false (no vaults map); still allowed with a bundle.
+		bundlePath := makeBundleZip(t)
+		jsonPath := filepath.Join(t.TempDir(), "data.json")
+		assert.NoError(t, os.WriteFile(jsonPath, shareJSON, 0o644))
+
+		cfg := config.AppConfig{Filenames: []string{bundlePath, jsonPath}}
+		err := ValidateFiles(&cfg)
+		assert.NoError(t, err)
+		assert.Equal(t, []string{bundlePath, jsonPath}, cfg.Filenames)
+		assert.Empty(t, cfg.ZipExtractedDirs)
+	})
+
+	t.Run("bundle with legacy zip errors", func(t *testing.T) {
 		bundlePath := makeBundleZip(t)
 		legacyPath := makeLegacyZip(t, shareJSON)
 
 		cfg := config.AppConfig{Filenames: []string{bundlePath, legacyPath}}
 		err := ValidateFiles(&cfg)
-		cleanupZipExtractedDirs(t, &cfg)
-		assert.NoError(t, err)
+		assert.Error(t, err)
+		assert.ErrorContains(t, err, "cannot mix a Virtual Signer bundle zip with a legacy vault-export ZIP")
+		assert.ErrorContains(t, err, bundlePath)
+		assert.ErrorContains(t, err, legacyPath)
+		assert.Empty(t, cfg.ZipExtractedDirs)
+	})
 
-		assert.Len(t, cfg.Filenames, 2)
-		assert.Equal(t, bundlePath, cfg.Filenames[0])
-		assert.NotEqual(t, legacyPath, cfg.Filenames[1]) // legacy zip extracted to a temp path
-		assert.Len(t, cfg.ZipExtractedDirs, 1)
+	t.Run("legacy JSON with bundle errors", func(t *testing.T) {
+		bundlePath := makeBundleZip(t)
+		legacyJSON := filepath.Join(t.TempDir(), "legacy.json")
+		assert.NoError(t, os.WriteFile(legacyJSON, []byte(LegacyFlatNonceJSONForTest), 0o644))
 
-		extracted, err := os.ReadFile(cfg.Filenames[1])
+		cfg := config.AppConfig{Filenames: []string{bundlePath, legacyJSON}}
+		err := ValidateFiles(&cfg)
+		assert.Error(t, err)
+		assert.ErrorContains(t, err, legacyJSON)
+		assert.ErrorContains(t, err, "legacy vault export")
+		assert.ErrorContains(t, err, "request ID")
+	})
+
+	t.Run("legacy JSON with loose .dr errors", func(t *testing.T) {
+		drPath := filepath.Join(t.TempDir(), "share.dr")
+		assert.NoError(t, os.WriteFile(drPath, []byte{0xaa, 0xbb}, 0o644))
+		legacyJSON := filepath.Join(t.TempDir(), "legacy.json")
+		assert.NoError(t, os.WriteFile(legacyJSON, []byte(LegacyFlatNonceJSONForTest), 0o644))
+
+		cfg := config.AppConfig{Filenames: []string{drPath, legacyJSON}}
+		err := ValidateFiles(&cfg)
+		assert.Error(t, err)
+		assert.ErrorContains(t, err, legacyJSON)
+		assert.ErrorContains(t, err, "legacy vault export")
+		assert.ErrorContains(t, err, "request ID")
+	})
+
+	t.Run("mobile wrapper JSON with bundle allowed", func(t *testing.T) {
+		// Mobile v4 and v5 share this pre-decrypt wrapper; neither is treated as legacy.
+		bundlePath := makeBundleZip(t)
+		mobileJSON := filepath.Join(t.TempDir(), "mobile.json")
+		assert.NoError(t, os.WriteFile(mobileJSON, []byte(MobileWrapperJSONForTest), 0o644))
+
+		cfg := config.AppConfig{Filenames: []string{bundlePath, mobileJSON}}
+		err := ValidateFiles(&cfg)
 		assert.NoError(t, err)
-		assert.Equal(t, shareJSON, extracted)
+		assert.Equal(t, []string{bundlePath, mobileJSON}, cfg.Filenames)
+	})
+
+	t.Run("legacy JSON alone still fine", func(t *testing.T) {
+		legacyJSON := filepath.Join(t.TempDir(), "legacy.json")
+		assert.NoError(t, os.WriteFile(legacyJSON, []byte(LegacyFlatNonceJSONForTest), 0o644))
+
+		cfg := config.AppConfig{Filenames: []string{legacyJSON}}
+		err := ValidateFiles(&cfg)
+		assert.NoError(t, err)
+		assert.Equal(t, []string{legacyJSON}, cfg.Filenames)
+	})
+
+	t.Run("legacy JSON with mobile JSON allowed", func(t *testing.T) {
+		// Reject only when a bundle or .dr is also present, not for mixed JSON alone.
+		dir := t.TempDir()
+		legacyJSON := filepath.Join(dir, "legacy.json")
+		mobileJSON := filepath.Join(dir, "mobile.json")
+		assert.NoError(t, os.WriteFile(legacyJSON, []byte(LegacyFlatNonceJSONForTest), 0o644))
+		assert.NoError(t, os.WriteFile(mobileJSON, []byte(MobileWrapperJSONForTest), 0o644))
+
+		cfg := config.AppConfig{Filenames: []string{legacyJSON, mobileJSON}}
+		err := ValidateFiles(&cfg)
+		assert.NoError(t, err)
+		assert.Equal(t, []string{legacyJSON, mobileJSON}, cfg.Filenames)
 	})
 
 	t.Run("legacy zip with loose .dr still errors", func(t *testing.T) {
