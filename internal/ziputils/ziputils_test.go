@@ -495,6 +495,89 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
+func TestIsBundleZip(t *testing.T) {
+	tests := []struct {
+		name    string
+		entries map[string]string // nil means no zip file is created
+		want    bool
+	}{
+		{
+			name:    "root manifest.json",
+			entries: map[string]string{"manifest.json": `{"formatVersion":2}`, "dr/a.dr": `{}`},
+			want:    true,
+		},
+		{
+			name:    "corrupt root manifest.json still true",
+			entries: map[string]string{"manifest.json": `not-json`, "a.dr": `{}`},
+			want:    true,
+		},
+		{
+			name:    "manifest not at root",
+			entries: map[string]string{"sub/manifest.json": `{"formatVersion":2}`, "a.dr": `{}`},
+			want:    false,
+		},
+		{
+			name:    "uppercase Manifest.JSON",
+			entries: map[string]string{"Manifest.JSON": `{"formatVersion":2}`},
+			want:    false,
+		},
+		{
+			name:    "no manifest",
+			entries: map[string]string{"a.dr": `{}`, "b.json": `{}`},
+			want:    false,
+		},
+		{
+			name:    "empty zip",
+			entries: map[string]string{},
+			want:    false,
+		},
+		{
+			name:    "unreadable path",
+			entries: nil,
+			want:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var zipPath string
+			if tt.entries == nil {
+				zipPath = filepath.Join(t.TempDir(), "missing.zip")
+			} else {
+				zipPath = filepath.Join(t.TempDir(), "test.zip")
+				if err := writeTestZip(zipPath, tt.entries); err != nil {
+					t.Fatalf("writeTestZip: %v", err)
+				}
+			}
+			if got := IsBundleZip(zipPath); got != tt.want {
+				t.Errorf("IsBundleZip() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func writeTestZip(zipPath string, entries map[string]string) error {
+	f, err := os.Create(zipPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w := zip.NewWriter(f)
+	for name, body := range entries {
+		fw, err := w.Create(name)
+		if err != nil {
+			_ = w.Close()
+			return err
+		}
+		if _, err := fw.Write([]byte(body)); err != nil {
+			_ = w.Close()
+			return err
+		}
+	}
+	return w.Close()
+}
+
 // Helper function to get the project root directory
 func getProjectRoot(t *testing.T) string {
 	// Start with the current working directory
