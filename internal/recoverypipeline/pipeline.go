@@ -126,33 +126,39 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 
 	justListingVaults := vaultID == ""
 
+	artifacts, err := discoverArtifacts(vaultsDataFile)
+	if err != nil {
+		welp = err
+		return
+	}
+
 	// Internal & returned data structures
-	clearVaults := make(ClearVaultMap, len(vaultsDataFile)*16)
-	vaultAllSharesECDSA := make(VaultAllSharesECDSA, len(vaultsDataFile)*16) // headroom
-	vaultAllSharesEDDSA := make(VaultAllSharesEdDSA, len(vaultsDataFile)*16)
-	vaultHasEDDSA := make(map[string]bool, len(vaultsDataFile)*16)
+	clearVaults := make(ClearVaultMap, len(artifacts)*16)
+	vaultAllSharesECDSA := make(VaultAllSharesECDSA, len(artifacts)*16) // headroom
+	vaultAllSharesEDDSA := make(VaultAllSharesEdDSA, len(artifacts)*16)
+	vaultHasEDDSA := make(map[string]bool, len(artifacts)*16)
 	// vaultLastLegacyNonces tracks disagreement across legacy flat-nonce JSON files only (a
 	// nonce is never comparable to a request id, so it can't share a tracker with the below).
-	vaultLastLegacyNonces := make(map[string]int, len(vaultsDataFile)*16)
+	vaultLastLegacyNonces := make(map[string]int, len(artifacts)*16)
 	// vaultLastRequestIDs tracks disagreement across v4 JSON entries and the .dr chain's resolved
 	// head for a vault, regardless of which of those two sources produced the value.
-	vaultLastRequestIDs := make(map[string]string, len(vaultsDataFile)*16)
+	vaultLastRequestIDs := make(map[string]string, len(artifacts)*16)
 	// mobileVaults marks vaults that received shares from a v4/v5 mobile export; mobileFileThreshold
 	// marks those whose mobile file actually carried a threshold (v5). Together they enforce the
 	// rule that a mobile vault's threshold comes from its own file or the -threshold flag — NEVER
 	// borrowed from a .dr file (checked at reconstruction).
-	mobileVaults := make(map[string]bool, len(vaultsDataFile)*16)
-	mobileFileThreshold := make(map[string]bool, len(vaultsDataFile)*16)
+	mobileVaults := make(map[string]bool, len(artifacts)*16)
+	mobileFileThreshold := make(map[string]bool, len(artifacts)*16)
 	// .dr files carry a previousRequestId chain pointer (unlike the legacy mnemonic-encrypted
 	// JSON below, one .dr file is one device's shares for one specific reshare, keyed by
 	// RequestId), so they're grouped by vault+requestId here and folded in below once every input
 	// file has been seen, walking the chain to find each vault's current reshare.
-	drSharesByVaultRequestID := make(map[string]map[string]*drVaultShares, len(vaultsDataFile))
+	drSharesByVaultRequestID := make(map[string]map[string]*drVaultShares, len(artifacts))
 
 	// Process each vault data file
-	for _, file := range vaultsDataFile {
-		if strings.EqualFold(filepath.Ext(file.File), ".dr") {
-			if err := processDRFile(file.File, privateKeysPEM, vaultID, justListingVaults, drSharesByVaultRequestID, presentation); err != nil {
+	for _, artifact := range artifacts {
+		if strings.EqualFold(filepath.Ext(artifact.Path), ".dr") {
+			if err := processDRFile(artifact.Path, privateKeysPEM, vaultID, justListingVaults, drSharesByVaultRequestID, presentation); err != nil {
 				welp = err
 				return
 			}
@@ -161,9 +167,9 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 
 		saveData := new(SavedData)
 
-		content, err := os.ReadFile(file.File)
+		content, err := os.ReadFile(artifact.Path)
 		if err != nil {
-			redactedPath, redactedErr := presentation.path(file.File), presentation.err(err)
+			redactedPath, redactedErr := presentation.path(artifact.Path), presentation.err(err)
 			log.Printf("⚠ failed to read file(%s): %s", redactedPath, redactedErr)
 			welp = fmt.Errorf("⚠ failed to read file (%s): %s", redactedPath, redactedErr)
 			return
@@ -174,7 +180,7 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 		}
 
 		// phrase -> key
-		aesKey32, err := bip39.EntropyFromMnemonic(file.Mnemonics)
+		aesKey32, err := bip39.EntropyFromMnemonic(artifact.Mnemonics)
 		if err != nil {
 			welp = fmt.Errorf("⚠ failed to generate key from mnemonic, are your words correct? %s", err)
 			return
@@ -421,7 +427,7 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 	}
 
 	// populate vault IDs
-	vaultIDs := make([]string, 0, len(vaultsDataFile)*16)
+	vaultIDs := make([]string, 0, len(artifacts)*16)
 	for vID := range clearVaults {
 		vaultIDs = append(vaultIDs, vID)
 	}
