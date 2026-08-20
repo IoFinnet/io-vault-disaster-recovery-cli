@@ -327,11 +327,18 @@ func (m *MnemonicsFormModel) fileList(filesWithMnemonics []VaultsDataFile) strin
  * VaultPickerItem is a struct that represents the model for the vault picker form.
  */
 type VaultPickerItem struct {
-	VaultID        string
-	Name           string
-	Quorum         int
-	LastRequestID  string
-	NumberOfShares int
+	VaultID string
+	Name    string
+	Quorum  int
+	// LastRequestID is the epoch identifier chosen for this vault: the request id for v4/v5
+	// mobile exports and Virtual Signer .dr chains, or the stringified reshare nonce for legacy
+	// flat-nonce JSON files.
+	LastRequestID string
+	// LastReShareNonce is the highest legacy reshare nonce detected for this vault across all
+	// input files. It is only meaningful for legacy flat-nonce JSON files; request-id-based
+	// exports leave it at 0.
+	LastReShareNonce int
+	NumberOfShares   int
 }
 
 func RunVaultPickerForm(vaultsData []VaultPickerItem) (string, error) {

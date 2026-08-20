@@ -20,6 +20,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const exportOptionsContainer = document.getElementById('export-options');
     const exportFileInput = document.getElementById('export-file');
     const exportPasswordInput = document.getElementById('export-password');
+
+    // HD addresses elements
+    const hdAddressesCSVInput = document.getElementById('hd-addresses-csv');
+    const hdCSVFileName = document.getElementById('hd-csv-file-name');
+    const hdCSVClearBtn = document.getElementById('hd-csv-clear');
     
     // File input mode elements
     const jsonMode = document.getElementById('json-mode');
@@ -101,6 +106,24 @@ document.addEventListener('DOMContentLoaded', () => {
         privateKeyFileName.textContent = privateKeyFileInput.files.length > 0
             ? privateKeyFileInput.files[0].name
             : 'No file selected';
+    });
+
+    // HD addresses CSV file selection
+    hdAddressesCSVInput.addEventListener('change', () => {
+        if (hdAddressesCSVInput.files.length > 0) {
+            hdCSVFileName.textContent = hdAddressesCSVInput.files[0].name;
+            hdCSVClearBtn.style.display = 'inline-block';
+        } else {
+            hdCSVFileName.textContent = 'No CSV file selected';
+            hdCSVClearBtn.style.display = 'none';
+        }
+    });
+
+    // HD addresses CSV clear button
+    hdCSVClearBtn.addEventListener('click', () => {
+        hdAddressesCSVInput.value = '';
+        hdCSVFileName.textContent = 'No CSV file selected';
+        hdCSVClearBtn.style.display = 'none';
     });
 
     // Next button to go to vaults list
@@ -933,6 +956,11 @@ document.addEventListener('DOMContentLoaded', () => {
             formData.append('exportFile', exportFile);
         }
 
+        // Add HD addresses CSV if provided
+        if (hdAddressesCSVInput.files.length > 0) {
+            formData.append('hdAddressesCSV', hdAddressesCSVInput.files[0]);
+        }
+
         // Send the API request
         fetch('/api/recover', {
             method: 'POST',
@@ -1013,6 +1041,92 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             exportConfirmation.style.display = 'none';
         }
+
+        // Display HD addresses if present
+        displayHDAddresses(result.hdAddresses);
+    }
+
+    // Display HD derived addresses in the results table
+    function displayHDAddresses(hdAddresses) {
+        const hdSection = document.getElementById('hd-addresses-section');
+        const hdList = document.getElementById('hd-addresses-list');
+        const copyBtn = document.getElementById('copy-hd-addresses');
+
+        // Clear previous entries
+        hdList.innerHTML = '';
+
+        if (!hdAddresses || hdAddresses.length === 0) {
+            hdSection.style.display = 'none';
+            return;
+        }
+
+        // Show the section and populate the table
+        hdSection.style.display = 'block';
+
+        hdAddresses.forEach(addr => {
+            const row = document.createElement('tr');
+
+            // Create cells with copy functionality for sensitive data
+            // Truncate long values for display, with full value in title for hover
+            row.innerHTML = `
+                <td class="hd-address" title="${escapeHTML(addr.address)}">${escapeHTML(truncateMiddle(addr.address, 4, 4))}</td>
+                <td class="hd-path">${escapeHTML(addr.path)}</td>
+                <td class="hd-algorithm">${escapeHTML(addr.algorithm)}</td>
+                <td class="hd-curve">${escapeHTML(addr.curve)}</td>
+                <td class="hd-pubkey">
+                    <div class="key-cell" title="${escapeHTML(addr.publicKey)}">
+                        <span class="key-value">${escapeHTML(truncateMiddle(addr.publicKey, 6, 6))}</span>
+                        <button class="copy-btn-small" data-value="${escapeHTML(addr.publicKey)}">Copy</button>
+                    </div>
+                </td>
+                <td class="hd-privkey">
+                    <div class="key-cell sensitive" title="${escapeHTML(addr.privateKey)}">
+                        <span class="key-value">${escapeHTML(truncateMiddle(addr.privateKey, 6, 6))}</span>
+                        <button class="copy-btn-small" data-value="${escapeHTML(addr.privateKey)}">Copy</button>
+                    </div>
+                </td>
+            `;
+
+            hdList.appendChild(row);
+        });
+
+        // Add click handlers for copy buttons in HD table
+        hdList.querySelectorAll('.copy-btn-small').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const value = btn.getAttribute('data-value');
+                copyToClipboard(value);
+
+                const originalText = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                }, 1500);
+            });
+        });
+
+        // Add click handler for "Copy All" button
+        copyBtn.onclick = () => {
+            // Create CSV-style output
+            const escapeCSV = (val) => {
+                const str = String(val);
+                if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                    return '"' + str.replace(/"/g, '""') + '"';
+                }
+                return str;
+            };
+            let csvContent = 'address,path,algorithm,curve,publicKey,privateKey\n';
+            hdAddresses.forEach(addr => {
+                csvContent += `${escapeCSV(addr.address)},${escapeCSV(addr.path)},${escapeCSV(addr.algorithm)},${escapeCSV(addr.curve)},${escapeCSV(addr.publicKey)},${escapeCSV(addr.privateKey)}\n`;
+            });
+
+            copyToClipboard(csvContent);
+
+            const originalText = copyBtn.textContent;
+            copyBtn.textContent = 'Copied to Clipboard!';
+            setTimeout(() => {
+                copyBtn.textContent = originalText;
+            }, 1500);
+        };
     }
 
     // Reset the application state
@@ -1077,6 +1191,11 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('export-wallet-checkbox').checked = false;
         document.getElementById('export-options').style.display = 'none';
 
+        // Clear HD addresses CSV
+        hdAddressesCSVInput.value = '';
+        hdCSVFileName.textContent = 'No CSV file selected';
+        hdCSVClearBtn.style.display = 'none';
+
         // Initialize file input event listeners
         initializeFileInputs();
     }
@@ -1102,6 +1221,14 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
+    }
+
+    // Truncate long strings to show first N and last N characters with ellipsis
+    function truncateMiddle(str, startChars = 4, endChars = 4) {
+        if (!str || str.length <= startChars + endChars + 3) {
+            return str;
+        }
+        return str.slice(0, startChars) + '…' + str.slice(-endChars);
     }
 
     // ==================

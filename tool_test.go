@@ -6,6 +6,7 @@ package main
 
 import (
 	"archive/zip"
+	"crypto/sha256"
 	"encoding/hex"
 	"math/big"
 	"os"
@@ -15,6 +16,8 @@ import (
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/config"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
+	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/decred/dcrd/dcrec/edwards/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -77,6 +80,47 @@ func TestTool_New_V2_List(t *testing.T) {
 	if !assert.Nil(t, ecSK) || !assert.Nil(t, edSK) {
 		return
 	}
+}
+
+// Regression: the detected reshare nonce must survive into the listed
+// VaultPickerItem. Previously the item was built without LastReShareNonce, so
+// the web/desktop UI always saw 0 even for vaults that had been reshared.
+func TestTool_New_V2_List_ReportsReshareNonce(t *testing.T) {
+	nonceFor := func(vaults []ui.VaultPickerItem, vaultID string) (int, bool) {
+		for i := range vaults {
+			if vaults[i].VaultID == vaultID {
+				return vaults[i].LastReShareNonce, true
+			}
+		}
+		return 0, false
+	}
+
+	bvn := ui.VaultsDataFile{File: "./test-files/new_bvn.json", Mnemonics: mmNewBvn}
+	x2q := ui.VaultsDataFile{File: "./test-files/new_x2q.json", Mnemonics: mmNewX2q}
+	u44 := ui.VaultsDataFile{File: "./test-files/new_u44.json", Mnemonics: mmNewU44}
+
+	_, _, _, vaults, _, err := runTool([]ui.VaultsDataFile{bvn, x2q, u44}, nil, nil, nil, nil, nil, nil, nil)
+	require.NoError(t, err)
+
+	// dfqyrx0f7v exists only in new_u44.json, saved at reshare nonces [1,2,3];
+	// the highest (3) must be reported, not the 0 zero-value.
+	n, ok := nonceFor(vaults, "dfqyrx0f7vevbjx9o5yrg7gw")
+	require.True(t, ok, "vault dfqyrx0f7v should be listed")
+	assert.Equal(t, 3, n, "highest reshare nonce should reach the UI")
+
+	// e0wspn90rz is saved at nonce 0 in new_bvn.json but nonce 1 in new_u44.json.
+	// The reported nonce must be the order-independent max (1), not whichever file
+	// happened to be processed last.
+	n, ok = nonceFor(vaults, "e0wspn90rz8vnngv0kdklaog")
+	require.True(t, ok)
+	assert.Equal(t, 1, n, "cross-file vault should report the highest nonce")
+
+	// Same inputs, reversed order -> same reported nonce (no order dependence).
+	_, _, _, reversed, _, err := runTool([]ui.VaultsDataFile{u44, x2q, bvn}, nil, nil, nil, nil, nil, nil, nil)
+	require.NoError(t, err)
+	nRev, ok := nonceFor(reversed, "e0wspn90rz8vnngv0kdklaog")
+	require.True(t, ok)
+	assert.Equal(t, 1, nRev, "reported nonce must not depend on input file order")
 }
 
 func TestTool_New_V2_Export_lqns(t *testing.T) {
@@ -972,5 +1016,526 @@ func TestLeftPadTo32Bytes(t *testing.T) {
 				return
 			}
 		})
+	}
+}
+
+// TestHDAddressRecovery_EndToEnd tests the full HD address recovery flow:
+// 1. Recover master keys from backup files
+// 2. Use recovered keys to derive HD child keys from a CSV
+// 3. Verify the output contains valid derived keys
+func TestHDAddressRecovery_EndToEnd(t *testing.T) {
+	// Step 1: Recover keys from the test vault (lqns has both ECDSA and EdDSA keys)
+	vaultID := "yz5x2a7zhwwt7r0lv4gklqns"
+	files := []ui.VaultsDataFile{
+		{File: "./test-files/new_bvn.json", Mnemonics: mmNewBvn},
+		{File: "./test-files/new_x2q.json", Mnemonics: mmNewX2q},
+		{File: "./test-files/new_u44.json", Mnemonics: mmNewU44},
+	}
+
+	_, ecSK, edSK, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, nil)
+	require.NoError(t, err)
+	require.NotNil(t, ecSK, "ECDSA key should be recovered")
+	require.NotNil(t, edSK, "EdDSA key should be recovered")
+
+	// Step 2: Create a temporary CSV with HD addresses to derive
+	tmpDir := t.TempDir()
+	inputCSV := filepath.Join(tmpDir, "hd_addresses.csv")
+
+	// Generate xpubs from the recovered master keys for testing
+	// We need xpubs that encode the recovered master public keys
+	ecdsaXpub := generateTestXpub(t, ecSK, "secp256k1")
+	eddsaXpub := generateTestXpub(t, edSK, "edwards25519")
+
+	// Test vectors with path "m" verify master key is returned unchanged
+	// Also include derived paths to test actual derivation
+	csvContent := `address,xpub,path,algorithm,curve,flags
+ecdsa_master,` + ecdsaXpub + `,m,ECDSA,secp256k1,0
+eddsa_master,` + eddsaXpub + `,m,EDDSA,Edwards25519,0
+schnorr_master,` + ecdsaXpub + `,m,SCHNORR,secp256k1,0
+eth_derived,` + ecdsaXpub + `,m/44/60/0/0/0,ECDSA,secp256k1,0
+xrpl_derived,` + eddsaXpub + `,m/44/144/0/0,EDDSA,Edwards25519,0
+taproot_derived,` + ecdsaXpub + `,m/86/0/0/0/0,SCHNORR,secp256k1,0
+`
+	err = os.WriteFile(inputCSV, []byte(csvContent), 0644)
+	require.NoError(t, err)
+
+	// Step 3: Run HD address recovery
+	err = processHDAddressRecovery(inputCSV, ecSK, edSK)
+	require.NoError(t, err)
+
+	// Step 4: Verify output file was created
+	outputCSV := filepath.Join(tmpDir, "hd_addresses_recovered.csv")
+	_, err = os.Stat(outputCSV)
+	require.NoError(t, err, "Output CSV should be created")
+
+	// Step 5: Read and verify output content
+	outputContent, err := os.ReadFile(outputCSV)
+	require.NoError(t, err)
+
+	outputStr := string(outputContent)
+	t.Logf("HD Recovery Output:\n%s", outputStr)
+
+	// Verify output contains expected columns
+	assert.Contains(t, outputStr, "privatekey")
+	assert.Contains(t, outputStr, "publickey")
+
+	// Verify all addresses are present (one for each algo/curve combo)
+	assert.Contains(t, outputStr, "ecdsa_master")
+	assert.Contains(t, outputStr, "eddsa_master")
+	assert.Contains(t, outputStr, "schnorr_master")
+	assert.Contains(t, outputStr, "eth_derived")
+	assert.Contains(t, outputStr, "xrpl_derived")
+	assert.Contains(t, outputStr, "taproot_derived")
+
+	// Parse output and verify key formats
+	lines := strings.Split(outputStr, "\n")
+	require.GreaterOrEqual(t, len(lines), 7, "Should have header + 6 data rows")
+
+	// Find column indices
+	headers := strings.Split(lines[0], ",")
+	addrIdx, pathIdx, privKeyIdx, pubKeyIdx, algIdx := -1, -1, -1, -1, -1
+	for i, h := range headers {
+		switch strings.ToLower(h) {
+		case "address":
+			addrIdx = i
+		case "path":
+			pathIdx = i
+		case "privatekey":
+			privKeyIdx = i
+		case "publickey":
+			pubKeyIdx = i
+		case "algorithm":
+			algIdx = i
+		}
+	}
+	require.NotEqual(t, -1, addrIdx, "Should have address column")
+	require.NotEqual(t, -1, pathIdx, "Should have path column")
+	require.NotEqual(t, -1, privKeyIdx, "Should have privatekey column")
+	require.NotEqual(t, -1, pubKeyIdx, "Should have publickey column")
+	require.NotEqual(t, -1, algIdx, "Should have algorithm column")
+
+	// Expected master keys from recovered vault
+	ecdsaMasterSKHex := hex.EncodeToString(ecSK)
+	eddsaMasterSKHex := hex.EncodeToString(edSK)
+
+	// Compute expected master public keys
+	ecdsaPrivKey, _ := btcec.PrivKeyFromBytes(ecSK)
+	ecdsaMasterPKHex := hex.EncodeToString(ecdsaPrivKey.PubKey().SerializeCompressed())
+
+	ec := edwards.Edwards()
+	scalar := new(big.Int).SetBytes(edSK)
+	scalar.Mod(scalar, ec.N)
+	scalarBytes := make([]byte, 32)
+	scalar.FillBytes(scalarBytes)
+	_, edPubKeyObj, _ := edwards.PrivKeyFromScalar(scalarBytes)
+	eddsaMasterPKHex := hex.EncodeToString(edPubKeyObj.Serialize())
+
+	// Verify each data row
+	for i := 1; i < len(lines); i++ {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		cols := strings.Split(line, ",")
+		require.GreaterOrEqual(t, len(cols), privKeyIdx+1, "Row should have enough columns")
+
+		addr := cols[addrIdx]
+		path := cols[pathIdx]
+		privKey := cols[privKeyIdx]
+		pubKey := cols[pubKeyIdx]
+		alg := cols[algIdx]
+
+		// Verify private key is 64 hex chars (32 bytes)
+		assert.Len(t, privKey, 64, "Private key should be 32 bytes hex for %s", addr)
+		_, err := hex.DecodeString(privKey)
+		assert.NoError(t, err, "Private key should be valid hex for %s", addr)
+
+		// Verify public key length based on algorithm
+		if strings.ToUpper(alg) == "EDDSA" {
+			assert.Len(t, pubKey, 64, "EdDSA public key should be 32 bytes hex for %s", addr)
+		} else {
+			assert.Len(t, pubKey, 66, "ECDSA/Schnorr public key should be 33 bytes hex for %s", addr)
+			assert.True(t, pubKey[:2] == "02" || pubKey[:2] == "03",
+				"Compressed public key should start with 02 or 03 for %s", addr)
+		}
+		_, err = hex.DecodeString(pubKey)
+		assert.NoError(t, err, "Public key should be valid hex for %s", addr)
+
+		// For path "m", verify exact match with master keys
+		if path == "m" {
+			switch addr {
+			case "ecdsa_master":
+				assert.Equal(t, ecdsaMasterSKHex, privKey,
+					"ECDSA master at path 'm' must return exact master private key")
+				assert.Equal(t, ecdsaMasterPKHex, pubKey,
+					"ECDSA master at path 'm' must return exact master public key")
+			case "eddsa_master":
+				assert.Equal(t, eddsaMasterSKHex, privKey,
+					"EdDSA master at path 'm' must return exact master private key")
+				assert.Equal(t, eddsaMasterPKHex, pubKey,
+					"EdDSA master at path 'm' must return exact master public key")
+			case "schnorr_master":
+				// Schnorr uses same key as ECDSA on secp256k1
+				assert.Equal(t, ecdsaMasterSKHex, privKey,
+					"Schnorr master at path 'm' must return exact master private key")
+				assert.Equal(t, ecdsaMasterPKHex, pubKey,
+					"Schnorr master at path 'm' must return exact master public key")
+			}
+			t.Logf("Verified %s at path 'm': SK=%s PK=%s", addr, privKey, pubKey)
+		} else {
+			// For derived paths, verify keys are DIFFERENT from master (proving derivation happened)
+			switch addr {
+			case "eth_derived", "taproot_derived":
+				// These use ECDSA/Schnorr master key
+				assert.NotEqual(t, ecdsaMasterSKHex, privKey,
+					"%s at path '%s' must be different from master private key", addr, path)
+				assert.NotEqual(t, ecdsaMasterPKHex, pubKey,
+					"%s at path '%s' must be different from master public key", addr, path)
+				t.Logf("Verified %s at path '%s' differs from master: SK=%s", addr, path, privKey)
+			case "xrpl_derived":
+				// This uses EdDSA master key
+				assert.NotEqual(t, eddsaMasterSKHex, privKey,
+					"%s at path '%s' must be different from master private key", addr, path)
+				assert.NotEqual(t, eddsaMasterPKHex, pubKey,
+					"%s at path '%s' must be different from master public key", addr, path)
+				t.Logf("Verified %s at path '%s' differs from master: SK=%s", addr, path, privKey)
+			}
+		}
+	}
+
+	t.Log("HD address recovery end-to-end test passed - all master keys verified")
+}
+
+// TestHDAddressRecovery_ECDSAOnly tests HD recovery with only ECDSA key available
+func TestHDAddressRecovery_ECDSAOnly(t *testing.T) {
+	// Use a vault that only has ECDSA keys (legacy vault)
+	vaultID := "yjanjbgmbrptwwa9i5v9c20x"
+	files := []ui.VaultsDataFile{
+		{File: "./test-files/v2.json", Mnemonics: mmV2},
+	}
+
+	_, ecSK, edSK, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, nil)
+	require.NoError(t, err)
+	require.NotNil(t, ecSK, "ECDSA key should be recovered")
+	require.Nil(t, edSK, "EdDSA key should be nil for legacy vault")
+
+	// Create test CSV with ECDSA addresses only
+	tmpDir := t.TempDir()
+	inputCSV := filepath.Join(tmpDir, "ecdsa_addresses.csv")
+
+	ecdsaXpub := generateTestXpub(t, ecSK, "secp256k1")
+	csvContent := `address,xpub,path,algorithm,curve,flags
+btc_1,` + ecdsaXpub + `,m/44/0/0,ECDSA,secp256k1,0
+eth_1,` + ecdsaXpub + `,m/44/60/0/0/0,ECDSA,secp256k1,0
+`
+	err = os.WriteFile(inputCSV, []byte(csvContent), 0644)
+	require.NoError(t, err)
+
+	// Run HD recovery - should succeed with nil EdDSA key
+	err = processHDAddressRecovery(inputCSV, ecSK, edSK)
+	require.NoError(t, err)
+
+	// Verify output
+	outputCSV := filepath.Join(tmpDir, "ecdsa_addresses_recovered.csv")
+	outputContent, err := os.ReadFile(outputCSV)
+	require.NoError(t, err)
+	assert.Contains(t, string(outputContent), "btc_1")
+	assert.Contains(t, string(outputContent), "eth_1")
+}
+
+// TestHDAddressRecovery_MissingKey tests that HD recovery fails gracefully when required key is missing
+func TestHDAddressRecovery_MissingKey(t *testing.T) {
+	// Use a vault that only has ECDSA keys
+	vaultID := "yjanjbgmbrptwwa9i5v9c20x"
+	files := []ui.VaultsDataFile{
+		{File: "./test-files/v2.json", Mnemonics: mmV2},
+	}
+
+	_, ecSK, edSK, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, nil)
+	require.NoError(t, err)
+	require.NotNil(t, ecSK)
+	require.Nil(t, edSK, "EdDSA key should be nil")
+
+	// Create test CSV that requires EdDSA key
+	tmpDir := t.TempDir()
+	inputCSV := filepath.Join(tmpDir, "eddsa_addresses.csv")
+
+	// Use a dummy xpub - the error should happen before xpub parsing
+	csvContent := `address,xpub,path,algorithm,curve,flags
+xrpl_1,xpub661MyMwAqRbcEZ6F7ZYpZTTdD8ToN2UCzBt5jjXxBm3y4jwbUJncoqTbB4zY28NpWEvDswPSAoYigFG6PAhzMZ3SMDz4KNaQvKzUtaEqJuL,m/0,EDDSA,Edwards25519,0
+`
+	err = os.WriteFile(inputCSV, []byte(csvContent), 0644)
+	require.NoError(t, err)
+
+	// Run HD recovery - should fail due to missing EdDSA key
+	err = processHDAddressRecovery(inputCSV, ecSK, edSK)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing master key")
+}
+
+// TestHDAddressRecovery_ConsistentDerivation tests that same inputs produce same outputs
+func TestHDAddressRecovery_ConsistentDerivation(t *testing.T) {
+	vaultID := "yz5x2a7zhwwt7r0lv4gklqns"
+	files := []ui.VaultsDataFile{
+		{File: "./test-files/new_bvn.json", Mnemonics: mmNewBvn},
+		{File: "./test-files/new_x2q.json", Mnemonics: mmNewX2q},
+		{File: "./test-files/new_u44.json", Mnemonics: mmNewU44},
+	}
+
+	_, ecSK, edSK, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, nil)
+	require.NoError(t, err)
+
+	tmpDir := t.TempDir()
+	ecdsaXpub := generateTestXpub(t, ecSK, "secp256k1")
+
+	// Run derivation twice and compare results
+	var outputs []string
+	for i := 0; i < 2; i++ {
+		inputCSV := filepath.Join(tmpDir, "input.csv")
+		csvContent := `address,xpub,path,algorithm,curve,flags
+test_addr,` + ecdsaXpub + `,m/44/60/0/0/0,ECDSA,secp256k1,0
+`
+		err = os.WriteFile(inputCSV, []byte(csvContent), 0644)
+		require.NoError(t, err)
+
+		err = processHDAddressRecovery(inputCSV, ecSK, edSK)
+		require.NoError(t, err)
+
+		outputCSV := filepath.Join(tmpDir, "input_recovered.csv")
+		content, err := os.ReadFile(outputCSV)
+		require.NoError(t, err)
+		outputs = append(outputs, string(content))
+
+		// Clean up for next iteration
+		os.Remove(outputCSV)
+	}
+
+	// Both runs should produce identical output
+	assert.Equal(t, outputs[0], outputs[1], "Derivation should be deterministic")
+}
+
+// generateTestXpub generates an xpub from a master private key for testing
+func generateTestXpub(t *testing.T, masterSK []byte, curveType string) string {
+	t.Helper()
+
+	// Use crypto libraries to compute public key and generate xpub
+	// This mirrors the logic in scripts/generate_test_xpubs.go
+
+	var pubKey []byte
+	var chainCode []byte
+
+	// Use a fixed chain code for testing (from BIP32 test vector 1)
+	if curveType == "edwards25519" {
+		chainCode, _ = hex.DecodeString("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+
+		// Compute Ed25519 public key
+		ec := edwards.Edwards()
+		scalar := new(big.Int).SetBytes(masterSK)
+		scalar.Mod(scalar, ec.N)
+		scalarBytes := make([]byte, 32)
+		scalar.FillBytes(scalarBytes)
+		_, edPubKey, err := edwards.PrivKeyFromScalar(scalarBytes)
+		require.NoError(t, err)
+		// For xpub, prefix with 0x00 to make 33 bytes
+		pubKey = append([]byte{0x00}, edPubKey.Serialize()...)
+	} else {
+		chainCode, _ = hex.DecodeString("873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508")
+
+		// Compute secp256k1 public key
+		privKey, _ := btcec.PrivKeyFromBytes(masterSK)
+		pubKey = privKey.PubKey().SerializeCompressed()
+	}
+
+	return encodeXpub(chainCode, pubKey)
+}
+
+// encodeXpub encodes chain code and public key into base58 xpub format
+func encodeXpub(chainCode, pubKey []byte) string {
+	// xpub format:
+	// 4 bytes: version (mainnet public: 0x0488B21E)
+	// 1 byte: depth (0 for master)
+	// 4 bytes: parent fingerprint (0x00000000 for master)
+	// 4 bytes: child index (0 for master)
+	// 32 bytes: chain code
+	// 33 bytes: public key
+	// 4 bytes: checksum
+
+	data := make([]byte, 0, 78)
+	data = append(data, 0x04, 0x88, 0xB2, 0x1E) // Version
+	data = append(data, 0x00)                   // Depth
+	data = append(data, 0x00, 0x00, 0x00, 0x00) // Parent fingerprint
+	data = append(data, 0x00, 0x00, 0x00, 0x00) // Child index
+	data = append(data, chainCode...)           // Chain code
+	data = append(data, pubKey...)              // Public key
+
+	// Double SHA256 checksum
+	hash1 := sha256Sum(data)
+	hash2 := sha256Sum(hash1)
+	checksum := hash2[:4]
+
+	data = append(data, checksum...)
+	return base58Encode(data)
+}
+
+func sha256Sum(data []byte) []byte {
+	h := sha256.New()
+	h.Write(data)
+	return h.Sum(nil)
+}
+
+func base58Encode(data []byte) string {
+	const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+
+	// Count leading zeros
+	zeros := 0
+	for _, b := range data {
+		if b != 0 {
+			break
+		}
+		zeros++
+	}
+
+	// Convert to big int
+	x := new(big.Int).SetBytes(data)
+	base := big.NewInt(58)
+
+	// Convert to base58
+	var result []byte
+	mod := new(big.Int)
+	for x.Sign() > 0 {
+		x.DivMod(x, base, mod)
+		result = append(result, alphabet[mod.Int64()])
+	}
+
+	// Add leading '1's for zeros
+	for i := 0; i < zeros; i++ {
+		result = append(result, '1')
+	}
+
+	// Reverse
+	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
+		result[i], result[j] = result[j], result[i]
+	}
+
+	return string(result)
+}
+
+// TestHDAddressRecovery_GenerateTestVectors outputs test vectors for web UI testing.
+// Run with: go test -v -run TestHDAddressRecovery_GenerateTestVectors
+func TestHDAddressRecovery_GenerateTestVectors(t *testing.T) {
+	// Recover keys from the test vault (lqns has both ECDSA and EdDSA keys)
+	vaultID := "yz5x2a7zhwwt7r0lv4gklqns"
+	files := []ui.VaultsDataFile{
+		{File: "./test-files/new_bvn.json", Mnemonics: mmNewBvn},
+		{File: "./test-files/new_x2q.json", Mnemonics: mmNewX2q},
+		{File: "./test-files/new_u44.json", Mnemonics: mmNewU44},
+	}
+
+	_, ecSK, edSK, _, _, err := runTool(files, &vaultID, nil, nil, nil, nil, nil, nil)
+	require.NoError(t, err)
+	require.NotNil(t, ecSK, "ECDSA key should be recovered")
+	require.NotNil(t, edSK, "EdDSA key should be recovered")
+
+	// Compute public keys
+	ecdsaPrivKey, _ := btcec.PrivKeyFromBytes(ecSK)
+	ecdsaPubKey := ecdsaPrivKey.PubKey().SerializeCompressed()
+
+	ec := edwards.Edwards()
+	scalar := new(big.Int).SetBytes(edSK)
+	scalar.Mod(scalar, ec.N)
+	scalarBytes := make([]byte, 32)
+	scalar.FillBytes(scalarBytes)
+	_, edPubKeyObj, _ := edwards.PrivKeyFromScalar(scalarBytes)
+	eddsaPubKey := edPubKeyObj.Serialize()
+
+	// Generate xpubs
+	ecdsaXpub := generateTestXpub(t, ecSK, "secp256k1")
+	eddsaXpub := generateTestXpub(t, edSK, "edwards25519")
+
+	t.Log("=== HD ADDRESS RECOVERY TEST VECTORS ===")
+	t.Log("")
+	t.Log("## Master Keys (from lqns vault)")
+	t.Logf("ECDSA Master Private Key: %s", hex.EncodeToString(ecSK))
+	t.Logf("ECDSA Master Public Key:  %s", hex.EncodeToString(ecdsaPubKey))
+	t.Logf("ECDSA xpub: %s", ecdsaXpub)
+	t.Log("")
+	t.Logf("EdDSA Master Private Key: %s", hex.EncodeToString(edSK))
+	t.Logf("EdDSA Master Public Key:  %s", hex.EncodeToString(eddsaPubKey))
+	t.Logf("EdDSA xpub: %s", eddsaXpub)
+	t.Log("")
+
+	// Create test CSV and run derivation
+	tmpDir := t.TempDir()
+	inputCSV := filepath.Join(tmpDir, "hd_addresses.csv")
+
+	// Test vectors with path "m" return master key unchanged (for verification)
+	// Also include derived paths to test actual derivation
+	csvContent := `address,xpub,path,algorithm,curve,flags
+ecdsa_master,` + ecdsaXpub + `,m,ECDSA,secp256k1,0
+eddsa_master,` + eddsaXpub + `,m,EDDSA,Edwards25519,0
+schnorr_master,` + ecdsaXpub + `,m,SCHNORR,secp256k1,0
+eth_derived,` + ecdsaXpub + `,m/44/60/0/0/0,ECDSA,secp256k1,0
+xrpl_derived,` + eddsaXpub + `,m/44/144/0/0,EDDSA,Edwards25519,0
+taproot_derived,` + ecdsaXpub + `,m/86/0/0/0/0,SCHNORR,secp256k1,0
+`
+	err = os.WriteFile(inputCSV, []byte(csvContent), 0644)
+	require.NoError(t, err)
+
+	t.Log("## Input CSV Content")
+	t.Log("```csv")
+	t.Log(csvContent)
+	t.Log("```")
+
+	// Run HD recovery
+	err = processHDAddressRecovery(inputCSV, ecSK, edSK)
+	require.NoError(t, err)
+
+	// Read output
+	outputCSV := filepath.Join(tmpDir, "hd_addresses_recovered.csv")
+	outputContent, err := os.ReadFile(outputCSV)
+	require.NoError(t, err)
+
+	t.Log("## Output CSV Content (Derived Keys)")
+	t.Log("```csv")
+	t.Log(string(outputContent))
+	t.Log("```")
+
+	// Parse and display in a more readable format
+	t.Log("")
+	t.Log("## Derived Keys Summary")
+	lines := strings.Split(string(outputContent), "\n")
+	if len(lines) > 1 {
+		headers := strings.Split(lines[0], ",")
+		addrIdx, pathIdx, algIdx, pubIdx, privIdx := -1, -1, -1, -1, -1
+		for i, h := range headers {
+			switch strings.ToLower(h) {
+			case "address":
+				addrIdx = i
+			case "path":
+				pathIdx = i
+			case "algorithm":
+				algIdx = i
+			case "publickey":
+				pubIdx = i
+			case "privatekey":
+				privIdx = i
+			}
+		}
+
+		for i := 1; i < len(lines); i++ {
+			line := strings.TrimSpace(lines[i])
+			if line == "" {
+				continue
+			}
+			cols := strings.Split(line, ",")
+			if len(cols) > privIdx {
+				t.Logf("")
+				t.Logf("### %s", cols[addrIdx])
+				t.Logf("  Path:       %s", cols[pathIdx])
+				t.Logf("  Algorithm:  %s", cols[algIdx])
+				t.Logf("  Public Key: %s", cols[pubIdx])
+				t.Logf("  Private Key: %s", cols[privIdx])
+			}
+		}
 	}
 }

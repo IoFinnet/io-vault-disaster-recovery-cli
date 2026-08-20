@@ -25,10 +25,10 @@ import (
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/dr"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
-	"github.com/binance-chain/tss-lib/crypto"
-	"github.com/binance-chain/tss-lib/crypto/vss"
-	ecdsa_keygen "github.com/binance-chain/tss-lib/ecdsa/keygen"
-	"github.com/binance-chain/tss-lib/tss"
+	"github.com/iofinnet/tss-lib/v3/crypto"
+	"github.com/iofinnet/tss-lib/v3/crypto/vss"
+	"github.com/iofinnet/tss-lib/v3/tss"
+	ecdsa_keygen "github.com/iofinnet/tss-lib/v3/tss/ecdsa/keygen"
 	"github.com/stretchr/testify/require"
 	"github.com/tyler-smith/go-bip39"
 )

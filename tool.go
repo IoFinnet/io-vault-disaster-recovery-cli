@@ -24,16 +24,16 @@ import (
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/dr"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/fileutils"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
-	"github.com/binance-chain/tss-lib/crypto"
-	"github.com/binance-chain/tss-lib/crypto/vss"
-	ecdsa_keygen "github.com/binance-chain/tss-lib/ecdsa/keygen"
-	eddsa_keygen "github.com/binance-chain/tss-lib/eddsa/keygen"
-	"github.com/binance-chain/tss-lib/tss"
 	"github.com/decred/dcrd/dcrec/edwards/v2"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
+	"github.com/iofinnet/tss-lib/v3/crypto"
+	"github.com/iofinnet/tss-lib/v3/crypto/vss"
+	"github.com/iofinnet/tss-lib/v3/tss"
+	ecdsa_keygen "github.com/iofinnet/tss-lib/v3/tss/ecdsa/keygen"
+	eddsa_keygen "github.com/iofinnet/tss-lib/v3/tss/schnorr/keygen"
 	errors2 "github.com/pkg/errors"
 	"github.com/tyler-smith/go-bip39"
 	"golang.org/x/crypto/sha3"
@@ -79,6 +79,11 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 	// RequestId), so they're grouped by vault+requestId here and folded in below once every input
 	// file has been seen, walking the chain to find each vault's current epoch.
 	drSharesByVaultRequestID := make(map[string]map[string]*drVaultShares, len(vaultsDataFile))
+	// vaultMaxReShareNonce is the highest legacy reshare nonce selected for each vault across all
+	// input files. Unlike vaultLastLegacyNonces (last-file-wins, used only for the mismatch
+	// warning), this is an order-independent max so the vault list reports a stable value
+	// regardless of vaultsDataFile order.
+	vaultMaxReShareNonce := make(map[string]int, len(vaultsDataFile)*16)
 
 	// // Do the main routine
 	for _, file := range vaultsDataFile {
@@ -128,6 +133,9 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 				if lastReshareNonce == -1 {
 					//welp = fmt.Errorf("⚠ no share data found for vault `%s` in save file", vID)
 					continue // not a show stopper
+				}
+				if cur, ok := vaultMaxReShareNonce[vID]; !ok || lastReshareNonce > cur {
+					vaultMaxReShareNonce[vID] = lastReshareNonce
 				}
 				cipheredVault = entry.LegacyByNonce[lastReshareNonce]
 				lastRequestID = strconv.Itoa(lastReshareNonce)
@@ -335,7 +343,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID *string, nonceOverride 
 	orderedVaults = make([]ui.VaultPickerItem, 0, len(vaultIDs))
 	for _, vID := range vaultIDs {
 		vault := clearVaults[vID]
-		vaultFormData := ui.VaultPickerItem{VaultID: vID, Name: vault.Name, Quorum: vault.Quroum, NumberOfShares: len(vaultAllSharesECDSA[vID])}
+		vaultFormData := ui.VaultPickerItem{VaultID: vID, Name: vault.Name, Quorum: vault.Quroum, NumberOfShares: len(vaultAllSharesECDSA[vID]), LastReShareNonce: vaultMaxReShareNonce[vID]}
 		orderedVaults = append(orderedVaults, vaultFormData)
 	}
 

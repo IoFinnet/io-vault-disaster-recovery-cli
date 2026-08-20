@@ -14,6 +14,7 @@ import (
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/bittensor"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/config"
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/hd"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/solana"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/web"
@@ -35,6 +36,9 @@ func main() {
 	passwordForKS := flag.String("password", "", "(Optional) Encryption password for the Ethereum wallet v3 file; use with -export")
 	exportKSFile := flag.String("export", "wallet.json", "(Optional) Filename to export a Ethereum wallet v3 JSON to; use with -password.")
 	privateKeyFile := flag.String("private-key", "", "(Required when recovering from Virtual Signer .dr files) Path to the ML-KEM-768 private key PEM.")
+	addressesCSV := flag.String("addresses-csv", "", "(Optional) CSV file with HD addresses to derive child keys for. "+
+		"Input columns: address,xpub,path,algorithm,curve,flags. "+
+		"Output CSV will be written with _recovered suffix containing derived publickey and privatekey.")
 
 	// Note: Transaction modes have been removed - use scripts in scripts/ directory instead
 
@@ -69,6 +73,7 @@ func main() {
 			fmt.Println("\nNOTE: Inside a ZIP, .json/.dr files may be in any directory; macOS __MACOSX metadata is ignored")
 			fmt.Println("\nOptional flags:")
 			flag.PrintDefaults()
+			fmt.Println("\n" + ui.HDAddressesUsage())
 			return
 		} else {
 			fmt.Println("\nInvalid choice. Please run the tool again and select 1 or 2.")
@@ -310,6 +315,14 @@ func main() {
 	}
 	fmt.Printf("\nNote: Some wallet apps may require you to prefix hex strings with 0x to load the key.\n")
 
+	// HD Address Recovery if CSV file provided
+	if *addressesCSV != "" {
+		if err := processHDAddressRecovery(*addressesCSV, ecSK, edSK); err != nil {
+			fmt.Println(ui.ErrorBox(err))
+			os.Exit(1)
+		}
+	}
+
 	// Clean up any temporary directories from ZIP extraction
 	// Include both directories from appConfig and also any added to GlobalConfig by ui_input
 	dirsToCleanup := append(appConfig.ZipExtractedDirs, config.GlobalConfig.ZipExtractedDirs...)
@@ -362,4 +375,42 @@ func launchWebInterface(port int, noBrowser bool) {
 	if err := server.Stop(); err != nil {
 		fmt.Println(ui.PlainTextf("Error shutting down server: %v", err))
 	}
+}
+
+// processHDAddressRecovery handles the HD address recovery workflow
+func processHDAddressRecovery(csvPath string, ecdsaSK, eddsaSK []byte) error {
+	fmt.Printf("\n%s%sHD Address Recovery%s\n", ui.AnsiCodes["bold"], ui.AnsiCodes["cyan"], ui.AnsiCodes["reset"])
+	fmt.Printf("Processing CSV: %s\n", csvPath)
+
+	// Parse input CSV
+	records, err := hd.ParseCSV(csvPath)
+	if err != nil {
+		return fmt.Errorf("failed to parse CSV: %w", err)
+	}
+
+	fmt.Printf("Found %d address records to process\n", len(records))
+
+	// Create deriver with recovered master keys
+	deriver, err := hd.NewDeriver(ecdsaSK, eddsaSK)
+	if err != nil {
+		return fmt.Errorf("failed to create deriver: %w", err)
+	}
+
+	// Derive all child keys
+	derivedRecords, err := deriver.DeriveAll(records)
+	if err != nil {
+		return err
+	}
+
+	// Write output CSV
+	outputPath := hd.DeriveOutputPath(csvPath)
+	if err := hd.WriteCSV(outputPath, derivedRecords); err != nil {
+		return fmt.Errorf("failed to write output CSV: %w", err)
+	}
+
+	fmt.Printf("%s%sSuccess!%s Recovered %d HD-derived keys to: %s\n",
+		ui.AnsiCodes["bold"], ui.AnsiCodes["green"], ui.AnsiCodes["reset"],
+		len(derivedRecords), outputPath)
+
+	return nil
 }
