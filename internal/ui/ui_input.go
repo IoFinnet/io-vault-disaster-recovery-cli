@@ -40,6 +40,12 @@ func isDRFile(pathname string) bool {
 	return strings.EqualFold(filepath.Ext(pathname), ".dr")
 }
 
+// isBundleZip reports whether pathname is a Virtual Signer bundle zip (a .zip with a
+// root manifest.json). ziputils.IsBundleZip opens the archive; classify once and reuse.
+func isBundleZip(pathname string) bool {
+	return ziputils.IsZipFile(pathname) && ziputils.IsBundleZip(pathname)
+}
+
 // removes reference to mnemonic strings from the entry.
 func (file *VaultsDataFile) Zeroize() {
 	file.Mnemonics = ""
@@ -65,6 +71,14 @@ func NewMnemonicsForm(config config.AppConfig) MnemonicsFormModel {
 func (m *MnemonicsFormModel) Run() (*VaultsDataFiles, error) {
 	filesWithMnemonics := make(VaultsDataFiles, 0, len(m.filenames))
 
+	// Classify bundle zips once up front (IsBundleZip does I/O per call).
+	bundlePaths := make(map[string]struct{}, len(m.filenames))
+	for _, pathname := range m.filenames {
+		if isBundleZip(pathname) {
+			bundlePaths[pathname] = struct{}{}
+		}
+	}
+
 	// Make a first pass to calculate the total number of files
 	totalJSONFiles := 0
 	var extractedFiles []string
@@ -74,6 +88,10 @@ func (m *MnemonicsFormModel) Run() (*VaultsDataFiles, error) {
 	extractedFilesMap := make(map[string]bool) // Use a map to deduplicate
 
 	for _, pathname := range m.filenames {
+		if _, ok := bundlePaths[pathname]; ok {
+			totalJSONFiles++
+			continue
+		}
 		if strings.ToLower(filepath.Ext(pathname)) == ".zip" {
 			// Process ZIP file to get a list of JSON files inside
 			files, err := processZipFileForMnemonics(pathname)
@@ -104,8 +122,14 @@ func (m *MnemonicsFormModel) Run() (*VaultsDataFiles, error) {
 
 	// Now process the files
 	for _, pathname := range m.filenames {
+		if _, ok := bundlePaths[pathname]; ok {
+			// Unextracted; decrypted with a private key, not a mnemonic.
+			filesWithMnemonics = append(filesWithMnemonics, VaultsDataFile{File: pathname})
+			continue
+		}
+
 		// Check if this is a ZIP file
-		if strings.ToLower(filepath.Ext(pathname)) == ".zip" {
+		if ziputils.IsZipFile(pathname) {
 			m.extractedAll = true
 			fmt.Println(PlainTextf("Processing ZIP file: %s", pathname))
 
@@ -226,24 +250,26 @@ func (m *MnemonicsFormModel) Run() (*VaultsDataFiles, error) {
 }
 
 // ensurePrivateKeyFile prompts once for one or more ML-KEM-768 private key PEM paths if any .dr
-// file is present and no path was already supplied via -keys/-private-key, then records them in
-// the global config for main.go to read and load after this form returns.
+// file or Virtual Signer bundle is present and no path was already supplied via -keys/-private-key,
+// then records them in the global config for main.go to read and load after this form returns.
+// Remaining .zip entries here are bundles (legacy zips were expanded earlier); IsZipFile is
+// extension-only, so this does not re-open archives.
 func (m *MnemonicsFormModel) ensurePrivateKeyFile(files VaultsDataFiles) error {
-	hasDRFile := false
+	needsKey := false
 	for _, f := range files {
-		if isDRFile(f.File) {
-			hasDRFile = true
+		if isDRFile(f.File) || ziputils.IsZipFile(f.File) {
+			needsKey = true
 			break
 		}
 	}
-	if !hasDRFile || len(m.privateKeyFiles) > 0 {
+	if !needsKey || len(m.privateKeyFiles) > 0 {
 		return nil
 	}
 
 	var input string
 	field := huh.NewInput().
 		Key("privateKeyFile").
-		Title("Virtual Signer .dr files detected").
+		Title("Virtual Signer files detected").
 		Description("Enter the path to the ML-KEM-768 private key PEM file, separate multiple paths with commas").
 		Value(&input).
 		Validate(func(value string) error {
