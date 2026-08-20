@@ -103,11 +103,13 @@ func ValidateFiles(appConfig *config.AppConfig) error {
 		zipExtractedDirs = append(zipExtractedDirs, appConfig.ZipExtractedDirs...)
 	}
 
-	// First pass: check file existence and validate no mixing of ZIP and JSON
+	// First pass: existence, dedupe, and classify. Bundle zips pass through unextracted
+	// (expanded later by the recovery pipeline); only legacy ZIP vs loose mixing is rejected here.
 	uniqueFiles := make(map[string]struct{})
-	hasZip := false
-	hasJson := false
-	var firstZipFile, firstJsonFile string
+	isBundle := make(map[string]struct{}, len(files))
+	hasLegacyZip := false
+	hasLoose := false
+	var firstZipFile, firstLooseFile string
 
 	for _, file := range files {
 		// Verify file exists
@@ -121,28 +123,33 @@ func ValidateFiles(appConfig *config.AppConfig) error {
 		}
 		uniqueFiles[file] = struct{}{}
 
-		// Track file types
-		if ziputils.IsZipFile(file) {
-			hasZip = true
+		switch {
+		case ziputils.IsZipFile(file) && ziputils.IsBundleZip(file):
+			isBundle[file] = struct{}{}
+		case ziputils.IsZipFile(file):
+			hasLegacyZip = true
 			if firstZipFile == "" {
 				firstZipFile = file
 			}
-		} else {
-			hasJson = true
-			if firstJsonFile == "" {
-				firstJsonFile = file
+		default:
+			hasLoose = true
+			if firstLooseFile == "" {
+				firstLooseFile = file
 			}
 		}
 	}
 
-	// Validate no mixing of formats
-	if hasZip && hasJson {
+	if hasLegacyZip && hasLoose {
 		return errors2.Errorf("⚠ cannot mix ZIP and JSON files. Found ZIP file '%s' and JSON file '%s'. Please provide either all JSON files or all ZIP files.",
-			firstZipFile, firstJsonFile)
+			firstZipFile, firstLooseFile)
 	}
 
 	// Process files
 	for _, file := range files {
+		if _, ok := isBundle[file]; ok {
+			processedFiles = append(processedFiles, file)
+			continue
+		}
 		// Process ZIP files
 		if ziputils.IsZipFile(file) {
 			extractedFiles, err := ziputils.ProcessZipFile(file)
@@ -173,7 +180,11 @@ func ValidateFiles(appConfig *config.AppConfig) error {
 	// Second pass: validate all files are readable and proper JSON.
 	// Virtual Signer .dr files are opaque encrypted binary blobs, not JSON, so they're exempt
 	// from the JSON-shape check; they're validated by attempting decryption in runTool instead.
+	// Bundle zips are likewise not JSON; validated during pipeline expansion.
 	for _, file := range processedFiles {
+		if _, ok := isBundle[file]; ok {
+			continue
+		}
 		if strings.EqualFold(filepath.Ext(file), ".dr") {
 			f, err := os.Open(file)
 			if err != nil {
