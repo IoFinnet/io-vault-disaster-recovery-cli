@@ -5,6 +5,7 @@
 package ui
 
 import (
+	"encoding/json"
 	"log"
 	"os"
 	"path/filepath"
@@ -104,12 +105,13 @@ func ValidateFiles(appConfig *config.AppConfig) error {
 	}
 
 	// First pass: existence, dedupe, and classify. Bundle zips pass through unextracted
-	// (expanded later by the recovery pipeline); only legacy ZIP vs loose mixing is rejected here.
+	// (expanded later by the recovery pipeline); incompatible mixes are rejected here.
 	uniqueFiles := make(map[string]struct{})
 	isBundle := make(map[string]struct{}, len(files))
 	hasLegacyZip := false
 	hasLoose := false
-	var firstZipFile, firstLooseFile string
+	hasDR := false
+	var firstZipFile, firstLooseFile, firstBundleFile string
 
 	for _, file := range files {
 		// Verify file exists
@@ -126,6 +128,9 @@ func ValidateFiles(appConfig *config.AppConfig) error {
 		switch {
 		case ziputils.IsZipFile(file) && ziputils.IsBundleZip(file):
 			isBundle[file] = struct{}{}
+			if firstBundleFile == "" {
+				firstBundleFile = file
+			}
 		case ziputils.IsZipFile(file):
 			hasLegacyZip = true
 			if firstZipFile == "" {
@@ -136,7 +141,17 @@ func ValidateFiles(appConfig *config.AppConfig) error {
 			if firstLooseFile == "" {
 				firstLooseFile = file
 			}
+			if strings.EqualFold(filepath.Ext(file), ".dr") {
+				hasDR = true
+			}
 		}
+	}
+
+	hasBundle := len(isBundle) > 0
+
+	if hasBundle && hasLegacyZip {
+		return errors2.Errorf("⚠ cannot mix a Virtual Signer bundle zip with a legacy vault-export ZIP. '%s' is a Virtual Signer bundle (contains manifest.json) and '%s' is a legacy ZIP of JSON exports. Please recover them in separate runs.",
+			firstBundleFile, firstZipFile)
 	}
 
 	if hasLegacyZip && hasLoose {
@@ -188,9 +203,7 @@ func ValidateFiles(appConfig *config.AppConfig) error {
 		if strings.EqualFold(filepath.Ext(file), ".dr") {
 			f, err := os.Open(file)
 			if err != nil {
-				for _, dir := range zipExtractedDirs {
-					os.RemoveAll(dir)
-				}
+				cleanupZipExtractedDirs(zipExtractedDirs)
 				return errors2.Errorf("unable to read file `%s`: %s", file, err)
 			}
 			_ = f.Close()
@@ -199,22 +212,48 @@ func ValidateFiles(appConfig *config.AppConfig) error {
 
 		content, err := os.ReadFile(file)
 		if err != nil {
-			// Clean up extracted files before returning error
-			for _, dir := range zipExtractedDirs {
-				os.RemoveAll(dir)
-			}
+			cleanupZipExtractedDirs(zipExtractedDirs)
 			return errors2.Errorf("unable to read file `%s`: %s", file, err)
 		}
 		if len(content) == 0 || content[0] != '{' {
-			// Clean up extracted files before returning error
-			for _, dir := range zipExtractedDirs {
-				os.RemoveAll(dir)
-			}
+			cleanupZipExtractedDirs(zipExtractedDirs)
 			return errors2.Errorf("⚠ invalid file format, expecting json. first char is %s", content[:1])
+		}
+
+		// Legacy flat-nonce JSON cannot mix with bundles or .dr (those select by request ID).
+		// When either is present, hasLegacyZip is already false, so this never sees extracted-zip JSON.
+		if (hasBundle || hasDR) && looksLikeLegacyFlatNonceJSON(content) {
+			return errors2.Errorf("⚠ file '%s' is a legacy vault export (flat reshare-nonce format, no request IDs) and cannot be combined with Virtual Signer bundles or .dr files, which select shares by request ID. Please recover '%s' in a separate run with only its mnemonic.",
+				file, file)
 		}
 	}
 
 	return nil
+}
+
+func cleanupZipExtractedDirs(dirs []string) {
+	for _, dir := range dirs {
+		os.RemoveAll(dir)
+	}
+}
+
+// looksLikeLegacyFlatNonceJSON reports whether vault-data JSON uses the legacy flat
+// reshare-nonce shape. Must mirror recoverypipeline.VaultEntry.UnmarshalJSON: an entry
+// is legacy iff it has no "requests" key. That package cannot be imported here (cycle);
+// the peek test pins both implementations to the same fixtures. Non-vault JSON returns false.
+func looksLikeLegacyFlatNonceJSON(content []byte) bool {
+	var peek struct {
+		Vaults map[string]map[string]json.RawMessage `json:"vaults"`
+	}
+	if err := json.Unmarshal(content, &peek); err != nil {
+		return false
+	}
+	for _, entry := range peek.Vaults {
+		if _, ok := entry["requests"]; !ok {
+			return true
+		}
+	}
+	return false
 }
 
 // CleanMnemonicInput processes a mnemonic phrase by removing line breaks and extra whitespace
