@@ -27,17 +27,34 @@ func IsZipFile(filename string) bool {
 // first-byte-is-'{' sanity check below.
 var allowedZipExtensions = map[string]bool{".json": true, ".dr": true}
 
-// isIgnoredZipEntry reports whether a ZIP entry is OS-generated metadata rather
+// IsIgnoredZipEntry reports whether a ZIP entry is OS-generated metadata rather
 // than recovery payload. macOS Finder / Archive Utility inject a "__MACOSX/"
 // folder of AppleDouble "._" resource-fork files (and ".DS_Store" entries) when
 // creating archives; none of these are vault data and they must be skipped so a
 // macOS-created ZIP of otherwise-flat files is still accepted.
-func isIgnoredZipEntry(name string) bool {
+func IsIgnoredZipEntry(name string) bool {
 	if strings.HasPrefix(name, "__MACOSX/") || strings.Contains(name, "/__MACOSX/") {
 		return true
 	}
 	base := path.Base(name)
 	return strings.HasPrefix(base, "._") || base == ".DS_Store"
+}
+
+// IsBundleZip reports whether the archive has a root entry named "manifest.json"
+// (exact, case-sensitive). Presence only — content is checked later.
+func IsBundleZip(zipPath string) bool {
+	reader, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return false
+	}
+	defer reader.Close()
+
+	for _, f := range reader.File {
+		if !f.FileInfo().IsDir() && path.Clean(f.Name) == "manifest.json" {
+			return true
+		}
+	}
+	return false
 }
 
 // ProcessZipFile extracts JSON files from a ZIP archive to a temporary directory
@@ -65,7 +82,7 @@ func ProcessZipFile(zipPath string) ([]string, error) {
 	// any .json/.dr file at any depth is treated as payload, and OS metadata
 	// (macOS __MACOSX/._* and .DS_Store) is skipped.
 	for _, f := range reader.File {
-		if f.FileInfo().IsDir() || isIgnoredZipEntry(f.Name) {
+		if f.FileInfo().IsDir() || IsIgnoredZipEntry(f.Name) {
 			continue
 		}
 		if !allowedZipExtensions[strings.ToLower(path.Ext(f.Name))] {
@@ -76,7 +93,7 @@ func ProcessZipFile(zipPath string) ([]string, error) {
 
 	// Second pass: Extract JSON/.dr files flat, by basename (we've already validated the extensions)
 	for _, f := range reader.File {
-		if f.FileInfo().IsDir() || isIgnoredZipEntry(f.Name) {
+		if f.FileInfo().IsDir() || IsIgnoredZipEntry(f.Name) {
 			continue
 		}
 

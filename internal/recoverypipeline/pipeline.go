@@ -56,6 +56,7 @@ type Result struct {
 
 	// OrderedVaults is the stable, display-ordered vault list for pickers.
 	OrderedVaults []ui.VaultPickerItem
+	Warnings      []Warning
 }
 
 // ErrorPresentation controls how file paths and OS-level errors are rendered
@@ -126,7 +127,15 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 
 	justListingVaults := vaultID == ""
 
-	artifacts, err := discoverArtifacts(vaultsDataFile)
+	artifacts, _, discoverWarnings, cleanup, err := discoverArtifacts(vaultsDataFile, presentation)
+	defer func() {
+		if cerr := cleanup(); cerr != nil && res != nil {
+			res.Warnings = append(res.Warnings, Warning{
+				Code:    WarningCleanupFailed,
+				Message: fmt.Sprintf("failed to remove temporary recovery files: %s", presentation.err(cerr)),
+			})
+		}
+	}()
 	if err != nil {
 		welp = err
 		return
@@ -449,6 +458,7 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 		MobileVaults:        mobileVaults,
 		MobileFileThreshold: mobileFileThreshold,
 		OrderedVaults:       orderedVaults,
+		Warnings:            discoverWarnings,
 	}, nil
 }
 
