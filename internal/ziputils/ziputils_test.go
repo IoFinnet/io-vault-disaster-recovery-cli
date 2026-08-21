@@ -554,6 +554,16 @@ func TestIsBundleZip(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("bundle content without .zip extension", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "backup.bin")
+		if err := writeTestZip(path, map[string]string{"manifest.json": `{"formatVersion":2}`}); err != nil {
+			t.Fatalf("writeTestZip: %v", err)
+		}
+		if IsBundleZip(path) {
+			t.Error("IsBundleZip() = true for non-.zip path, want false")
+		}
+	})
 }
 
 func writeTestZip(zipPath string, entries map[string]string) error {

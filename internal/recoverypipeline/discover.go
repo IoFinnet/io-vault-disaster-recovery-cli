@@ -57,7 +57,7 @@ func discoverArtifacts(files []ui.VaultsDataFile, presentation ErrorPresentation
 	}
 
 	for _, file := range files {
-		if ziputils.IsZipFile(file.File) && ziputils.IsBundleZip(file.File) {
+		if ziputils.IsBundleZip(file.File) {
 			tempDir, err := os.MkdirTemp("", "vault-recovery-bundle-")
 			if err != nil {
 				return nil, nil, warnings, cleanup, fmt.Errorf(

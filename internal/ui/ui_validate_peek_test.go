@@ -16,31 +16,26 @@ import (
 
 func TestLegacyPeekMatchesRecoveryPipelineUnmarshal(t *testing.T) {
 	cases := []struct {
-		name          string
-		fixture       string
-		wantPeek      bool
-		wantUnmarshal bool // false → recoverypipeline.SavedData unmarshal must error
-		check         func(t *testing.T, sd recoverypipeline.SavedData)
+		name    string
+		fixture string
+		// wantPeek is the ui-side verdict; wantLegacy pins the pipeline-side
+		// IsLegacy flag per vault. wantUnmarshalErr non-empty → the pipeline
+		// unmarshal must fail with that substring (and wantLegacy is ignored).
+		wantPeek         bool
+		wantLegacy       map[string]bool
+		wantUnmarshalErr string
 	}{
 		{
-			name:          "legacy flat-nonce vault",
-			fixture:       ui.LegacyFlatNonceJSONForTest,
-			wantPeek:      true,
-			wantUnmarshal: true,
-			check: func(t *testing.T, sd recoverypipeline.SavedData) {
-				require.Contains(t, sd.Vaults, "v1")
-				assert.True(t, sd.Vaults["v1"].IsLegacy)
-			},
+			name:       "legacy flat-nonce vault",
+			fixture:    ui.LegacyFlatNonceJSONForTest,
+			wantPeek:   true,
+			wantLegacy: map[string]bool{"v1": true},
 		},
 		{
-			name:          "mobile wrapper",
-			fixture:       ui.MobileWrapperJSONForTest,
-			wantPeek:      false,
-			wantUnmarshal: true,
-			check: func(t *testing.T, sd recoverypipeline.SavedData) {
-				require.Contains(t, sd.Vaults, "v1")
-				assert.False(t, sd.Vaults["v1"].IsLegacy)
-			},
+			name:       "mobile wrapper",
+			fixture:    ui.MobileWrapperJSONForTest,
+			wantPeek:   false,
+			wantLegacy: map[string]bool{"v1": false},
 		},
 		{
 			name: "mixed file one legacy one mobile",
@@ -48,30 +43,21 @@ func TestLegacyPeekMatchesRecoveryPipelineUnmarshal(t *testing.T) {
 				`"legacy":{"0":{"ciphertext":"YQ==","nonce":"YQ=="}},` +
 				`"mobile":{"currentRequestId":"req-1","requests":{"req-1":{"ciphertext":"YQ==","nonce":"YQ=="}}}` +
 				`}}`,
-			wantPeek:      true,
-			wantUnmarshal: true,
-			check: func(t *testing.T, sd recoverypipeline.SavedData) {
-				legacyCount := 0
-				for _, e := range sd.Vaults {
-					if e.IsLegacy {
-						legacyCount++
-					}
-				}
-				assert.GreaterOrEqual(t, legacyCount, 1)
-			},
+			wantPeek:   true,
+			wantLegacy: map[string]bool{"legacy": true, "mobile": false},
 		},
 		{
 			name: "requests present but currentRequestId missing",
 			// Both sides must branch on "requests" presence, not currentRequestId.
-			fixture:       `{"vaults":{"v1":{"requests":{"req-1":{"ciphertext":"YQ==","nonce":"YQ=="}}}}}`,
-			wantPeek:      false,
-			wantUnmarshal: false,
+			fixture:          `{"vaults":{"v1":{"requests":{"req-1":{"ciphertext":"YQ==","nonce":"YQ=="}}}}}`,
+			wantPeek:         false,
+			wantUnmarshalErr: "v4",
 		},
 		{
-			name:          "requests present as null",
-			fixture:       `{"vaults":{"v1":{"currentRequestId":"req-1","requests":null}}}`,
-			wantPeek:      false,
-			wantUnmarshal: false,
+			name:             "requests present as null",
+			fixture:          `{"vaults":{"v1":{"currentRequestId":"req-1","requests":null}}}`,
+			wantPeek:         false,
+			wantUnmarshalErr: "v4",
 		},
 	}
 
@@ -82,14 +68,15 @@ func TestLegacyPeekMatchesRecoveryPipelineUnmarshal(t *testing.T) {
 
 			var sd recoverypipeline.SavedData
 			err := json.Unmarshal(content, &sd)
-			if tc.wantUnmarshal {
-				require.NoError(t, err)
-				if tc.check != nil {
-					tc.check(t, sd)
-				}
-			} else {
+			if tc.wantUnmarshalErr != "" {
 				require.Error(t, err)
-				assert.Contains(t, err.Error(), "v4")
+				assert.Contains(t, err.Error(), tc.wantUnmarshalErr)
+				return
+			}
+			require.NoError(t, err)
+			for vaultID, wantLegacy := range tc.wantLegacy {
+				require.Contains(t, sd.Vaults, vaultID)
+				assert.Equal(t, wantLegacy, sd.Vaults[vaultID].IsLegacy, "vault %s", vaultID)
 			}
 		})
 	}

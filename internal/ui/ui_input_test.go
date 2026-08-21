@@ -39,71 +39,57 @@ func TestVaultsDataFilesZeroize_EmptyMnemonics(t *testing.T) {
 	files.Zeroize() // should not panic
 }
 
-func restoreGlobalConfig(t *testing.T) {
+// resetGlobalConfig zeroes config.GlobalConfig for the test and restores the
+// previous value on cleanup.
+func resetGlobalConfig(t *testing.T) {
 	t.Helper()
 	prev := config.GlobalConfig
+	config.GlobalConfig = config.AppConfig{}
 	t.Cleanup(func() {
 		config.GlobalConfig = prev
 	})
 }
 
-func TestMnemonicsFormModel_Run_bundlePassThrough(t *testing.T) {
-	restoreGlobalConfig(t)
-	config.GlobalConfig = config.AppConfig{}
-
-	bundlePath := makeBundleZip(t)
-	keyPath := filepath.Join(t.TempDir(), "key.pem")
-	require.NoError(t, os.WriteFile(keyPath, []byte("dummy-key"), 0o644))
-
-	m := NewMnemonicsForm(config.AppConfig{
-		Filenames:       []string{bundlePath},
-		PrivateKeyFiles: []string{keyPath},
-	})
-	files, err := m.Run()
-	require.NoError(t, err)
-	require.NotNil(t, files)
-	assert.Equal(t, VaultsDataFiles{{File: bundlePath}}, *files)
-	assert.Empty(t, config.GlobalConfig.ZipExtractedDirs)
-}
-
-func TestMnemonicsFormModel_Run_bundleWithLooseDR(t *testing.T) {
-	restoreGlobalConfig(t)
-	config.GlobalConfig = config.AppConfig{}
-
+func TestMnemonicsFormModel_Run_bundles(t *testing.T) {
 	bundlePath := makeBundleZip(t)
 	drPath := filepath.Join(t.TempDir(), "share.dr")
 	require.NoError(t, os.WriteFile(drPath, []byte{0xaa, 0xbb}, 0o644))
-	keyPath := filepath.Join(t.TempDir(), "key.pem")
-	require.NoError(t, os.WriteFile(keyPath, []byte("dummy-key"), 0o644))
 
-	m := NewMnemonicsForm(config.AppConfig{
-		Filenames:       []string{bundlePath, drPath},
-		PrivateKeyFiles: []string{keyPath},
-	})
-	files, err := m.Run()
-	require.NoError(t, err)
-	require.NotNil(t, files)
-	assert.Equal(t, VaultsDataFiles{
-		{File: bundlePath},
-		{File: drPath},
-	}, *files)
-	assert.Equal(t, 2, m.totalFiles)
-	assert.Empty(t, config.GlobalConfig.ZipExtractedDirs)
-}
+	// ensurePrivateKeyFile only checks that keys were supplied, never reads them,
+	// so a placeholder path suffices.
+	keys := []string{"unused.pem"}
 
-func TestIsBundleZip(t *testing.T) {
-	assert.True(t, isBundleZip(makeBundleZip(t)))
-	assert.False(t, isBundleZip(makeLegacyZip(t, []byte(`{"share":1}`))))
+	tests := []struct {
+		name  string
+		files []string
+	}{
+		{"bundle alone", []string{bundlePath}},
+		{"bundle with loose .dr", []string{bundlePath, drPath}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resetGlobalConfig(t)
+
+			m := NewMnemonicsForm(config.AppConfig{Filenames: tt.files, PrivateKeyFiles: keys})
+			files, err := m.Run()
+			require.NoError(t, err)
+			require.NotNil(t, files)
+
+			want := make(VaultsDataFiles, 0, len(tt.files))
+			for _, f := range tt.files {
+				want = append(want, VaultsDataFile{File: f})
+			}
+			assert.Equal(t, want, *files)
+			assert.Equal(t, len(tt.files), m.totalFiles)
+			assert.Empty(t, config.GlobalConfig.ZipExtractedDirs)
+		})
+	}
 }
 
 func TestEnsurePrivateKeyFile_keysPresetSkipsPrompt(t *testing.T) {
-	restoreGlobalConfig(t)
-	config.GlobalConfig = config.AppConfig{}
+	resetGlobalConfig(t)
 
-	keyPath := filepath.Join(t.TempDir(), "key.pem")
-	require.NoError(t, os.WriteFile(keyPath, []byte("dummy-key"), 0o644))
-
-	m := NewMnemonicsForm(config.AppConfig{PrivateKeyFiles: []string{keyPath}})
+	m := NewMnemonicsForm(config.AppConfig{PrivateKeyFiles: []string{"unused.pem"}})
 	// .zip in the list means a bundle at this stage; keys already set so no prompt.
 	err := m.ensurePrivateKeyFile(VaultsDataFiles{{File: "bundle.zip"}})
 	assert.NoError(t, err)
@@ -111,8 +97,7 @@ func TestEnsurePrivateKeyFile_keysPresetSkipsPrompt(t *testing.T) {
 }
 
 func TestEnsurePrivateKeyFile_plainJSONNoPrompt(t *testing.T) {
-	restoreGlobalConfig(t)
-	config.GlobalConfig = config.AppConfig{}
+	resetGlobalConfig(t)
 
 	m := NewMnemonicsForm(config.AppConfig{})
 	err := m.ensurePrivateKeyFile(VaultsDataFiles{{File: "vault.json"}})
