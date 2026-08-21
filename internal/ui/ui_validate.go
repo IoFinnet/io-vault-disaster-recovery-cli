@@ -5,6 +5,7 @@
 package ui
 
 import (
+	"encoding/json"
 	"log"
 	"os"
 	"path/filepath"
@@ -103,11 +104,11 @@ func ValidateFiles(appConfig *config.AppConfig) error {
 		zipExtractedDirs = append(zipExtractedDirs, appConfig.ZipExtractedDirs...)
 	}
 
-	// First pass: check file existence and validate no mixing of ZIP and JSON
+	// First pass: existence, dedupe, and classify. Bundle zips pass through unextracted
+	// (expanded later by the recovery pipeline); incompatible mixes are rejected here.
 	uniqueFiles := make(map[string]struct{})
-	hasZip := false
-	hasJson := false
-	var firstZipFile, firstJsonFile string
+	hasDR := false
+	var firstZipFile, firstLooseFile, firstBundleFile string
 
 	for _, file := range files {
 		// Verify file exists
@@ -121,28 +122,46 @@ func ValidateFiles(appConfig *config.AppConfig) error {
 		}
 		uniqueFiles[file] = struct{}{}
 
-		// Track file types
-		if ziputils.IsZipFile(file) {
-			hasZip = true
+		switch {
+		case ziputils.IsBundleZip(file):
+			if firstBundleFile == "" {
+				firstBundleFile = file
+			}
+		case ziputils.IsZipFile(file):
 			if firstZipFile == "" {
 				firstZipFile = file
 			}
-		} else {
-			hasJson = true
-			if firstJsonFile == "" {
-				firstJsonFile = file
+		default:
+			if firstLooseFile == "" {
+				firstLooseFile = file
+			}
+			if isDRFile(file) {
+				hasDR = true
 			}
 		}
 	}
 
-	// Validate no mixing of formats
-	if hasZip && hasJson {
-		return errors2.Errorf("⚠ cannot mix ZIP and JSON files. Found ZIP file '%s' and JSON file '%s'. Please provide either all JSON files or all ZIP files.",
-			firstZipFile, firstJsonFile)
+	hasBundle := firstBundleFile != ""
+	hasLegacyZip := firstZipFile != ""
+	hasLoose := firstLooseFile != ""
+
+	if hasBundle && hasLegacyZip {
+		return errors2.Errorf("⚠ cannot mix a Virtual Signer bundle zip with a legacy vault-export ZIP. '%s' is a Virtual Signer bundle (contains manifest.json) and '%s' is a legacy ZIP of JSON exports. Please recover them in separate runs.",
+			firstBundleFile, firstZipFile)
 	}
 
-	// Process files
+	if hasLegacyZip && hasLoose {
+		return errors2.Errorf("⚠ cannot mix ZIP and JSON files. Found ZIP file '%s' and JSON file '%s'. Please provide either all JSON files or all ZIP files.",
+			firstZipFile, firstLooseFile)
+	}
+
+	// Process files. Past the mix checks above, either every zip is a bundle or
+	// every zip is a legacy archive, so the cheap extension check is enough here.
 	for _, file := range files {
+		if hasBundle && ziputils.IsZipFile(file) {
+			processedFiles = append(processedFiles, file)
+			continue
+		}
 		// Process ZIP files
 		if ziputils.IsZipFile(file) {
 			extractedFiles, err := ziputils.ProcessZipFile(file)
@@ -173,13 +192,17 @@ func ValidateFiles(appConfig *config.AppConfig) error {
 	// Second pass: validate all files are readable and proper JSON.
 	// Virtual Signer .dr files are opaque encrypted binary blobs, not JSON, so they're exempt
 	// from the JSON-shape check; they're validated by attempting decryption in runTool instead.
+	// Bundle zips are likewise not JSON; validated during pipeline expansion.
 	for _, file := range processedFiles {
-		if strings.EqualFold(filepath.Ext(file), ".dr") {
+		// Only bundle zips survive to here as .zip (legacy zips were replaced by
+		// their extracted contents above).
+		if ziputils.IsZipFile(file) {
+			continue
+		}
+		if isDRFile(file) {
 			f, err := os.Open(file)
 			if err != nil {
-				for _, dir := range zipExtractedDirs {
-					os.RemoveAll(dir)
-				}
+				cleanupZipExtractedDirs(zipExtractedDirs)
 				return errors2.Errorf("unable to read file `%s`: %s", file, err)
 			}
 			_ = f.Close()
@@ -188,22 +211,48 @@ func ValidateFiles(appConfig *config.AppConfig) error {
 
 		content, err := os.ReadFile(file)
 		if err != nil {
-			// Clean up extracted files before returning error
-			for _, dir := range zipExtractedDirs {
-				os.RemoveAll(dir)
-			}
+			cleanupZipExtractedDirs(zipExtractedDirs)
 			return errors2.Errorf("unable to read file `%s`: %s", file, err)
 		}
 		if len(content) == 0 || content[0] != '{' {
-			// Clean up extracted files before returning error
-			for _, dir := range zipExtractedDirs {
-				os.RemoveAll(dir)
-			}
+			cleanupZipExtractedDirs(zipExtractedDirs)
 			return errors2.Errorf("⚠ invalid file format, expecting json. first char is %s", content[:1])
+		}
+
+		// Legacy flat-nonce JSON cannot mix with bundles or .dr (those select by request ID).
+		// When either is present, hasLegacyZip is already false, so this never sees extracted-zip JSON.
+		if (hasBundle || hasDR) && looksLikeLegacyFlatNonceJSON(content) {
+			return errors2.Errorf("⚠ file '%s' is a legacy vault export (flat reshare-nonce format, no request IDs) and cannot be combined with Virtual Signer bundles or .dr files, which select shares by request ID. Please recover '%s' in a separate run with only its mnemonic.",
+				file, file)
 		}
 	}
 
 	return nil
+}
+
+func cleanupZipExtractedDirs(dirs []string) {
+	for _, dir := range dirs {
+		os.RemoveAll(dir)
+	}
+}
+
+// looksLikeLegacyFlatNonceJSON reports whether vault-data JSON uses the legacy flat
+// reshare-nonce shape. Must mirror recoverypipeline.VaultEntry.UnmarshalJSON: an entry
+// is legacy iff it has no "requests" key. That package cannot be imported here (cycle);
+// the peek test pins both implementations to the same fixtures. Non-vault JSON returns false.
+func looksLikeLegacyFlatNonceJSON(content []byte) bool {
+	var peek struct {
+		Vaults map[string]map[string]json.RawMessage `json:"vaults"`
+	}
+	if err := json.Unmarshal(content, &peek); err != nil {
+		return false
+	}
+	for _, entry := range peek.Vaults {
+		if _, ok := entry["requests"]; !ok {
+			return true
+		}
+	}
+	return false
 }
 
 // CleanMnemonicInput processes a mnemonic phrase by removing line breaks and extra whitespace

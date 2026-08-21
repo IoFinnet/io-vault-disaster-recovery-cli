@@ -5,6 +5,8 @@ package recoverypipeline
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 )
@@ -28,17 +30,19 @@ func pickLatestDRRequestID(byRequestID map[string]*drVaultShares, vID string, re
 		}
 	}
 	var head string
-	heads := 0
+	var heads []string
 	for requestID := range byRequestID {
 		if !referenced[requestID] {
 			head = requestID
-			heads++
+			heads = append(heads, requestID)
 		}
 	}
-	if heads == 1 || justListingVaults {
+	if len(heads) == 1 || justListingVaults {
 		return head, nil
 	}
-	return "", fmt.Errorf("⚠ vault %s: found %d root epoch(s) among its .dr files' previousRequestId chain (expected exactly 1): %w", vID, heads, ErrAmbiguousRootRequestID)
+	sort.Strings(heads)
+	return "", fmt.Errorf("⚠ vault %s: found %d root epoch(s) among its .dr files' previousRequestId chain (expected exactly 1): %w (candidates: %s)",
+		vID, len(heads), ErrAmbiguousRootRequestID, strings.Join(heads, ", "))
 }
 
 // rejectOnRequestIDDisagreement hard-errors if vID's chosen request id disagrees with one already

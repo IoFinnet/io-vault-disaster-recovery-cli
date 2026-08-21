@@ -40,9 +40,14 @@ func IsIgnoredZipEntry(name string) bool {
 	return strings.HasPrefix(base, "._") || base == ".DS_Store"
 }
 
-// IsBundleZip reports whether the archive has a root entry named "manifest.json"
-// (exact, case-sensitive). Presence only — content is checked later.
+// IsBundleZip reports whether zipPath is a Virtual Signer bundle: a .zip archive
+// with a root entry named "manifest.json" (exact, case-sensitive). Presence only —
+// content is checked later. The extension check short-circuits so non-zip paths
+// never pay the archive open.
 func IsBundleZip(zipPath string) bool {
+	if !IsZipFile(zipPath) {
+		return false
+	}
 	reader, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return false

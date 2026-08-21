@@ -64,6 +64,11 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID string, nonceOverride i
 	orderedVaults = res.OrderedVaults
 
 	justListingVaults := vaultID == ""
+	if reportPipelineWarnings(justListingVaults, len(orderedVaults)) {
+		for _, line := range pipelineWarningLines(res.Warnings) {
+			fmt.Println(line)
+		}
+	}
 	if justListingVaults {
 		return "", nil, nil, orderedVaults, nil, nil
 	}
@@ -208,6 +213,43 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID string, nonceOverride i
 		fmt.Println(ui.PlainTextf("\nWrote a MetaMask wallet v3 (for ECDSA key only) to: %s\n", exportKSFile))
 	}
 	return address, ecdsaSK, eddsaSK, orderedVaults, exportedKsFile, nil
+}
+
+// reportPipelineWarnings reports whether this Prepare pass owns warning output. The
+// recovery pass always does. The listing pass does only when it found no vaults: an
+// empty list means no vault can be selected, so no recovery pass will follow and a
+// dropped input file would otherwise go unmentioned. The two conditions are mutually
+// exclusive, which is what keeps the output to at most one block per run.
+func reportPipelineWarnings(justListingVaults bool, vaultCount int) bool {
+	return !justListingVaults || vaultCount == 0
+}
+
+// pipelineWarningLines renders the warnings a recovery operator must not miss: input
+// files that were dropped (a vault can be absent from the list, or short on shares,
+// because of one) and temporary-file cleanup failures. Warnings about files kept
+// anyway — manifest mismatches, duplicate content, an unreadable manifest — are
+// deliberately not rendered here; they do not change what can be recovered.
+//
+// Messages already name the offending entry, so a line adds only the archive it came
+// from and the vault it was declared for, when known. Every line goes through
+// ui.PlainTextf: entry names come from an untrusted archive and must not be able to
+// emit terminal escapes.
+func pipelineWarningLines(warnings []recoverypipeline.Warning) []string {
+	lines := make([]string, 0, len(warnings))
+	for _, w := range warnings {
+		if w.Code != recoverypipeline.WarningBundleEntryIgnored && w.Code != recoverypipeline.WarningCleanupFailed {
+			continue
+		}
+		body := w.Message
+		if w.SourceID != "" {
+			body = fmt.Sprintf("%s: %s", w.SourceID, body)
+		}
+		if w.VaultID != "" {
+			body = fmt.Sprintf("%s (vault %s)", body, w.VaultID)
+		}
+		lines = append(lines, ui.PlainTextf("⚠ %s", body))
+	}
+	return lines
 }
 
 func getTSSPubKeyForEthereum(x, y *big.Int) (*secp256k1.PublicKey, string, error) {
