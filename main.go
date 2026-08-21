@@ -167,9 +167,8 @@ func run() int {
 	// Initialize the global config so ui_input can track ZIP dirs
 	config.GlobalConfig = appConfig
 
-	// ui_input can append to config.GlobalConfig.ZipExtractedDirs directly, so check both.
 	defer func() {
-		dirsToCleanup := append(appConfig.ZipExtractedDirs, config.GlobalConfig.ZipExtractedDirs...)
+		dirsToCleanup := appConfig.ZipExtractedDirs
 		for _, dir := range dirsToCleanup {
 			if err := os.RemoveAll(dir); err != nil {
 				fmt.Println(ui.PlainTextf("⚠ failed to clean up temporary directory %s: %v", dir, err))
