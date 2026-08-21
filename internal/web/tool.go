@@ -35,7 +35,16 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID string, nonceOverride i
 		NonceOverrideSet:  nonceOverrideSet,
 		RequestIDOverride: requestIDOverride,
 	}
-	res, err := recoverypipeline.Prepare(vaultsDataFile, opts)
+
+	inputs, err := recoverypipeline.Discover(vaultsDataFile, opts.Presentation)
+	if err != nil {
+		inputs.Close()
+		welp = fileutils.StripPathFromError(err)
+		return
+	}
+	defer inputs.Close()
+
+	res, err := recoverypipeline.Prepare(inputs, opts)
 	if err != nil {
 		switch {
 		case errors.Is(err, recoverypipeline.ErrPrivateKeyRequired):

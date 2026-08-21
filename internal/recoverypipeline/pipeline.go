@@ -117,7 +117,9 @@ type Options struct {
 // With opts.VaultID empty, every vault in every file is processed (listing mode,
 // used by both frontends to discover what to offer); with opts.VaultID set, only
 // that vault's data is decoded, and reshare/threshold conflicts for it are hard errors.
-func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, welp error) {
+//
+// inputs must be non-nil — unlike Close, Prepare does not tolerate a nil set.
+func Prepare(inputs *InputSet, opts Options) (res *Result, welp error) {
 	vaultID := opts.VaultID
 	nonceOverride := opts.NonceOverride
 	nonceOverrideSet := opts.NonceOverrideSet
@@ -127,19 +129,7 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 
 	justListingVaults := vaultID == ""
 
-	artifacts, _, discoverWarnings, cleanup, err := discoverArtifacts(vaultsDataFile, presentation)
-	defer func() {
-		if cerr := cleanup(); cerr != nil && res != nil {
-			res.Warnings = append(res.Warnings, Warning{
-				Code:    WarningCleanupFailed,
-				Message: fmt.Sprintf("failed to remove temporary recovery files: %s", presentation.err(cerr)),
-			})
-		}
-	}()
-	if err != nil {
-		welp = err
-		return
-	}
+	artifacts := inputs.artifacts
 
 	// Internal & returned data structures
 	clearVaults := make(ClearVaultMap, len(artifacts)*16)
@@ -458,7 +448,7 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 		MobileVaults:        mobileVaults,
 		MobileFileThreshold: mobileFileThreshold,
 		OrderedVaults:       orderedVaults,
-		Warnings:            discoverWarnings,
+		Warnings:            append([]Warning(nil), inputs.warnings...),
 	}, nil
 }
 
