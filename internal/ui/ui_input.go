@@ -30,7 +30,6 @@ type (
 	MnemonicsFormModel struct {
 		filenames       []string
 		totalFiles      int
-		extractedAll    bool
 		privateKeyFiles []string
 	}
 )
@@ -38,12 +37,6 @@ type (
 // isDRFile reports whether pathname is a Virtual Signer .dr file, identified by extension.
 func isDRFile(pathname string) bool {
 	return strings.EqualFold(filepath.Ext(pathname), ".dr")
-}
-
-// isBundleZip reports whether pathname is a Virtual Signer bundle zip (a .zip with a
-// root manifest.json). ziputils.IsBundleZip opens the archive; classify once and reuse.
-func isBundleZip(pathname string) bool {
-	return ziputils.IsZipFile(pathname) && ziputils.IsBundleZip(pathname)
 }
 
 // removes reference to mnemonic strings from the entry.
@@ -63,7 +56,6 @@ func NewMnemonicsForm(config config.AppConfig) MnemonicsFormModel {
 	return MnemonicsFormModel{
 		filenames:       config.Filenames,
 		totalFiles:      len(config.Filenames),
-		extractedAll:    false,
 		privateKeyFiles: config.PrivateKeyFiles,
 	}
 }
@@ -71,28 +63,20 @@ func NewMnemonicsForm(config config.AppConfig) MnemonicsFormModel {
 func (m *MnemonicsFormModel) Run() (*VaultsDataFiles, error) {
 	filesWithMnemonics := make(VaultsDataFiles, 0, len(m.filenames))
 
-	// Classify bundle zips once up front (IsBundleZip does I/O per call).
-	bundlePaths := make(map[string]struct{}, len(m.filenames))
-	for _, pathname := range m.filenames {
-		if isBundleZip(pathname) {
-			bundlePaths[pathname] = struct{}{}
-		}
-	}
-
-	// Make a first pass to calculate the total number of files
-	totalJSONFiles := 0
+	// First pass: classify bundles (IsBundleZip does I/O — once per path here, the
+	// later loops reuse the map), expand legacy zips, and count the checklist total.
+	totalFiles := 0
 	var extractedFiles []string
-
-	// First, determine if we're dealing with ZIP files and get the total count
-	// and collect all extracted files
+	bundlePaths := make(map[string]struct{}, len(m.filenames))
 	extractedFilesMap := make(map[string]bool) // Use a map to deduplicate
 
 	for _, pathname := range m.filenames {
-		if _, ok := bundlePaths[pathname]; ok {
-			totalJSONFiles++
+		if ziputils.IsBundleZip(pathname) {
+			bundlePaths[pathname] = struct{}{}
+			totalFiles++
 			continue
 		}
-		if strings.ToLower(filepath.Ext(pathname)) == ".zip" {
+		if ziputils.IsZipFile(pathname) {
 			// Process ZIP file to get a list of JSON files inside
 			files, err := processZipFileForMnemonics(pathname)
 			if err != nil {
@@ -104,8 +88,8 @@ func (m *MnemonicsFormModel) Run() (*VaultsDataFiles, error) {
 				extractedFilesMap[file] = true
 			}
 		} else {
-			// For regular JSON files, just count them
-			totalJSONFiles++
+			// Count loose files (.json and .dr) for the checklist
+			totalFiles++
 		}
 	}
 
@@ -115,10 +99,10 @@ func (m *MnemonicsFormModel) Run() (*VaultsDataFiles, error) {
 	}
 
 	// Add extracted files count to total
-	totalJSONFiles += len(extractedFiles)
+	totalFiles += len(extractedFiles)
 
 	// Update the total files count
-	m.totalFiles = totalJSONFiles
+	m.totalFiles = totalFiles
 
 	// Now process the files
 	for _, pathname := range m.filenames {
@@ -130,7 +114,6 @@ func (m *MnemonicsFormModel) Run() (*VaultsDataFiles, error) {
 
 		// Check if this is a ZIP file
 		if ziputils.IsZipFile(pathname) {
-			m.extractedAll = true
 			fmt.Println(PlainTextf("Processing ZIP file: %s", pathname))
 
 			// Skip processing ZIPs here - we'll process all extracted files together below

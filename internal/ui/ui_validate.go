@@ -107,9 +107,6 @@ func ValidateFiles(appConfig *config.AppConfig) error {
 	// First pass: existence, dedupe, and classify. Bundle zips pass through unextracted
 	// (expanded later by the recovery pipeline); incompatible mixes are rejected here.
 	uniqueFiles := make(map[string]struct{})
-	isBundle := make(map[string]struct{}, len(files))
-	hasLegacyZip := false
-	hasLoose := false
 	hasDR := false
 	var firstZipFile, firstLooseFile, firstBundleFile string
 
@@ -126,28 +123,27 @@ func ValidateFiles(appConfig *config.AppConfig) error {
 		uniqueFiles[file] = struct{}{}
 
 		switch {
-		case isBundleZip(file):
-			isBundle[file] = struct{}{}
+		case ziputils.IsBundleZip(file):
 			if firstBundleFile == "" {
 				firstBundleFile = file
 			}
 		case ziputils.IsZipFile(file):
-			hasLegacyZip = true
 			if firstZipFile == "" {
 				firstZipFile = file
 			}
 		default:
-			hasLoose = true
 			if firstLooseFile == "" {
 				firstLooseFile = file
 			}
-			if strings.EqualFold(filepath.Ext(file), ".dr") {
+			if isDRFile(file) {
 				hasDR = true
 			}
 		}
 	}
 
-	hasBundle := len(isBundle) > 0
+	hasBundle := firstBundleFile != ""
+	hasLegacyZip := firstZipFile != ""
+	hasLoose := firstLooseFile != ""
 
 	if hasBundle && hasLegacyZip {
 		return errors2.Errorf("⚠ cannot mix a Virtual Signer bundle zip with a legacy vault-export ZIP. '%s' is a Virtual Signer bundle (contains manifest.json) and '%s' is a legacy ZIP of JSON exports. Please recover them in separate runs.",
@@ -159,9 +155,10 @@ func ValidateFiles(appConfig *config.AppConfig) error {
 			firstZipFile, firstLooseFile)
 	}
 
-	// Process files
+	// Process files. Past the mix checks above, either every zip is a bundle or
+	// every zip is a legacy archive, so the cheap extension check is enough here.
 	for _, file := range files {
-		if _, ok := isBundle[file]; ok {
+		if hasBundle && ziputils.IsZipFile(file) {
 			processedFiles = append(processedFiles, file)
 			continue
 		}
@@ -197,10 +194,12 @@ func ValidateFiles(appConfig *config.AppConfig) error {
 	// from the JSON-shape check; they're validated by attempting decryption in runTool instead.
 	// Bundle zips are likewise not JSON; validated during pipeline expansion.
 	for _, file := range processedFiles {
-		if _, ok := isBundle[file]; ok {
+		// Only bundle zips survive to here as .zip (legacy zips were replaced by
+		// their extracted contents above).
+		if ziputils.IsZipFile(file) {
 			continue
 		}
-		if strings.EqualFold(filepath.Ext(file), ".dr") {
+		if isDRFile(file) {
 			f, err := os.Open(file)
 			if err != nil {
 				cleanupZipExtractedDirs(zipExtractedDirs)

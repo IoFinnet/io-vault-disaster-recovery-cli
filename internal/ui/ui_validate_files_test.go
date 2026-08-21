@@ -14,12 +14,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// buildTestZip writes a synthetic zip into t.TempDir() and returns its path.
 type zipEntry struct {
 	name string
 	data []byte
 }
 
+// buildTestZip writes a synthetic zip into t.TempDir() and returns its path.
 func buildTestZip(t *testing.T, filename string, entries []zipEntry) string {
 	t.Helper()
 	zipPath := filepath.Join(t.TempDir(), filename)
@@ -40,7 +40,7 @@ func buildTestZip(t *testing.T, filename string, entries []zipEntry) string {
 func makeBundleZip(t *testing.T) string {
 	t.Helper()
 	return buildTestZip(t, "bundle.zip", []zipEntry{
-		{name: "manifest.json", data: []byte(`{"version":2}`)},
+		{name: "manifest.json", data: []byte(`{"formatVersion":2}`)},
 		{name: "dr/v1/share.dr", data: []byte{0x01, 0x02}},
 	})
 }
