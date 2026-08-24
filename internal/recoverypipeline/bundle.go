@@ -43,7 +43,7 @@ type expandState struct {
 	declared       map[string]declaredFile
 	hasManifest    bool
 	bundleCap      int64
-	extractedTotal int64
+	readTotal      int64             // decompressed bytes read, whether kept or thrown away
 	extractedByKey map[string]string // lower-cased cleaned path -> first entry name
 	presentation   ErrorPresentation
 }
@@ -53,8 +53,8 @@ type expandState struct {
 //
 // Algorithm: read manifest (or fall back to envelope-only) → index declarations →
 // set a decompressed-byte budget → walk entries in zip order (reject / extract /
-// reconcile) → warn about declared-but-absent paths. Only successfully kept
-// entries charge the budget, so a torn entry cannot starve later healthy ones.
+// reconcile) → warn about declared-but-absent paths. Every decompressed byte charges
+// the budget, kept or not, so a stream of torn entries cannot drive unbounded work.
 func expandBundle(zipPath, tempDir string, presentation ErrorPresentation) (
 	artifacts []Artifact, info *BundleInfo, warnings []Warning, err error) {
 
@@ -129,8 +129,8 @@ func processBundleEntry(f *zip.File, st *expandState) (art *Artifact, warnings [
 			fmt.Sprintf("ignoring unsupported entry %q", f.Name))}, false
 	}
 
-	// Stop the whole walk once the kept-byte budget is spent.
-	remaining := st.bundleCap - st.extractedTotal
+	// Stop the whole walk once the decompressed-byte budget is spent.
+	remaining := st.bundleCap - st.readTotal
 	if remaining <= 0 {
 		return nil, []Warning{entryIgnored(st.sourceID, "",
 			fmt.Sprintf("stopping at the %d-byte bundle budget; %q and later entries skipped", st.bundleCap, f.Name))}, true
@@ -146,9 +146,11 @@ func processBundleEntry(f *zip.File, st *expandState) (art *Artifact, warnings [
 	}
 	limit := min(entryCap, remaining)
 
-	// Extract under LimitReader; failed extracts are not charged to the budget.
+	// Extract under LimitReader. Charge what was decompressed even on failure, so an
+	// archive full of over-cap entries cannot spend unbounded work for free.
 	destPath := filepath.Join(st.tempDir, filepath.FromSlash(name))
 	written, sum, extractErr := extractEntry(f, destPath, limit)
+	st.readTotal += written
 	if extractErr != nil {
 		// limit < entryCap means the bundle budget (not the per-entry cap) was binding.
 		if written > limit && limit < entryCap {
@@ -160,7 +162,6 @@ func processBundleEntry(f *zip.File, st *expandState) (art *Artifact, warnings [
 	}
 
 	// Keep + reconcile: mismatch/problems warn only; metadata never vetoes.
-	st.extractedTotal += written
 	st.extractedByKey[key] = f.Name
 	warnings = reconcileKept(f.Name, st.sourceID, written, sum, df, isDeclared, st.hasManifest)
 	return &Artifact{Path: destPath, SourceID: st.sourceID, ContentSHA256: sum}, warnings, false
@@ -193,26 +194,26 @@ func indexManifest(manifest *bundleManifest, sourceID string) (*BundleInfo, map[
 	return info, declared, declaredTotal
 }
 
-// computeBundleCap chooses how many decompressed bytes may be kept from this archive.
-// With a manifest: max(2×Σ declared, 1 GiB). Without: from zip headers, clamped by
-// on-disk size × compression ratio (headers may lie upward; the stream still enforces).
+// computeBundleCap chooses how many decompressed bytes may be read from this archive.
+// The claimed size comes from the manifest when there is one, else from the zip headers;
+// either way it is clamped by on-disk size × compression ratio, because both sources may
+// lie upward (the stream still enforces the result).
 func computeBundleCap(manifest *bundleManifest, declaredTotal int64, reader *zip.Reader, zipPath string) int64 {
-	if manifest != nil {
-		return max(2*declaredTotal, bundleCapFloorBytes)
+	claimed := declaredTotal
+	if manifest == nil {
+		claimed = 0
+		for _, f := range reader.File {
+			claimed += int64(f.UncompressedSize64)
+		}
 	}
 
-	var headerTotal int64
-	for _, f := range reader.File {
-		headerTotal += int64(f.UncompressedSize64)
+	// max() also absorbs a negative 2×claimed, which an overflowing claimed size produces.
+	budget := max(2*claimed, bundleCapFloorBytes)
+	st, statErr := os.Stat(zipPath)
+	if statErr != nil {
+		return budget
 	}
-
-	if st, statErr := os.Stat(zipPath); statErr == nil {
-		return min(
-			max(2*headerTotal, bundleCapFloorBytes),
-			max(maxCompressionRatio*st.Size(), bundleCapFloorBytes),
-		)
-	}
-	return max(2*headerTotal, bundleCapFloorBytes)
+	return min(budget, max(maxCompressionRatio*st.Size(), bundleCapFloorBytes))
 }
 
 // reconcileKept emits mismatch/problem/undeclared warnings but never drops the

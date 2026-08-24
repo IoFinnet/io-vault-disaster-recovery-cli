@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -437,6 +438,88 @@ func TestDiscoverArtifacts(t *testing.T) {
 		}
 		if !hasCode(warnings, WarningDuplicateArtifact) {
 			t.Fatalf("want duplicate warning, got %v", warnings)
+		}
+	})
+}
+
+// A hostile archive can hold many entries that each blow their per-entry extraction cap.
+// The bytes are decompressed and thrown away, so the walk must still charge them and end.
+// Scale is forced by entryCapFloorBytes: the cap has to bind before the bundle budget does.
+func TestProcessBundleEntry_ChargesFailedExtractions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("decompresses ~64 MiB to make the per-entry cap bind")
+	}
+
+	payload := bytes.Repeat([]byte("a"), int(entryCapFloorBytes+miB))
+	zipPath := buildZip(t, []zipEntry{
+		{name: "a.dr", data: payload},
+		{name: "b.dr", data: payload},
+	})
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+
+	// Declared with a tiny claimed size, so entryCap is the 64 MiB floor and binds first.
+	declared := map[string]declaredFile{}
+	for _, name := range []string{"a.dr", "b.dr"} {
+		declared[name] = declaredFile{vaultID: "v", manifestFile: manifestFile{Path: name, Bytes: 1}}
+	}
+	st := &expandState{
+		tempDir:        t.TempDir(),
+		sourceID:       "bundle.zip",
+		declared:       declared,
+		hasManifest:    true,
+		bundleCap:      entryCapFloorBytes + 8*miB,
+		extractedByKey: map[string]string{},
+	}
+
+	art, warnings, stop := processBundleEntry(r.File[0], st)
+	if art != nil || stop {
+		t.Fatalf("first entry: art=%v stop=%v, want nil/false", art, stop)
+	}
+	if !hasCode(warnings, WarningBundleEntryIgnored) {
+		t.Fatalf("first entry: want entry-ignored, got %v", warnings)
+	}
+	if st.readTotal < entryCapFloorBytes {
+		t.Fatalf("readTotal=%d, want the failed extract charged >=%d", st.readTotal, entryCapFloorBytes)
+	}
+
+	// Charging leaves too little budget for the next entry, so the walk stops.
+	if _, _, stop = processBundleEntry(r.File[1], st); !stop {
+		t.Fatal("want stop once failed extracts have spent the budget")
+	}
+}
+
+func TestComputeBundleCap_ClampsByOnDiskSize(t *testing.T) {
+	// Sparse file: stat reports the size without writing the bytes.
+	const zipSize = 4 * miB
+	zipPath := filepath.Join(t.TempDir(), "bundle.zip")
+	if err := os.WriteFile(zipPath, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(zipPath, zipSize); err != nil {
+		t.Fatal(err)
+	}
+	ratioClamp := maxCompressionRatio * zipSize
+
+	t.Run("manifest claiming more than the archive can hold", func(t *testing.T) {
+		got := computeBundleCap(&bundleManifest{}, 100*giB, nil, zipPath)
+		if got != ratioClamp {
+			t.Fatalf("cap=%d, want the %d-byte ratio clamp", got, ratioClamp)
+		}
+	})
+
+	t.Run("modest manifest keeps the floor", func(t *testing.T) {
+		if got := computeBundleCap(&bundleManifest{}, 1*miB, nil, zipPath); got != bundleCapFloorBytes {
+			t.Fatalf("cap=%d, want floor %d", got, bundleCapFloorBytes)
+		}
+	})
+
+	t.Run("overflowing claim falls back to the floor", func(t *testing.T) {
+		if got := computeBundleCap(&bundleManifest{}, math.MaxInt64, nil, zipPath); got != bundleCapFloorBytes {
+			t.Fatalf("cap=%d, want floor %d", got, bundleCapFloorBytes)
 		}
 	})
 }
