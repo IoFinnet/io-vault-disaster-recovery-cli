@@ -122,12 +122,7 @@ func run() int {
 		if choice == "1" {
 			*webMode = true
 		} else if choice == "2" {
-			fmt.Println("\nPlease supply some input files on the command line. \nExamples:")
-			fmt.Println("- Individual JSON files: recovery-tool.exe [-flags] file1.json file2.json …")
-			fmt.Println("- ZIP archives containing JSON files: recovery-tool.exe [-flags] backup1.zip backup2.zip")
-			fmt.Println("\nNOTE: Inside a ZIP, .json/.dr files may be in any directory; macOS __MACOSX metadata is ignored")
-			fmt.Println("\nOptional flags:")
-			flag.PrintDefaults()
+			printInputHelp()
 			return 0
 		} else {
 			fmt.Println("\nInvalid choice. Please run the tool again and select 1 or 2.")
@@ -143,14 +138,7 @@ func run() int {
 
 	// Validate files for CLI mode
 	if len(files) < 1 {
-		fmt.Println("Please supply some input files on the command line. \nExamples:")
-		fmt.Println("- Individual JSON files: recovery-tool.exe [-flags] file1.json file2.json …")
-		fmt.Println("- ZIP archives containing JSON files: recovery-tool.exe [-flags] backup1.zip backup2.zip")
-		fmt.Println("- Note: If duplicate filenames exist in multiple ZIPs, the last one processed will be used")
-		fmt.Println("\nNOTE: You cannot mix JSON and ZIP files in the same command")
-		fmt.Println("\nNOTE: Inside a ZIP, .json/.dr files may be in any directory; macOS __MACOSX metadata is ignored")
-		fmt.Println("\nOptional flags:")
-		flag.PrintDefaults()
+		printInputHelp()
 		return 0
 	}
 
@@ -167,9 +155,8 @@ func run() int {
 	// Initialize the global config so ui_input can track ZIP dirs
 	config.GlobalConfig = appConfig
 
-	// ui_input can append to config.GlobalConfig.ZipExtractedDirs directly, so check both.
 	defer func() {
-		dirsToCleanup := append(appConfig.ZipExtractedDirs, config.GlobalConfig.ZipExtractedDirs...)
+		dirsToCleanup := appConfig.ZipExtractedDirs
 		for _, dir := range dirsToCleanup {
 			if err := os.RemoveAll(dir); err != nil {
 				fmt.Println(ui.PlainTextf("⚠ failed to clean up temporary directory %s: %v", dir, err))
@@ -342,6 +329,30 @@ func run() int {
 
 	return 0
 }
+
+// printInputHelp is shown on both no-input paths: the interactive prompt's "command
+// line" choice and a bare invocation. One helper so the two cannot drift.
+func printInputHelp() {
+	fmt.Print(inputHelpText)
+	flag.PrintDefaults()
+}
+
+const inputHelpText = `Usage: recovery-tool [flags] <file>...
+
+Accepted inputs:
+  vault.json           mobile app backup (v5; v4 also needs -threshold)
+  share.dr             Virtual Signer share, needs -keys
+  signer-backup.zip    Virtual Signer bundle, needs -keys
+  backup.zip           legacy ZIP of JSON exports
+
+Bundles, .dr files and mobile backups can be combined:
+  recovery-tool -keys key.pem signer-backup.zip extra.dr vault.json
+
+Legacy ZIPs and legacy flat-nonce JSON each need a run of their own.
+A bundle zip must have manifest.json at its root; see the README.
+
+Flags:
+`
 
 // launchWebInterface starts the http server and optionally opens the browser
 func launchWebInterface(port int, noBrowser bool) {

@@ -30,7 +30,6 @@ type (
 	MnemonicsFormModel struct {
 		filenames       []string
 		totalFiles      int
-		extractedAll    bool
 		privateKeyFiles []string
 	}
 )
@@ -57,7 +56,6 @@ func NewMnemonicsForm(config config.AppConfig) MnemonicsFormModel {
 	return MnemonicsFormModel{
 		filenames:       config.Filenames,
 		totalFiles:      len(config.Filenames),
-		extractedAll:    false,
 		privateKeyFiles: config.PrivateKeyFiles,
 	}
 }
@@ -65,51 +63,21 @@ func NewMnemonicsForm(config config.AppConfig) MnemonicsFormModel {
 func (m *MnemonicsFormModel) Run() (*VaultsDataFiles, error) {
 	filesWithMnemonics := make(VaultsDataFiles, 0, len(m.filenames))
 
-	// Make a first pass to calculate the total number of files
-	totalJSONFiles := 0
-	var extractedFiles []string
-
-	// First, determine if we're dealing with ZIP files and get the total count
-	// and collect all extracted files
-	extractedFilesMap := make(map[string]bool) // Use a map to deduplicate
+	// First pass: classify bundles (IsBundleZip does I/O — once per path here, the
+	// later loop reuses the map).
+	bundlePaths := make(map[string]struct{}, len(m.filenames))
 
 	for _, pathname := range m.filenames {
-		if strings.ToLower(filepath.Ext(pathname)) == ".zip" {
-			// Process ZIP file to get a list of JSON files inside
-			files, err := processZipFileForMnemonics(pathname)
-			if err != nil {
-				return nil, err
-			}
-
-			// Add all extracted files to our map (handles duplicates automatically)
-			for _, file := range files {
-				extractedFilesMap[file] = true
-			}
-		} else {
-			// For regular JSON files, just count them
-			totalJSONFiles++
+		if ziputils.IsBundleZip(pathname) {
+			bundlePaths[pathname] = struct{}{}
 		}
 	}
 
-	// Convert map keys to slice for easier processing
-	for file := range extractedFilesMap {
-		extractedFiles = append(extractedFiles, file)
-	}
-
-	// Add extracted files count to total
-	totalJSONFiles += len(extractedFiles)
-
-	// Update the total files count
-	m.totalFiles = totalJSONFiles
-
 	// Now process the files
 	for _, pathname := range m.filenames {
-		// Check if this is a ZIP file
-		if strings.ToLower(filepath.Ext(pathname)) == ".zip" {
-			m.extractedAll = true
-			fmt.Println(PlainTextf("Processing ZIP file: %s", pathname))
-
-			// Skip processing ZIPs here - we'll process all extracted files together below
+		if _, ok := bundlePaths[pathname]; ok {
+			// Unextracted; decrypted with a private key, not a mnemonic.
+			filesWithMnemonics = append(filesWithMnemonics, VaultsDataFile{File: pathname})
 			continue
 		}
 
@@ -159,62 +127,6 @@ func (m *MnemonicsFormModel) Run() (*VaultsDataFiles, error) {
 		filesWithMnemonics = append(filesWithMnemonics, f)
 	}
 
-	// Process all extracted files from ZIPs
-	if len(extractedFiles) > 0 {
-		fmt.Printf("Processing %d extracted JSON files from ZIP archives\n", len(extractedFiles))
-
-		for _, extractedFile := range extractedFiles {
-			// .dr files are decrypted with a shared private key, not a per-file mnemonic; skip the prompt.
-			if isDRFile(extractedFile) {
-				filesWithMnemonics = append(filesWithMnemonics, VaultsDataFile{File: extractedFile})
-				continue
-			}
-
-			// Use the full filename from the ZIP
-			fileName := filepath.Base(extractedFile)
-			displayFileName := fileName
-
-			// Get the base name just for the description
-			baseName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
-
-			input := huh.NewText().
-				Key("phrase").
-				Title(PlainTextf("Mnemonics for %s (from ZIP)", displayFileName)).
-				Description(PlainTextf("Enter the %d word phrase for %s signer", WORDS, baseName)).
-				Validate(func(input string) error {
-					fileWithMnemonic := VaultsDataFile{File: extractedFile, Mnemonics: input}
-					return fileWithMnemonic.ValidateMnemonics()
-				})
-
-			var form *huh.Form
-
-			// Show the list of files added if there are more than one
-			if len(filesWithMnemonics) > 0 {
-				form = huh.NewForm(
-					huh.NewGroup(
-						huh.NewNote().Description(m.fileList(filesWithMnemonics)),
-						input,
-					),
-				).WithTheme(huh.ThemeBase16())
-			} else {
-				form = huh.NewForm(huh.NewGroup(input)).WithTheme(huh.ThemeBase16())
-			}
-
-			err := form.Run()
-			if err != nil {
-				return nil, err
-			}
-
-			mnemonics := form.GetString("phrase")
-			if mnemonics == "" {
-				return nil, fmt.Errorf("phrase for %s is empty", displayFileName)
-			}
-
-			f := VaultsDataFile{File: extractedFile, Mnemonics: mnemonics}
-			filesWithMnemonics = append(filesWithMnemonics, f)
-		}
-	}
-
 	fmt.Println(m.fileList(filesWithMnemonics))
 	fmt.Print("All mnemonics entered\n\n")
 
@@ -226,24 +138,26 @@ func (m *MnemonicsFormModel) Run() (*VaultsDataFiles, error) {
 }
 
 // ensurePrivateKeyFile prompts once for one or more ML-KEM-768 private key PEM paths if any .dr
-// file is present and no path was already supplied via -keys/-private-key, then records them in
-// the global config for main.go to read and load after this form returns.
+// file or Virtual Signer bundle is present and no path was already supplied via -keys/-private-key,
+// then records them in the global config for main.go to read and load after this form returns.
+// Remaining .zip entries here are bundles (legacy zips were expanded by ValidateFiles, before
+// Run was ever called); IsZipFile is extension-only, so this does not re-open archives.
 func (m *MnemonicsFormModel) ensurePrivateKeyFile(files VaultsDataFiles) error {
-	hasDRFile := false
+	needsKey := false
 	for _, f := range files {
-		if isDRFile(f.File) {
-			hasDRFile = true
+		if isDRFile(f.File) || ziputils.IsZipFile(f.File) {
+			needsKey = true
 			break
 		}
 	}
-	if !hasDRFile || len(m.privateKeyFiles) > 0 {
+	if !needsKey || len(m.privateKeyFiles) > 0 {
 		return nil
 	}
 
 	var input string
 	field := huh.NewInput().
 		Key("privateKeyFile").
-		Title("Virtual Signer .dr files detected").
+		Title("Virtual Signer files detected").
 		Description("Enter the path to the ML-KEM-768 private key PEM file, separate multiple paths with commas").
 		Value(&input).
 		Validate(func(value string) error {
@@ -298,27 +212,6 @@ func (m *MnemonicsFormModel) ensurePrivateKeyFile(files VaultsDataFiles) error {
 	m.privateKeyFiles = paths
 	config.GlobalConfig.PrivateKeyFiles = paths
 	return nil
-}
-
-// processZipFileForMnemonics extracts JSON files from a ZIP archive
-// and prepares them for mnemonic entry
-func processZipFileForMnemonics(zipPath string) ([]string, error) {
-	// Use the ziputils package to extract the files
-	extractedFiles, err := ziputils.ProcessZipFile(zipPath)
-	if err != nil {
-		return nil, err
-	}
-
-	// Get the temp directory where files were extracted
-	if len(extractedFiles) > 0 {
-		tempDir := filepath.Dir(extractedFiles[0])
-		fmt.Println(PlainTextf("Extracted files to temporary directory: %s", tempDir))
-
-		// Track this directory in a global variable that main.go can access
-		config.GlobalConfig.ZipExtractedDirs = append(config.GlobalConfig.ZipExtractedDirs, tempDir)
-	}
-
-	return extractedFiles, nil
 }
 
 func (m *MnemonicsFormModel) fileList(filesWithMnemonics []VaultsDataFile) string {

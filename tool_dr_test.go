@@ -702,6 +702,7 @@ func TestTool_DR_ChainWalk_Ambiguous(t *testing.T) {
 	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEM})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "-request-id")
+	require.Contains(t, err.Error(), "candidates: epoch-a, epoch-b")
 }
 
 func TestTool_DR_RequestIDOverride(t *testing.T) {

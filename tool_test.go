@@ -7,6 +7,7 @@ package main
 import (
 	"archive/zip"
 	"encoding/hex"
+	"fmt"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/config"
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/recoverypipeline"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -973,4 +975,168 @@ func TestLeftPadTo32Bytes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestReportPipelineWarnings(t *testing.T) {
+	tests := []struct {
+		name              string
+		justListingVaults bool
+		vaultCount        int
+		want              bool
+	}{
+		{"recovery pass, several vaults", false, 5, true},
+		{"recovery pass, zero vaults", false, 0, true},
+		{"listing pass, zero vaults", true, 0, true},
+		{"listing pass, one vault", true, 1, false},
+		{"listing pass, several vaults", true, 5, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, reportPipelineWarnings(tt.justListingVaults, tt.vaultCount))
+		})
+	}
+}
+
+func TestPipelineWarningLines_CodeFilter(t *testing.T) {
+	tests := []struct {
+		name string
+		code recoverypipeline.WarningCode
+		kept bool
+	}{
+		{"bundle.entry-ignored is kept", recoverypipeline.WarningBundleEntryIgnored, true},
+		{"cleanup.failed is kept", recoverypipeline.WarningCleanupFailed, true},
+		{"bundle.file-problem is dropped", recoverypipeline.WarningBundleFileProblem, false},
+		{"bundle.file-mismatch is dropped", recoverypipeline.WarningBundleFileMismatch, false},
+		{"manifest.ignored is dropped", recoverypipeline.WarningManifestIgnored, false},
+		{"input.duplicate-artifact is dropped", recoverypipeline.WarningDuplicateArtifact, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lines := pipelineWarningLines([]recoverypipeline.Warning{{Code: tt.code, Message: "something happened"}})
+			if tt.kept {
+				assert.Len(t, lines, 1)
+			} else {
+				assert.Empty(t, lines)
+			}
+		})
+	}
+}
+
+func TestPipelineWarningLines_Shape(t *testing.T) {
+	t.Run("prefixes the source id when set", func(t *testing.T) {
+		lines := pipelineWarningLines([]recoverypipeline.Warning{
+			{Code: recoverypipeline.WarningBundleEntryIgnored, SourceID: "signer-backup.zip", Message: `ignoring unsupported entry "notes.txt"`},
+		})
+		require.Len(t, lines, 1)
+		assert.Equal(t, `⚠ signer-backup.zip: ignoring unsupported entry "notes.txt"`, lines[0])
+	})
+
+	t.Run("omits the prefix cleanly when the source id is absent", func(t *testing.T) {
+		lines := pipelineWarningLines([]recoverypipeline.Warning{
+			{Code: recoverypipeline.WarningCleanupFailed, Message: "failed to remove temporary recovery files: device or resource busy"},
+		})
+		require.Len(t, lines, 1)
+		assert.Equal(t, "⚠ failed to remove temporary recovery files: device or resource busy", lines[0])
+	})
+
+	t.Run("appends the vault id only when set", func(t *testing.T) {
+		withVault := pipelineWarningLines([]recoverypipeline.Warning{
+			{Code: recoverypipeline.WarningBundleEntryIgnored, SourceID: "signer-backup.zip", VaultID: "019f2838", Message: `could not extract "a.dr": permission denied`},
+		})
+		require.Len(t, withVault, 1)
+		assert.Equal(t, `⚠ signer-backup.zip: could not extract "a.dr": permission denied (vault 019f2838)`, withVault[0])
+
+		withoutVault := pipelineWarningLines([]recoverypipeline.Warning{
+			{Code: recoverypipeline.WarningBundleEntryIgnored, SourceID: "signer-backup.zip", Message: `could not extract "a.dr": permission denied`},
+		})
+		require.Len(t, withoutVault, 1)
+		assert.Equal(t, `⚠ signer-backup.zip: could not extract "a.dr": permission denied`, withoutVault[0])
+	})
+}
+
+func TestPipelineWarningLines_PreservesProducerOrder(t *testing.T) {
+	lines := pipelineWarningLines([]recoverypipeline.Warning{
+		{Code: recoverypipeline.WarningBundleEntryIgnored, SourceID: "a.zip", Message: "first"},
+		{Code: recoverypipeline.WarningManifestIgnored, Message: "dropped, must not appear"},
+		{Code: recoverypipeline.WarningCleanupFailed, Message: "second"},
+		{Code: recoverypipeline.WarningBundleFileMismatch, Message: "dropped, must not appear"},
+		{Code: recoverypipeline.WarningBundleEntryIgnored, SourceID: "b.zip", Message: "third"},
+	})
+	require.Len(t, lines, 3)
+	assert.Equal(t, "⚠ a.zip: first", lines[0])
+	assert.Equal(t, "⚠ second", lines[1])
+	assert.Equal(t, "⚠ b.zip: third", lines[2])
+}
+
+func TestPipelineWarningLines_EmptyInput(t *testing.T) {
+	assert.Empty(t, pipelineWarningLines(nil))
+	assert.Empty(t, pipelineWarningLines([]recoverypipeline.Warning{}))
+}
+
+func TestPipelineWarningLines_StripsControlCharactersFromEntryNames(t *testing.T) {
+	// Entry names come from an untrusted archive; a crafted name must not be able to
+	// emit terminal escapes or break the one-line-per-warning output.
+	maliciousName := "notes\x1b[31mRED\x1b[0m\nEVIL\r\n.txt"
+	lines := pipelineWarningLines([]recoverypipeline.Warning{
+		{Code: recoverypipeline.WarningBundleEntryIgnored, SourceID: "signer-backup.zip",
+			Message: fmt.Sprintf("ignoring unsupported entry %q", maliciousName)},
+	})
+	require.Len(t, lines, 1)
+	assert.NotContains(t, lines[0], "\x1b")
+	assert.NotContains(t, lines[0], "\n")
+	assert.NotContains(t, lines[0], "\r")
+}
+
+// TestTool_BundleZip_Listing_EntryIgnoredWarning covers the scenario the print block in
+// runTool exists for: a bundle whose only entries are non-.dr files decodes to zero
+// vaults with no error, so the listing pass is the only chance to surface the dropped
+// entry.
+func TestTool_BundleZip_Listing_EntryIgnoredWarning(t *testing.T) {
+	zipPath := createTestBundleZipWithIgnoredEntry(t)
+	defer os.Remove(zipPath)
+
+	files := []ui.VaultsDataFile{{File: zipPath}}
+
+	_, _, _, orderedVaults, _, err := runTool(files, "", 0, false, "", 0, "", "", nil)
+	require.NoError(t, err)
+	assert.Empty(t, orderedVaults)
+
+	res, err := recoverypipeline.Prepare(files, recoverypipeline.Options{})
+	require.NoError(t, err)
+	found := false
+	for _, w := range res.Warnings {
+		if w.Code == recoverypipeline.WarningBundleEntryIgnored {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "expected a bundle.entry-ignored warning, got %+v", res.Warnings)
+}
+
+// createTestBundleZipWithIgnoredEntry builds a Virtual Signer backup bundle zip - a root
+// manifest.json (declaring no vaults) plus one non-.dr entry, which the bundle expander
+// ignores and drops rather than treating as a recoverable artifact.
+func createTestBundleZipWithIgnoredEntry(t *testing.T) string {
+	tempZip, err := os.CreateTemp("", "test_bundle_*.zip")
+	require.NoError(t, err)
+	tempZip.Close()
+
+	file, err := os.OpenFile(tempZip.Name(), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	require.NoError(t, err)
+	defer file.Close()
+
+	zipWriter := zip.NewWriter(file)
+
+	manifestWriter, err := zipWriter.Create("manifest.json")
+	require.NoError(t, err)
+	_, err = manifestWriter.Write([]byte(`{"formatVersion":2,"signerId":"sig-1","vaults":[]}`))
+	require.NoError(t, err)
+
+	notesWriter, err := zipWriter.Create("notes.txt")
+	require.NoError(t, err)
+	_, err = notesWriter.Write([]byte("not a share"))
+	require.NoError(t, err)
+
+	require.NoError(t, zipWriter.Close())
+	return tempZip.Name()
 }

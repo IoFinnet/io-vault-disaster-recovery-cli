@@ -148,7 +148,8 @@ Use multiple ZIP archives:
 ./recovery-tool-mac sandbox/backups1.zip sandbox/backups2.zip sandbox/backups3.zip
 ```
 
-Note: You cannot mix JSON and ZIP files, or .dr and ZIP files in the same command.
+Note: Legacy ZIP archives of JSON exports are their own recovery path - do not combine
+them with loose JSON/`.dr` files, or with Virtual Signer bundle zips.
 
 Replace `mac` with one of the following depending on your computer's OS and architecture:
 - `linux-amd64` - For Linux on x86-64 processors
@@ -160,6 +161,44 @@ Replace `mac` with one of the following depending on your computer's OS and arch
 > [!NOTE]
 > The tool will try to auto-detect the optimal "reshare nonce" and "threshold/quroum" of the vault you are trying to recover.
 > However, if you would like to override this behavior, you may specify custom values with `-nonce` and `-threshold` flags respectively.
+
+### Virtual Signer backup bundles
+
+`signerctl share backup` writes a Virtual Signer backup as a folder containing a
+`manifest.json` plus one `.dr` file per share. Zip the folder's **contents** - not the
+folder itself - so that `manifest.json` sits at the root of the archive, then pass the
+zip to the recovery tool like any other input file:
+
+``` bash
+./recovery-tool-mac -keys sandbox/mlkem768_priv.pem sandbox/signer-backup.zip
+```
+
+`-keys` takes one or more ML-KEM-768 private key PEM paths - repeatable, or
+comma-separated (`-keys a.pem,b.pem`). `-private-key` is the single-path alias for the
+same flag. Without a key you are prompted for one. Bundle zips need no mnemonic.
+
+Bundle zips, loose `.dr` files and mobile app JSON backups can all be combined in the
+same run, and one `-keys` may carry a key per signer:
+
+``` bash
+./recovery-tool-mac -keys signer1.pem,signer2.pem signer1-backup.zip extra.dr vault.json
+```
+
+Prefer v5 mobile app exports over v4: v5 carries its own threshold and request ids,
+while v4 carries neither, so a v4-only vault needs an explicit `-threshold`.
+
+> [!NOTE]
+> When you zip a Virtual Signer backup folder yourself, zip the folder's contents, not
+> the folder - `manifest.json` must be at the archive root. A zip of a bare `dr/` tree
+> with no `manifest.json` still works for a single signer; with several signers the
+> `.dr` file names collide, so pass the `.dr` files individually instead, or zip one per
+> signer.
+
+> [!NOTE]
+> Two combinations are rejected: a legacy vault export (flat reshare-nonce JSON, no
+> request ids) cannot be combined with bundle zips or `.dr` files - recover it in its
+> own run, with only its mnemonic. And a legacy ZIP archive of JSON exports cannot be
+> combined with a Virtual Signer bundle zip - they are separate recovery paths.
 
 ### .dr file format and version compatibility
 
