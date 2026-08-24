@@ -214,7 +214,11 @@ func getTSSPubKeyForEthereum(x, y *big.Int) (*secp256k1.PublicKey, string, error
 	if x == nil || y == nil {
 		return nil, "", errors.New("invalid public key coordinates")
 	}
-	pubKey, err := secp256k1.ParsePubKey(append([]byte{0x04}, append(x.Bytes(), y.Bytes()...)...))
+	// big.Int.Bytes() drops leading zero bytes, so a coordinate below 2^248 would
+	// shorten the uncompressed key below the 65 bytes ParsePubKey requires.
+	uncompressed := append([]byte{0x04}, leftPadTo32Bytes(x)...)
+	uncompressed = append(uncompressed, leftPadTo32Bytes(y)...)
+	pubKey, err := secp256k1.ParsePubKey(uncompressed)
 	if err != nil {
 		return nil, "", err
 	}
