@@ -24,22 +24,6 @@ const (
 	WarningManifestIgnored WarningCode = "manifest.ignored"
 )
 
-// SelectionCandidate holds the fields needed to choose a request id for one vault.
-type SelectionCandidate struct {
-	VaultID      string
-	RequestID    string
-	Threshold    int
-	HasEdDSA     bool
-	ECDSASharesN int
-	EdDSASharesN int
-	SourceIDs    []string
-}
-
-// SelectionResult records the chosen request id for each vault.
-type SelectionResult struct {
-	Selected map[string]string // vaultID -> requestID
-}
-
 type (
 	SavedData struct {
 		Vaults map[string]VaultEntry `json:"vaults"`
