@@ -28,6 +28,9 @@ func StripPathFromError(err error) error {
 // PermissionOwnerRW is the file mode granting only the owner read/write access.
 const PermissionOwnerRW os.FileMode = 0600
 
+// PermissionOwnerRWX is the directory mode granting only the owner full access.
+const PermissionOwnerRWX os.FileMode = 0700
+
 func WriteToNewFile(filename string, data []byte, perm os.FileMode) error {
 	// O_CREATE will create a new file if one doesn’t exist already
 	// O_EXCL means the file must not exist already

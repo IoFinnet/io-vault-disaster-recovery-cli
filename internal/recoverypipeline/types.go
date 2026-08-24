@@ -21,8 +21,22 @@ const (
 type WarningCode string
 
 const (
-	WarningManifestIgnored WarningCode = "manifest.ignored"
+	WarningManifestIgnored    WarningCode = "manifest.ignored"
+	WarningBundleEntryIgnored WarningCode = "bundle.entry-ignored" // entry DROPPED
+	WarningBundleFileProblem  WarningCode = "bundle.file-problem"  // kept; manifest flags it
+	WarningBundleFileMismatch WarningCode = "bundle.file-mismatch" // kept anyway, or declared-but-absent
+	WarningDuplicateArtifact  WarningCode = "input.duplicate-artifact"
+	WarningCleanupFailed      WarningCode = "cleanup.failed"
 )
+
+// Warning is a non-fatal finding. Never carries key material.
+type Warning struct {
+	Code      WarningCode
+	Message   string
+	VaultID   string
+	RequestID string
+	SourceID  string
+}
 
 type (
 	SavedData struct {
