@@ -58,7 +58,8 @@ func Discover(files []ui.VaultsDataFile, presentation ErrorPresentation) (*Input
 	return inputs, err
 }
 
-// Close removes temp dirs and clears the mnemonics. Later calls return the first call's
+// Close removes temp dirs and drops the set's mnemonic references — Go strings are
+// immutable, so the bytes are not overwritten. Later calls return the first call's
 // result. Safe on a nil receiver. No Prepare may follow it.
 func (s *InputSet) Close() error {
 	if s == nil {
