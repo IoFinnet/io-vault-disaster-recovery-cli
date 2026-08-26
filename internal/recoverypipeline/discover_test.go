@@ -243,3 +243,62 @@ func TestPrepare_DoesNotRemoveTempDir(t *testing.T) {
 		t.Fatalf("extracted file should be removed after Close, stat err: %v", err)
 	}
 }
+
+func TestBundleCurrentRequestIDs_NilReceiver(t *testing.T) {
+	var inputs *InputSet
+	if got := inputs.BundleCurrentRequestIDs(); got != nil {
+		t.Fatalf("nil receiver: got %v, want nil", got)
+	}
+}
+
+func TestBundleCurrentRequestIDs_NoBundles(t *testing.T) {
+	inputs := &InputSet{}
+	got := inputs.BundleCurrentRequestIDs()
+	if len(got) != 0 {
+		t.Fatalf("no bundles: got %v, want empty", got)
+	}
+}
+
+func TestBundleCurrentRequestIDs_SingleBundle(t *testing.T) {
+	inputs := &InputSet{
+		bundles: []BundleInfo{
+			{SignerID: "s1", CurrentRequestIDs: map[string]string{
+				"vault-a": "req-5",
+				"vault-b": "req-3",
+			}},
+		},
+	}
+	got := inputs.BundleCurrentRequestIDs()
+	if got["vault-a"] != "req-5" || got["vault-b"] != "req-3" {
+		t.Fatalf("single bundle: got %v", got)
+	}
+}
+
+func TestBundleCurrentRequestIDs_TwoBundlesAgree(t *testing.T) {
+	inputs := &InputSet{
+		bundles: []BundleInfo{
+			{SignerID: "s1", CurrentRequestIDs: map[string]string{"vault-a": "req-5"}},
+			{SignerID: "s2", CurrentRequestIDs: map[string]string{"vault-a": "req-5"}},
+		},
+	}
+	got := inputs.BundleCurrentRequestIDs()
+	if got["vault-a"] != "req-5" {
+		t.Fatalf("two bundles agree: got %v", got)
+	}
+}
+
+func TestBundleCurrentRequestIDs_TwoBundlesDisagree(t *testing.T) {
+	inputs := &InputSet{
+		bundles: []BundleInfo{
+			{SignerID: "s1", CurrentRequestIDs: map[string]string{"vault-a": "req-5", "vault-b": "req-2"}},
+			{SignerID: "s2", CurrentRequestIDs: map[string]string{"vault-a": "req-3", "vault-b": "req-2"}},
+		},
+	}
+	got := inputs.BundleCurrentRequestIDs()
+	if _, ok := got["vault-a"]; ok {
+		t.Fatalf("conflicting vault should be absent, got %v", got)
+	}
+	if got["vault-b"] != "req-2" {
+		t.Fatalf("non-conflicting vault: got %v", got)
+	}
+}

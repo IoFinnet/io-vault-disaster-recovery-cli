@@ -79,6 +79,36 @@ func (s *InputSet) Close() error {
 	return s.closeErr
 }
 
+// BundleCurrentRequestIDs returns the manifest-declared current request id per vault,
+// merged across all bundles. When bundles disagree for a vault the entry is omitted
+// and the chain walk decides instead.
+func (s *InputSet) BundleCurrentRequestIDs() map[string]string {
+	if s == nil {
+		return nil
+	}
+	seen := make(map[string]string)
+	conflicts := make(map[string]bool)
+	for _, b := range s.bundles {
+		for vID, reqID := range b.CurrentRequestIDs {
+			if prev, ok := seen[vID]; ok && prev != reqID {
+				conflicts[vID] = true
+			} else if !ok {
+				seen[vID] = reqID
+			}
+		}
+	}
+	if len(conflicts) == 0 {
+		return seen
+	}
+	merged := make(map[string]string, len(seen)-len(conflicts))
+	for vID, reqID := range seen {
+		if !conflicts[vID] {
+			merged[vID] = reqID
+		}
+	}
+	return merged
+}
+
 // discoverArtifacts turns frontend inputs into the flat list decode walks.
 // Bundle zips expand into temp dirs registered for cleanup before expansion
 // starts, so partial work is always removed. Content-identical artifacts are
