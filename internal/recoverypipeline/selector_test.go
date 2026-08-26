@@ -265,6 +265,20 @@ func TestDRReshareChain_Pick(t *testing.T) {
 		}
 	})
 
+	t.Run("JSON ECDSA meets threshold but EdDSA does not: do not skip .dr", func(t *testing.T) {
+		c := drReshareChain{
+			"req-2": {threshold: 2, ecdsa: make([]*ecdsa_keygen.LocalPartySaveData, 2), hasEdDSA: true,
+				eddsa: make([]*eddsa_keygen.LocalPartySaveData, 2)},
+		}
+		got, _, err := c.pick("", "", jsonContribution{RequestID: "req-1", ECDSA: 2, EdDSA: 1})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "req-2" {
+			t.Fatalf("should not skip .dr when JSON EdDSA is below threshold, got %q", got)
+		}
+	})
+
 	t.Run("disconnected roots: error", func(t *testing.T) {
 		c := drReshareChain{
 			"branch-a": {threshold: 2, ecdsa: make([]*ecdsa_keygen.LocalPartySaveData, 2)},

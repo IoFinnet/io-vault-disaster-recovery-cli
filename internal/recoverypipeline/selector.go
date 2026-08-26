@@ -30,7 +30,9 @@ func (c drReshareChain) pick(override, manifestHint string, json jsonContributio
 	// JSON path alone has quorum at a reshare not in this chain — skip .dr.
 	if json.RequestID != "" && json.ECDSA > 0 {
 		if _, inChain := c[json.RequestID]; !inChain {
-			if entry := c[chainHeadID(c)]; entry != nil && entry.threshold > 0 && json.ECDSA >= entry.threshold {
+			if entry := c[chainHeadID(c)]; entry != nil && entry.threshold > 0 &&
+				json.ECDSA >= entry.threshold &&
+				(!entry.hasEdDSA || json.EdDSA >= entry.threshold) {
 				return "", nil, nil
 			}
 		}
@@ -78,8 +80,14 @@ func (c drReshareChain) pick(override, manifestHint string, json jsonContributio
 	if len(ordered) > 0 {
 		head := c[ordered[0]]
 		extra := jsonExtras(ordered[0], json)
+		ecdsaCount := len(head.ecdsa) + extra.ECDSA
+		eddsaCount := len(head.eddsa) + extra.EdDSA
+		if head.hasEdDSA {
+			return "", warnings, fmt.Errorf("not enough shares at any reshare (best candidate %s: %d/%d ECDSA, %d/%d EdDSA, need %d)",
+				ordered[0], ecdsaCount, head.threshold, eddsaCount, head.threshold, head.threshold)
+		}
 		return "", warnings, fmt.Errorf("not enough shares at any reshare (best candidate %s: %d ECDSA, need %d)",
-			ordered[0], len(head.ecdsa)+extra.ECDSA, head.threshold)
+			ordered[0], ecdsaCount, head.threshold)
 	}
 	return "", warnings, fmt.Errorf("no reshares found in chain")
 }
