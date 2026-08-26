@@ -107,6 +107,19 @@ func TestChainHead(t *testing.T) {
 			t.Fatalf("ordered should visit both nodes, got %v", ordered)
 		}
 	})
+
+	t.Run("dangling previousRequestId", func(t *testing.T) {
+		c := drReshareChain{
+			"req-2": {previousRequestId: "req-1"},
+		}
+		ordered, roots := chainHead(c)
+		if len(roots) != 1 || roots[0] != "req-2" {
+			t.Fatalf("roots = %v, want [req-2]", roots)
+		}
+		if len(ordered) != 1 || ordered[0] != "req-2" {
+			t.Fatalf("ordered = %v, want [req-2] (dangling ref stopped)", ordered)
+		}
+	})
 }
 
 func TestDRReshareChain_Pick(t *testing.T) {

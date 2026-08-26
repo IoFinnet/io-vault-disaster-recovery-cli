@@ -124,9 +124,13 @@ func chainHead(c drReshareChain) (ordered []string, roots []string) {
 	for i := len(roots) - 1; i >= 0; i-- {
 		cur := roots[i]
 		for cur != "" && !visited[cur] {
+			entry, ok := c[cur]
+			if !ok {
+				break
+			}
 			visited[cur] = true
 			ordered = append(ordered, cur)
-			cur = c[cur].previousRequestId
+			cur = entry.previousRequestId
 		}
 	}
 	return ordered, roots
