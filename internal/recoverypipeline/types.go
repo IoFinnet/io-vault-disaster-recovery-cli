@@ -21,12 +21,14 @@ const (
 type WarningCode string
 
 const (
-	WarningManifestIgnored    WarningCode = "manifest.ignored"
-	WarningBundleEntryIgnored WarningCode = "bundle.entry-ignored" // entry DROPPED
-	WarningBundleFileProblem  WarningCode = "bundle.file-problem"  // kept; manifest flags it
-	WarningBundleFileMismatch WarningCode = "bundle.file-mismatch" // kept anyway, or declared-but-absent
-	WarningDuplicateArtifact  WarningCode = "input.duplicate-artifact"
-	WarningCleanupFailed      WarningCode = "cleanup.failed"
+	WarningManifestIgnored      WarningCode = "manifest.ignored"
+	WarningBundleEntryIgnored   WarningCode = "bundle.entry-ignored" // entry DROPPED
+	WarningBundleFileProblem    WarningCode = "bundle.file-problem"  // kept; manifest flags it
+	WarningBundleFileMismatch   WarningCode = "bundle.file-mismatch" // kept anyway, or declared-but-absent
+	WarningDuplicateArtifact    WarningCode = "input.duplicate-artifact"
+	WarningCleanupFailed        WarningCode = "cleanup.failed"
+	WarningReshareAmbiguousRoot WarningCode = "reshare.ambiguous-root"
+	WarningReshareFallback      WarningCode = "reshare.fallback-older"
 )
 
 // Warning is a non-fatal finding. Never carries key material.
@@ -100,6 +102,18 @@ type (
 		ecdsa             []*ecdsa_keygen.LocalPartySaveData
 		eddsa             []*eddsa_keygen.LocalPartySaveData
 		hasEdDSA          bool
+	}
+
+	// drReshareChain is one vault's .dr shares grouped by request id. Each entry is
+	// one reshare; the previousRequestId fields link them into a chain.
+	drReshareChain map[string]*drVaultShares
+
+	// jsonContribution describes what the JSON/mobile path already contributed for a
+	// vault before the .dr selection runs.
+	jsonContribution struct {
+		RequestID string // which reshare the mobile shares belong to, "" if none
+		ECDSA     int    // ECDSA shares already in the pool
+		EdDSA     int    // EdDSA shares already in the pool
 	}
 
 	SaveData interface{}
