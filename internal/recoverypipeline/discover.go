@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ziputils"
@@ -31,6 +32,52 @@ type BundleInfo struct {
 }
 
 type cleanupFunc func() error
+
+// InputSet is Discover's output, shared across every Prepare call of one recovery attempt.
+// Close it after the last one: it holds a copy of each input's mnemonics, which the
+// frontend's own Zeroize can no longer reach.
+type InputSet struct {
+	artifacts []Artifact
+	bundles   []BundleInfo
+	warnings  []Warning
+	cleanup   cleanupFunc
+	closeOnce sync.Once
+	closeErr  error
+}
+
+// Discover returns a non-nil set even on error, so the caller can always Close it.
+// On error close immediately; on success, defer.
+func Discover(files []ui.VaultsDataFile, presentation ErrorPresentation) (*InputSet, error) {
+	artifacts, bundles, warnings, cleanup, err := discoverArtifacts(files, presentation)
+	inputs := &InputSet{
+		artifacts: artifacts,
+		bundles:   bundles,
+		warnings:  warnings,
+		cleanup:   cleanup,
+	}
+	return inputs, err
+}
+
+// Close removes temp dirs and drops the set's mnemonic references — Go strings are
+// immutable, so the bytes are not overwritten. Later calls return the first call's
+// result. Safe on a nil receiver. No Prepare may follow it.
+func (s *InputSet) Close() error {
+	if s == nil {
+		return nil
+	}
+	s.closeOnce.Do(func() {
+		if s.cleanup != nil {
+			s.closeErr = s.cleanup()
+		}
+
+		// Outside the error path: a failed removal must not leave mnemonics reachable.
+		for i := range s.artifacts {
+			s.artifacts[i].Mnemonics = ""
+		}
+		s.artifacts = nil
+	})
+	return s.closeErr
+}
 
 // discoverArtifacts turns frontend inputs into the flat list decode walks.
 // Bundle zips expand into temp dirs registered for cleanup before expansion

@@ -16,6 +16,7 @@ import (
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/bittensor"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/config"
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/recoverypipeline"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/solana"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/web"
@@ -213,7 +214,15 @@ func run() int {
 	 * Retrieve vaults information and select a vault
 	 */
 
-	_, _, _, vaultsFormInfo, _, err := runTool(*vaultsDataFiles, "", *nonceOverride, *nonceOverride > -1, *requestIDOverride, *quorumOverride, *exportKSFile, *passwordForKS, privateKeysPEM)
+	inputs, err := recoverypipeline.Discover(*vaultsDataFiles, recoverypipeline.ErrorPresentation{})
+	if err != nil {
+		inputs.Close()
+		fmt.Println(ui.ErrorBox(err))
+		return 1
+	}
+	defer inputs.Close()
+
+	_, _, _, vaultsFormInfo, _, err := runTool(inputs, "", *nonceOverride, *nonceOverride > -1, *requestIDOverride, *quorumOverride, *exportKSFile, *passwordForKS, privateKeysPEM)
 	if err != nil {
 		fmt.Println(ui.ErrorBox(err))
 		fmt.Println()
@@ -254,7 +263,7 @@ func run() int {
 		lipgloss.NewStyle().Bold(true).Render(ui.PlainTextf("RECOVERING VAULT \"%s\" WITH ID %s\n", selectedVault.Name, selectedVault.VaultID)),
 	)
 
-	address, ecSK, edSK, _, exportedKsFile, err := runTool(*vaultsDataFiles, selectedVault.VaultID, *nonceOverride, *nonceOverride > -1, *requestIDOverride, *quorumOverride, *exportKSFile, *passwordForKS, privateKeysPEM)
+	address, ecSK, edSK, _, exportedKsFile, err := runTool(inputs, selectedVault.VaultID, *nonceOverride, *nonceOverride > -1, *requestIDOverride, *quorumOverride, *exportKSFile, *passwordForKS, privateKeysPEM)
 	if err != nil {
 		fmt.Println(ui.ErrorBox(err))
 		fmt.Println()
