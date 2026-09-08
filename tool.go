@@ -24,7 +24,7 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID string, nonceOverride int, nonceOverrideSet bool, requestIDOverride string, quorumOverride int, exportKSFile, passwordForKS string, privateKeysPEM [][]byte) (
+func runTool(inputs *recoverypipeline.InputSet, vaultID string, nonceOverride int, nonceOverrideSet bool, requestIDOverride string, quorumOverride int, exportKSFile, passwordForKS string, privateKeysPEM [][]byte) (
 	address string, ecdsaSK, eddsaSK []byte, orderedVaults []ui.VaultPickerItem, exportedKsFile *string, welp error) {
 
 	if nonceOverrideSet {
@@ -47,7 +47,7 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID string, nonceOverride i
 		NonceOverrideSet:  nonceOverrideSet,
 		RequestIDOverride: requestIDOverride,
 	}
-	res, err := recoverypipeline.Prepare(vaultsDataFile, opts)
+	res, err := recoverypipeline.Prepare(inputs, opts)
 	if err != nil {
 		switch {
 		case errors.Is(err, recoverypipeline.ErrPrivateKeyRequired):
@@ -64,6 +64,14 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID string, nonceOverride i
 	orderedVaults = res.OrderedVaults
 
 	justListingVaults := vaultID == ""
+	if !justListingVaults {
+		if cerr := inputs.Close(); cerr != nil {
+			res.Warnings = append(res.Warnings, recoverypipeline.Warning{
+				Code:    recoverypipeline.WarningCleanupFailed,
+				Message: fmt.Sprintf("failed to remove temporary recovery files: %s", cerr),
+			})
+		}
+	}
 	if reportPipelineWarnings(justListingVaults, len(orderedVaults)) {
 		for _, line := range pipelineWarningLines(res.Warnings) {
 			fmt.Println(line)

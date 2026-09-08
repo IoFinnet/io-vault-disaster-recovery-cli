@@ -37,6 +37,20 @@ const (
 	mmNewSingle = "jacket zone rotate merry forward paper cruel forget train prevent teach bitter lumber razor uncle stairs finger chief curtain render tray tower odor garbage"
 )
 
+// runToolFiles builds a fresh InputSet per call, so a test that needs one set across two
+// runTool calls must wire Discover itself.
+func runToolFiles(files []ui.VaultsDataFile, vaultID string, nonceOverride int, nonceOverrideSet bool, requestIDOverride string, quorumOverride int, exportKSFile, passwordForKS string, privateKeysPEM [][]byte) (
+	address string, ecdsaSK, eddsaSK []byte, orderedVaults []ui.VaultPickerItem, exportedKsFile *string, welp error) {
+
+	inputs, err := recoverypipeline.Discover(files, recoverypipeline.ErrorPresentation{})
+	if err != nil {
+		inputs.Close()
+		return "", nil, nil, nil, nil, err
+	}
+	defer inputs.Close()
+	return runTool(inputs, vaultID, nonceOverride, nonceOverrideSet, requestIDOverride, quorumOverride, exportKSFile, passwordForKS, privateKeysPEM)
+}
+
 func TestTool_New_V2_List(t *testing.T) {
 	files := []ui.VaultsDataFile{
 		{File: "./test-files/new_bvn.json", Mnemonics: mmNewBvn},
@@ -45,7 +59,7 @@ func TestTool_New_V2_List(t *testing.T) {
 	}
 
 	// use the correct file path for tests
-	address, ecSK, edSK, vaultFormData, _, err := runTool(files, "", 0, false, "", 0, "", "", nil)
+	address, ecSK, edSK, vaultFormData, _, err := runToolFiles(files, "", 0, false, "", 0, "", "", nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -91,7 +105,7 @@ func TestTool_New_V2_Export_lqns(t *testing.T) {
 		{File: "./test-files/new_u44.json", Mnemonics: mmNewU44},
 	}
 
-	address, ecSK, edSK, vaultsFormData, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
+	address, ecSK, edSK, vaultsFormData, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -119,7 +133,7 @@ func TestTool_NewSingle_V2_List(t *testing.T) {
 		{File: "./test-files/new_single.json", Mnemonics: mmNewSingle},
 	}
 	// use the correct file path for tests
-	address, _, edSK, vaultFormData, _, err := runTool(files, "", 0, false, "", 0, "", "", nil)
+	address, _, edSK, vaultFormData, _, err := runToolFiles(files, "", 0, false, "", 0, "", "", nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -143,7 +157,7 @@ func TestTool_NewSingle_V2_List_BadMnemonic(t *testing.T) {
 		{File: "./test-files/new_single.json", Mnemonics: mmV2},
 	}
 	// use the correct file path for tests
-	_, _, _, _, _, err := runTool(files, "", 0, false, "", 0, "", "", nil)
+	_, _, _, _, _, err := runToolFiles(files, "", 0, false, "", 0, "", "", nil)
 	if !assert.Error(t, err) {
 		return
 	}
@@ -156,7 +170,7 @@ func TestTool_NewSingle_V2_Export_qvl5(t *testing.T) {
 	files := []ui.VaultsDataFile{
 		{File: "./test-files/new_single.json", Mnemonics: mmNewSingle},
 	}
-	_, ecSK, edSK, vaultsFormData, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
+	_, ecSK, edSK, vaultsFormData, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -183,7 +197,7 @@ func TestTool_NewSingle_V2_Export_qvl5_BadMnemonic(t *testing.T) {
 	files := []ui.VaultsDataFile{
 		{File: "./test-files/new_single.json", Mnemonics: mmV2},
 	}
-	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
+	_, _, _, _, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", nil)
 	if !assert.Error(t, err) {
 		return
 	}
@@ -195,7 +209,7 @@ func TestTool_Legacy_V2_List(t *testing.T) {
 	}
 
 	// use the correct file path for tests
-	address, ecSK, edSK, vaultsFormData, _, err := runTool(files, "", 0, false, "", 0, "", "", nil)
+	address, ecSK, edSK, vaultsFormData, _, err := runToolFiles(files, "", 0, false, "", 0, "", "", nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -221,7 +235,7 @@ func TestTool_Legacy_V2_Export_c20x(t *testing.T) {
 		{File: "./test-files/v2.json", Mnemonics: mmV2},
 	}
 
-	address, ecSK, edSK, vaultsFormData, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
+	address, ecSK, edSK, vaultsFormData, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -251,7 +265,7 @@ func TestTool_Legacy_V1_IL_List(t *testing.T) {
 		{File: "./test-files/l.json", Mnemonics: mmL},
 	}
 
-	address, ecSK, edSK, vaultsFormData, _, err := runTool(files, "", 0, false, "", 0, "", "", nil)
+	address, ecSK, edSK, vaultsFormData, _, err := runToolFiles(files, "", 0, false, "", 0, "", "", nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -281,7 +295,7 @@ func TestTool_Legacy_V1_IL_Export_m0k(t *testing.T) {
 		{File: "./test-files/l.json", Mnemonics: mmL},
 	}
 
-	address, ecSK, edSK, vaultFormData, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
+	address, ecSK, edSK, vaultFormData, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", nil)
 
 	if !assert.NoError(t, err) {
 		return
@@ -314,7 +328,7 @@ func TestTool_Legacy_V1_ILM_List(t *testing.T) {
 		{File: "./test-files/l.json", Mnemonics: mmL},
 	}
 
-	address, ecSK, edSK, vaultsFormData, _, err := runTool(files, "", 0, false, "", 0, "", "", nil)
+	address, ecSK, edSK, vaultsFormData, _, err := runToolFiles(files, "", 0, false, "", 0, "", "", nil)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -345,7 +359,7 @@ func TestTool_Legacy_V1_ILM_Export_m0k(t *testing.T) {
 		{File: "./test-files/l.json", Mnemonics: mmL},
 	}
 
-	address, ecSK, edSK, vaultsFormData, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
+	address, ecSK, edSK, vaultsFormData, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", nil)
 
 	if !assert.NoError(t, err) {
 		return
@@ -406,7 +420,7 @@ func TestZipFileProcessing_V2_List(t *testing.T) {
 	}
 
 	// Run the tool to list vaults - this is what we're comparing to
-	address, ecSK, edSK, expectedVaultFormData, _, err := runTool(files, "", 0, false, "", 0, "", "", nil)
+	address, ecSK, edSK, expectedVaultFormData, _, err := runToolFiles(files, "", 0, false, "", 0, "", "", nil)
 	require.NoError(t, err)
 
 	// The test has passed if we got to this point - the ZIP file handler worked
@@ -476,7 +490,7 @@ func TestZipFileProcessing_V2_Export_lqns(t *testing.T) {
 	}
 
 	// Run the tool with regular files first to get expected result
-	expectedAddress, expectedEcSK, expectedEdSK, expectedVaultsFormData, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
+	expectedAddress, expectedEcSK, expectedEdSK, expectedVaultsFormData, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", nil)
 	require.NoError(t, err)
 	require.Len(t, expectedVaultsFormData, 1)
 
@@ -1097,11 +1111,14 @@ func TestTool_BundleZip_Listing_EntryIgnoredWarning(t *testing.T) {
 
 	files := []ui.VaultsDataFile{{File: zipPath}}
 
-	_, _, _, orderedVaults, _, err := runTool(files, "", 0, false, "", 0, "", "", nil)
+	_, _, _, orderedVaults, _, err := runToolFiles(files, "", 0, false, "", 0, "", "", nil)
 	require.NoError(t, err)
 	assert.Empty(t, orderedVaults)
 
-	res, err := recoverypipeline.Prepare(files, recoverypipeline.Options{})
+	inputs, err := recoverypipeline.Discover(files, recoverypipeline.ErrorPresentation{})
+	require.NoError(t, err)
+	defer inputs.Close()
+	res, err := recoverypipeline.Prepare(inputs, recoverypipeline.Options{})
 	require.NoError(t, err)
 	found := false
 	for _, w := range res.Warnings {
