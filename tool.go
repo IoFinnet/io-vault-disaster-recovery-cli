@@ -245,7 +245,10 @@ func reportPipelineWarnings(justListingVaults bool, vaultCount int) bool {
 func pipelineWarningLines(warnings []recoverypipeline.Warning) []string {
 	lines := make([]string, 0, len(warnings))
 	for _, w := range warnings {
-		if w.Code != recoverypipeline.WarningBundleEntryIgnored && w.Code != recoverypipeline.WarningCleanupFailed {
+		if w.Code != recoverypipeline.WarningBundleEntryIgnored &&
+			w.Code != recoverypipeline.WarningCleanupFailed &&
+			w.Code != recoverypipeline.WarningReshareAmbiguousRoot &&
+			w.Code != recoverypipeline.WarningReshareFallback {
 			continue
 		}
 		body := w.Message
