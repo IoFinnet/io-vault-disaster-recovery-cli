@@ -117,7 +117,9 @@ type Options struct {
 // With opts.VaultID empty, every vault in every file is processed (listing mode,
 // used by both frontends to discover what to offer); with opts.VaultID set, only
 // that vault's data is decoded, and reshare/threshold conflicts for it are hard errors.
-func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, welp error) {
+//
+// inputs must be non-nil — unlike Close, Prepare does not tolerate a nil set.
+func Prepare(inputs *InputSet, opts Options) (res *Result, welp error) {
 	vaultID := opts.VaultID
 	nonceOverride := opts.NonceOverride
 	nonceOverrideSet := opts.NonceOverrideSet
@@ -127,19 +129,7 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 
 	justListingVaults := vaultID == ""
 
-	artifacts, _, discoverWarnings, cleanup, err := discoverArtifacts(vaultsDataFile, presentation)
-	defer func() {
-		if cerr := cleanup(); cerr != nil && res != nil {
-			res.Warnings = append(res.Warnings, Warning{
-				Code:    WarningCleanupFailed,
-				Message: fmt.Sprintf("failed to remove temporary recovery files: %s", presentation.err(cerr)),
-			})
-		}
-	}()
-	if err != nil {
-		welp = err
-		return
-	}
+	artifacts := inputs.artifacts
 
 	// Internal & returned data structures
 	clearVaults := make(ClearVaultMap, len(artifacts)*16)
@@ -162,12 +152,12 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 	// JSON below, one .dr file is one device's shares for one specific reshare, keyed by
 	// RequestId), so they're grouped by vault+requestId here and folded in below once every input
 	// file has been seen, walking the chain to find each vault's current reshare.
-	drSharesByVaultRequestID := make(map[string]map[string]*drVaultShares, len(artifacts))
+	drSharesByVault := make(map[string]drReshareChain, len(artifacts))
 
 	// Process each vault data file
 	for _, artifact := range artifacts {
 		if strings.EqualFold(filepath.Ext(artifact.Path), ".dr") {
-			if err := processDRFile(artifact.Path, privateKeysPEM, vaultID, justListingVaults, drSharesByVaultRequestID, presentation); err != nil {
+			if err := processDRFile(artifact.Path, privateKeysPEM, vaultID, justListingVaults, drSharesByVault, presentation); err != nil {
 				welp = err
 				return
 			}
@@ -237,8 +227,13 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 				}
 				cipheredVault = cv
 				lastRequestID = requestID
-				if welp = rejectOnRequestIDDisagreement(vID, lastRequestID, clearVaults, vaultLastRequestIDs); welp != nil {
-					return
+				// Listing is best-effort: disagreement between files is tolerable because
+				// listing never reconstructs keys. Recovery mode must reject it — mixing
+				// shares from different reshares produces garbage.
+				if !justListingVaults {
+					if welp = rejectOnRequestIDDisagreement(vID, lastRequestID, clearVaults, vaultLastRequestIDs); welp != nil {
+						return
+					}
 				}
 			}
 
@@ -406,22 +401,46 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 	}
 
 	// Fold in the .dr shares accumulated above: for each vault, walk the previousRequestId chain
-	// (or honor a -request-id override) to find its current reshare, warning on disagreement with
-	// whatever the legacy/v4 JSON path already picked for that vault, then merge that reshare's
-	// shares into the same pools used by the legacy path so a single recovery run can mix both
-	// file formats for a vault.
-	for vID, byRequestID := range drSharesByVaultRequestID {
-		requestID, err := pickLatestDRRequestID(byRequestID, vID, requestIDOverride, justListingVaults)
-		if err != nil {
-			welp = err
-			return
+	// (or honor a -request-id override) to find its current reshare, then merge that reshare's
+	// shares into the same pools used by the JSON path.
+	bundleHints := inputs.BundleCurrentRequestIDs()
+	var selectionWarnings []Warning
+
+	for vID, chain := range drSharesByVault {
+		var requestID string
+		var selWarnings []Warning
+
+		if justListingVaults {
+			requestID = chain.pickForListing()
+		} else {
+			var err error
+			requestID, selWarnings, err = chain.pick(
+				requestIDOverride,
+				bundleHints[vID],
+				jsonContribution{
+					RequestID: vaultLastRequestIDs[vID],
+					ECDSA:     len(vaultAllSharesECDSA[vID]),
+					EdDSA:     len(vaultAllSharesEDDSA[vID]),
+				},
+			)
+			if err != nil {
+				welp = fmt.Errorf("vault %s: %w", vID, err)
+				return
+			}
 		}
+		selectionWarnings = append(selectionWarnings, selWarnings...)
+
 		if requestID == "" {
 			continue
 		}
-		chosen := byRequestID[requestID]
-		if welp = rejectOnRequestIDDisagreement(vID, requestID, clearVaults, vaultLastRequestIDs); welp != nil {
-			return
+		chosen := chain[requestID]
+
+		// Listing is best-effort: disagreement between the JSON path and .dr chain is
+		// tolerable because listing never reconstructs keys.
+		if !justListingVaults {
+			if welp = rejectOnRequestIDDisagreement(vID, requestID, clearVaults, vaultLastRequestIDs); welp != nil {
+				return
+			}
 		}
 		if err := ensureClearVaultThreshold(clearVaults, vID, chosen.threshold,
 			fmt.Sprintf(".dr files for vault %s at request %s", vID, requestID)); err != nil {
@@ -432,6 +451,9 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 		if chosen.hasEdDSA {
 			vaultAllSharesEDDSA[vID] = append(vaultAllSharesEDDSA[vID], chosen.eddsa...)
 			vaultHasEDDSA[vID] = true
+		}
+		if cv := clearVaults[vID]; cv != nil {
+			cv.LastRequestID = requestID
 		}
 	}
 
@@ -458,7 +480,7 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 		MobileVaults:        mobileVaults,
 		MobileFileThreshold: mobileFileThreshold,
 		OrderedVaults:       orderedVaults,
-		Warnings:            discoverWarnings,
+		Warnings:            append(append([]Warning(nil), inputs.warnings...), selectionWarnings...),
 	}, nil
 }
 
@@ -466,7 +488,7 @@ func Prepare(vaultsDataFile []ui.VaultsDataFile, opts Options) (res *Result, wel
 // share pools the legacy mnemonic-encrypted path populates, so a single recovery run can mix both
 // file formats for the same vault.
 func processDRFile(path string, privateKeysPEM [][]byte, vaultID string, justListingVaults bool,
-	drSharesByVaultRequestID map[string]map[string]*drVaultShares, presentation ErrorPresentation) error {
+	drSharesByVault map[string]drReshareChain, presentation ErrorPresentation) error {
 
 	if len(privateKeysPEM) == 0 {
 		return fmt.Errorf("⚠ %s %w", presentation.path(path), ErrPrivateKeyRequired)
@@ -523,10 +545,10 @@ func processDRFile(path string, privateKeysPEM [][]byte, vaultID string, justLis
 	if requestID == "" {
 		return fmt.Errorf("⚠ %s does not carry a requestId", presentation.path(path))
 	}
-	byRequestID, ok := drSharesByVaultRequestID[vID]
+	byRequestID, ok := drSharesByVault[vID]
 	if !ok {
-		byRequestID = make(map[string]*drVaultShares)
-		drSharesByVaultRequestID[vID] = byRequestID
+		byRequestID = make(drReshareChain)
+		drSharesByVault[vID] = byRequestID
 	}
 	entry, ok := byRequestID[requestID]
 	if !ok {

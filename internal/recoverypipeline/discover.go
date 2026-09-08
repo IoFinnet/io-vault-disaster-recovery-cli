@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ziputils"
@@ -31,6 +32,82 @@ type BundleInfo struct {
 }
 
 type cleanupFunc func() error
+
+// InputSet is Discover's output, shared across every Prepare call of one recovery attempt.
+// Close it after the last one: it holds a copy of each input's mnemonics, which the
+// frontend's own Zeroize can no longer reach.
+type InputSet struct {
+	artifacts []Artifact
+	bundles   []BundleInfo
+	warnings  []Warning
+	cleanup   cleanupFunc
+	closeOnce sync.Once
+	closeErr  error
+}
+
+// Discover returns a non-nil set even on error, so the caller can always Close it.
+// On error close immediately; on success, defer.
+func Discover(files []ui.VaultsDataFile, presentation ErrorPresentation) (*InputSet, error) {
+	artifacts, bundles, warnings, cleanup, err := discoverArtifacts(files, presentation)
+	inputs := &InputSet{
+		artifacts: artifacts,
+		bundles:   bundles,
+		warnings:  warnings,
+		cleanup:   cleanup,
+	}
+	return inputs, err
+}
+
+// Close removes temp dirs and drops the set's mnemonic references — Go strings are
+// immutable, so the bytes are not overwritten. Later calls return the first call's
+// result. Safe on a nil receiver. No Prepare may follow it.
+func (s *InputSet) Close() error {
+	if s == nil {
+		return nil
+	}
+	s.closeOnce.Do(func() {
+		if s.cleanup != nil {
+			s.closeErr = s.cleanup()
+		}
+
+		// Outside the error path: a failed removal must not leave mnemonics reachable.
+		for i := range s.artifacts {
+			s.artifacts[i].Mnemonics = ""
+		}
+		s.artifacts = nil
+	})
+	return s.closeErr
+}
+
+// BundleCurrentRequestIDs returns the manifest-declared current request id per vault,
+// merged across all bundles. When bundles disagree for a vault the entry is omitted
+// and the chain walk decides instead.
+func (s *InputSet) BundleCurrentRequestIDs() map[string]string {
+	if s == nil {
+		return nil
+	}
+	seen := make(map[string]string)
+	conflicts := make(map[string]bool)
+	for _, b := range s.bundles {
+		for vID, reqID := range b.CurrentRequestIDs {
+			if prev, ok := seen[vID]; ok && prev != reqID {
+				conflicts[vID] = true
+			} else if !ok {
+				seen[vID] = reqID
+			}
+		}
+	}
+	if len(conflicts) == 0 {
+		return seen
+	}
+	merged := make(map[string]string, len(seen)-len(conflicts))
+	for vID, reqID := range seen {
+		if !conflicts[vID] {
+			merged[vID] = reqID
+		}
+	}
+	return merged
+}
 
 // discoverArtifacts turns frontend inputs into the flat list decode walks.
 // Bundle zips expand into temp dirs registered for cleanup before expansion

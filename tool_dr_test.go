@@ -5,11 +5,14 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/elliptic"
 	"crypto/mlkem"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/asn1"
 	"encoding/base64"
@@ -22,6 +25,8 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/dr"
@@ -53,19 +58,21 @@ func encryptDRForTest(t *testing.T, pub *mlkem.EncapsulationKey768, plaintext []
 	return append(cipherTextKEM, sealed...)
 }
 
-// writeDRFile JSON-marshals payload, encrypts it, wraps it in a dr.FileEnvelope (meta's
-// plaintext fields plus the resulting base64 ciphertext as DataB64), and writes it as a .dr file
-// under dir/name. Returns the file's path.
-func writeDRFile(t *testing.T, dir, name string, pub *mlkem.EncapsulationKey768, meta dr.FileEnvelope, payload any) string {
+// drFileBytes builds a .dr file's on-disk bytes without writing them, for embedding in a zip.
+func drFileBytes(t *testing.T, pub *mlkem.EncapsulationKey768, meta dr.FileEnvelope, payload any) []byte {
 	t.Helper()
 	plaintext, err := json.Marshal(payload)
 	require.NoError(t, err)
-	ciphertext := encryptDRForTest(t, pub, plaintext)
-	meta.DataB64 = base64.StdEncoding.EncodeToString(ciphertext)
+	meta.DataB64 = base64.StdEncoding.EncodeToString(encryptDRForTest(t, pub, plaintext))
 	content, err := json.Marshal(meta)
 	require.NoError(t, err)
+	return content
+}
+
+func writeDRFile(t *testing.T, dir, name string, pub *mlkem.EncapsulationKey768, meta dr.FileEnvelope, payload any) string {
+	t.Helper()
 	path := filepath.Join(dir, name)
-	require.NoError(t, os.WriteFile(path, content, 0o600))
+	require.NoError(t, os.WriteFile(path, drFileBytes(t, pub, meta, payload), 0o600))
 	return path
 }
 
@@ -276,6 +283,129 @@ func genMLKEMKeyPEM(t *testing.T) (priv *mlkem.DecapsulationKey768, privPEM []by
 	return priv, privPEM
 }
 
+// --- Virtual Signer bundle fixture helpers ----------------------------------------------------
+
+type bundleFile struct {
+	name string
+	data []byte
+}
+
+// writeBundleZip declares only .dr entries in the manifest, so any other entry reaches the
+// expander undeclared and unsupported.
+func writeBundleZip(t *testing.T, zipPath, signerID, vaultID string, files []bundleFile) string {
+	t.Helper()
+
+	declared := make([]map[string]any, 0, len(files))
+	for _, f := range files {
+		if !strings.EqualFold(filepath.Ext(f.name), ".dr") {
+			continue
+		}
+		sum := sha256.Sum256(f.data)
+		declared = append(declared, map[string]any{
+			"path": f.name, "sha256": hex.EncodeToString(sum[:]), "bytes": len(f.data),
+		})
+	}
+	manifest, err := json.Marshal(map[string]any{
+		"formatVersion": 2,
+		"signerId":      signerID,
+		"vaults": []map[string]any{
+			{"vaultId": vaultID, "currentRequestId": bundleRequestID, "files": declared},
+		},
+	})
+	require.NoError(t, err)
+
+	out, err := os.OpenFile(zipPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	require.NoError(t, err)
+	defer out.Close()
+
+	w := zip.NewWriter(out)
+	for _, e := range append([]bundleFile{{name: "manifest.json", data: manifest}}, files...) {
+		fw, err := w.Create(e.name)
+		require.NoError(t, err)
+		_, err = fw.Write(e.data)
+		require.NoError(t, err)
+	}
+	require.NoError(t, w.Close())
+	return zipPath
+}
+
+const (
+	bundleVaultID   = "bundle-vault-1"
+	bundleRequestID = "keygen-1"
+)
+
+// oneVaultBundle writes a bundle of real .dr ECDSA shares for one vault, plus extra entries
+// verbatim.
+func oneVaultBundle(t *testing.T, dir string, extra []bundleFile) (zipPath string, privPEM []byte, secret *big.Int) {
+	t.Helper()
+	const threshold, n = 2, 3
+
+	priv, privPEM := genMLKEMKeyPEM(t)
+
+	var (
+		pub    *crypto.ECPoint
+		shares vss.Shares
+	)
+	// A coordinate with a leading zero byte serializes short and fails to parse, for
+	// reasons unrelated to these tests. Draw again rather than inherit that flake.
+	for {
+		secret, pub, shares = makeVSSSharesS256(t, threshold, n)
+		if len(pub.X().Bytes()) == 32 && len(pub.Y().Bytes()) == 32 {
+			break
+		}
+	}
+
+	files := make([]bundleFile, 0, n+len(extra))
+	for i := 0; i < n; i++ {
+		payload := &dr.ECDSASharesAndVaultId{
+			Data:      []*dr.ECDSAShare{{Xi: shares[i].Share, ShareID: shares[i].ID, ECDSAPub: ecPointMirror("secp256k1", pub)}},
+			VaultId:   bundleVaultID,
+			Threshold: threshold,
+		}
+		meta := dr.FileEnvelope{VaultId: bundleVaultID, RequestId: bundleRequestID, Algo: "ECDSA", Curve: "secp256k1"}
+		files = append(files, bundleFile{
+			name: fmt.Sprintf("dr/%s/device%d.ecdsa.secp256k1.dr", bundleVaultID, i),
+			data: drFileBytes(t, priv.EncapsulationKey(), meta, payload),
+		})
+	}
+
+	zipPath = writeBundleZip(t, filepath.Join(dir, "signer-backup.zip"), "signer-1", bundleVaultID, append(files, extra...))
+	return zipPath, privPEM, secret
+}
+
+// bundleTempDirs counts only the caller's own run: tests point TMPDIR at their own directory.
+func bundleTempDirs(t *testing.T, root string) []string {
+	t.Helper()
+	matches, err := filepath.Glob(filepath.Join(root, "vault-recovery-bundle-*"))
+	require.NoError(t, err)
+	return matches
+}
+
+// captureStdout returns everything fn prints to os.Stdout. fn must not call t.Fatal: that
+// skips the restore below and leaves every later test writing into this pipe.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+
+	orig := os.Stdout
+	os.Stdout = w
+
+	captured := make(chan string, 1)
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		_ = r.Close()
+		captured <- buf.String()
+	}()
+
+	fn()
+
+	os.Stdout = orig
+	require.NoError(t, w.Close())
+	return <-captured
+}
+
 // --- tests -------------------------------------------------------------------------------------
 
 func TestTool_DR_ECDSA_And_EdDSA_Recovery(t *testing.T) {
@@ -314,7 +444,7 @@ func TestTool_DR_ECDSA_And_EdDSA_Recovery(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path})
 	}
 
-	address, ecSK, edSK, vaultsFormData, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEM})
+	address, ecSK, edSK, vaultsFormData, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEM})
 	require.NoError(t, err)
 	require.Len(t, vaultsFormData, 1)
 	require.Equal(t, vaultID, vaultsFormData[0].VaultID)
@@ -352,7 +482,7 @@ func TestTool_DR_ThresholdMismatch(t *testing.T) {
 		})
 
 	files := []ui.VaultsDataFile{{File: path1}, {File: path2}}
-	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEM})
+	_, _, _, _, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEM})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "disagrees with another .dr file")
 }
@@ -372,7 +502,7 @@ func TestTool_DR_MissingPrivateKey(t *testing.T) {
 		})
 
 	files := []ui.VaultsDataFile{{File: path}}
-	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
+	_, _, _, _, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "-keys")
 }
@@ -393,7 +523,7 @@ func TestTool_DR_WrongPrivateKey(t *testing.T) {
 		})
 
 	files := []ui.VaultsDataFile{{File: path}}
-	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{wrongPEM})
+	_, _, _, _, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", [][]byte{wrongPEM})
 	require.Error(t, err)
 }
 
@@ -429,7 +559,7 @@ func TestTool_DR_MixedWithLegacy(t *testing.T) {
 		{File: legacyPath, Mnemonics: mmI},
 		{File: drPath},
 	}
-	address, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEM})
+	address, ecSK, _, _, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEM})
 	require.NoError(t, err)
 
 	_, expectedAddress, err := getTSSPubKeyForEthereum(pub.X(), pub.Y())
@@ -455,7 +585,7 @@ func TestTool_V5MobileJSON_Recovery(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path, Mnemonics: mmI})
 	}
 
-	address, ecSK, _, vaultsFormData, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
+	address, ecSK, _, vaultsFormData, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", nil)
 	require.NoError(t, err)
 	require.Len(t, vaultsFormData, 1)
 	require.Equal(t, vaultID, vaultsFormData[0].VaultID)
@@ -488,7 +618,7 @@ func TestTool_V5MobileJSON_ECDSAAndEdDSA(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path, Mnemonics: mmI})
 	}
 
-	address, ecSK, edSK, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
+	address, ecSK, edSK, _, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", nil)
 	require.NoError(t, err)
 
 	_, expectedAddress, err := getTSSPubKeyForEthereum(ecPub.X(), ecPub.Y())
@@ -522,13 +652,13 @@ func TestTool_V5MobileJSON_PerEpochThreshold(t *testing.T) {
 	}
 
 	// Default (currentRequestId = epoch B): reconstructs secretB with epoch B's threshold (3).
-	_, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
+	_, ecSK, _, _, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", nil)
 	require.NoError(t, err)
 	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(secretB)), hex.EncodeToString(ecSK))
 
 	// -request-id epoch A: reconstructs secretA with epoch A's threshold (2), proving the threshold
 	// tracks the chosen epoch's own payload, not a single vault-wide value.
-	_, ecSKA, _, _, _, err := runTool(files, vaultID, 0, false, reqA, 0, "", "", nil)
+	_, ecSKA, _, _, _, err := runToolFiles(files, vaultID, 0, false, reqA, 0, "", "", nil)
 	require.NoError(t, err)
 	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(secretA)), hex.EncodeToString(ecSKA))
 }
@@ -553,12 +683,12 @@ func TestTool_V4MobileJSON_NoThreshold_RequiresFlag(t *testing.T) {
 	}
 
 	// No -threshold → hard error (no threshold in file, none supplied).
-	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
+	_, _, _, _, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no threshold")
 
 	// With -threshold → recovers correctly.
-	address, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", threshold, "", "", nil)
+	address, ecSK, _, _, _, err := runToolFiles(files, vaultID, 0, false, "", threshold, "", "", nil)
 	require.NoError(t, err)
 	_, expectedAddress, err := getTSSPubKeyForEthereum(pub.X(), pub.Y())
 	require.NoError(t, err)
@@ -582,7 +712,7 @@ func TestTool_V5MobileJSON_ThresholdMismatch(t *testing.T) {
 		map[string]mobileRequestFixture{requestID: {threshold: 3, ecdsa: mobileECDSAPayload(vaultID, shares[1], pub)}}) // disagrees
 
 	files := []ui.VaultsDataFile{{File: path0, Mnemonics: mmI}, {File: path1, Mnemonics: mmI}}
-	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", nil)
+	_, _, _, _, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "threshold mismatch")
 }
@@ -615,7 +745,7 @@ func TestTool_LegacyAndV5_ThresholdMismatch_EitherOrder(t *testing.T) {
 		{File: legacyPath, Mnemonics: mmI},
 		{File: mobilePath, Mnemonics: mmI},
 	}
-	_, _, _, _, _, err = runTool(filesLegacyThenV5, vaultID, 0, false, "", 0, "", "", nil)
+	_, _, _, _, _, err = runToolFiles(filesLegacyThenV5, vaultID, 0, false, "", 0, "", "", nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "threshold mismatch")
 
@@ -623,7 +753,7 @@ func TestTool_LegacyAndV5_ThresholdMismatch_EitherOrder(t *testing.T) {
 		{File: mobilePath, Mnemonics: mmI},
 		{File: legacyPath, Mnemonics: mmI},
 	}
-	_, _, _, _, _, err = runTool(filesV5ThenLegacy, vaultID, 0, false, "", 0, "", "", nil)
+	_, _, _, _, _, err = runToolFiles(filesV5ThenLegacy, vaultID, 0, false, "", 0, "", "", nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "threshold mismatch")
 }
@@ -662,7 +792,7 @@ func TestTool_DR_ChainWalk_PicksHead(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path})
 	}
 
-	_, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEM})
+	_, ecSK, _, _, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEM})
 	require.NoError(t, err)
 	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(newSecret)), hex.EncodeToString(ecSK))
 	require.NotEqual(t, hex.EncodeToString(leftPadTo32Bytes(oldSecret)), hex.EncodeToString(ecSK))
@@ -699,7 +829,7 @@ func TestTool_DR_ChainWalk_Ambiguous(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path})
 	}
 
-	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEM})
+	_, _, _, _, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEM})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "-request-id")
 	require.Contains(t, err.Error(), "candidates: epoch-a, epoch-b")
@@ -737,7 +867,7 @@ func TestTool_DR_RequestIDOverride(t *testing.T) {
 		files = append(files, ui.VaultsDataFile{File: path})
 	}
 
-	_, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "epoch-b", 0, "", "", [][]byte{privPEM})
+	_, ecSK, _, _, _, err := runToolFiles(files, vaultID, 0, false, "epoch-b", 0, "", "", [][]byte{privPEM})
 	require.NoError(t, err)
 	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(secretB)), hex.EncodeToString(ecSK))
 }
@@ -760,9 +890,13 @@ func TestPrepare_MissingPrivateKey_PathRedactedForWeb(t *testing.T) {
 		})
 
 	files := []ui.VaultsDataFile{{File: path}}
-	_, err := recoverypipeline.Prepare(files, recoverypipeline.Options{
+	pres := recoverypipeline.ErrorPresentation{Path: filepath.Base}
+	inputs, derr := recoverypipeline.Discover(files, pres)
+	require.NoError(t, derr)
+	defer inputs.Close()
+	_, err := recoverypipeline.Prepare(inputs, recoverypipeline.Options{
 		VaultID:      vaultID,
-		Presentation: recoverypipeline.ErrorPresentation{Path: filepath.Base},
+		Presentation: pres,
 	})
 	require.Error(t, err)
 	require.True(t, errors.Is(err, recoverypipeline.ErrPrivateKeyRequired))
@@ -794,19 +928,19 @@ func TestTool_LegacyNoQuorum_ListsAndRecoversWithFlag(t *testing.T) {
 
 	// Listing mode: the vault shows up with quorum 0 rather than failing the run.
 	emptyVaultID := ""
-	_, _, _, orderedVaults, _, err := runTool(files, emptyVaultID, 0, false, "", 0, "", "", nil)
+	_, _, _, orderedVaults, _, err := runToolFiles(files, emptyVaultID, 0, false, "", 0, "", "", nil)
 	require.NoError(t, err)
 	require.Len(t, orderedVaults, 1)
 	require.Equal(t, vaultID, orderedVaults[0].VaultID)
 	require.Equal(t, 0, orderedVaults[0].Quorum)
 
 	// No -threshold → hard error at reconstruction.
-	_, _, _, _, _, err = runTool(files, vaultID, 0, false, "", 0, "", "", nil)
+	_, _, _, _, _, err = runToolFiles(files, vaultID, 0, false, "", 0, "", "", nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no threshold")
 
 	// With -threshold → recovers correctly.
-	address, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", threshold, "", "", nil)
+	address, ecSK, _, _, _, err := runToolFiles(files, vaultID, 0, false, "", threshold, "", "", nil)
 	require.NoError(t, err)
 	_, expectedAddress, err := getTSSPubKeyForEthereum(pub.X(), pub.Y())
 	require.NoError(t, err)
@@ -840,7 +974,7 @@ func TestTool_LegacyNoQuorum_KeepsV5Threshold(t *testing.T) {
 		{{File: mobilePath, Mnemonics: mmI}, {File: legacyPath, Mnemonics: mmI}},
 	} {
 		emptyVaultID := ""
-		_, _, _, orderedVaults, _, err := runTool(order, emptyVaultID, 0, false, "", 0, "", "", nil)
+		_, _, _, orderedVaults, _, err := runToolFiles(order, emptyVaultID, 0, false, "", 0, "", "", nil)
 		require.NoError(t, err)
 		require.Len(t, orderedVaults, 1)
 		require.Equal(t, 3, orderedVaults[0].Quorum)
@@ -874,7 +1008,7 @@ func TestTool_DR_MultiKey_SecondKeyDecrypts(t *testing.T) {
 		})
 
 	files := []ui.VaultsDataFile{{File: path}, {File: path2}}
-	address, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{wrongPEM, privPEM})
+	address, ecSK, _, _, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", [][]byte{wrongPEM, privPEM})
 	require.NoError(t, err)
 	_, expectedAddress, err := getTSSPubKeyForEthereum(pub.X(), pub.Y())
 	require.NoError(t, err)
@@ -907,7 +1041,7 @@ func TestTool_DR_MultiKey_DifferentKeysPerFile(t *testing.T) {
 		})
 
 	files := []ui.VaultsDataFile{{File: pathA}, {File: pathB}}
-	address, ecSK, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEMA, privPEMB})
+	address, ecSK, _, _, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEMA, privPEMB})
 	require.NoError(t, err)
 	_, expectedAddress, err := getTSSPubKeyForEthereum(pub.X(), pub.Y())
 	require.NoError(t, err)
@@ -934,7 +1068,7 @@ func TestTool_DR_MultiKey_AllWrong(t *testing.T) {
 		})
 
 	files := []ui.VaultsDataFile{{File: path}}
-	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{wrongPEM1, wrongPEM2})
+	_, _, _, _, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", [][]byte{wrongPEM1, wrongPEM2})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), filepath.Base(path))
 	require.Contains(t, err.Error(), "tried 2 keys")
@@ -955,7 +1089,7 @@ func TestTool_DR_MultiKey_CorruptEnvelope(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("not json"), 0o600))
 
 	files := []ui.VaultsDataFile{{File: path}}
-	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEM1, privPEM2})
+	_, _, _, _, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", [][]byte{privPEM1, privPEM2})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not a JSON envelope")
 }
@@ -977,7 +1111,10 @@ func TestTool_DR_MultiKey_EmptyKeyList(t *testing.T) {
 		})
 
 	files := []ui.VaultsDataFile{{File: path}}
-	_, err := recoverypipeline.Prepare(files, recoverypipeline.Options{
+	inputs, derr := recoverypipeline.Discover(files, recoverypipeline.ErrorPresentation{})
+	require.NoError(t, derr)
+	defer inputs.Close()
+	_, err := recoverypipeline.Prepare(inputs, recoverypipeline.Options{
 		VaultID:        vaultID,
 		PrivateKeysPEM: [][]byte{},
 	})
@@ -1003,7 +1140,105 @@ func TestTool_DR_SingleWrongKey_NoTriedSuffix(t *testing.T) {
 		})
 
 	files := []ui.VaultsDataFile{{File: path}}
-	_, _, _, _, _, err := runTool(files, vaultID, 0, false, "", 0, "", "", [][]byte{wrongPEM})
+	_, _, _, _, _, err := runToolFiles(files, vaultID, 0, false, "", 0, "", "", [][]byte{wrongPEM})
 	require.Error(t, err)
 	require.NotContains(t, err.Error(), "tried")
+}
+
+// --- shared input set across a listing and a recover pass -------------------------------------
+
+// The archive is deleted right after Discover, so a second discovery would find nothing at
+// that path, fall back to reading the .zip as a plain input, and fail. The run survives only
+// by reusing the one extraction. Extraction dirs are counted too, as a second check.
+func TestTool_BundleZip_ExpandedOnceAcrossBothPasses(t *testing.T) {
+	tmpRoot := t.TempDir()
+	zipPath, privPEM, secret := oneVaultBundle(t, t.TempDir(), nil)
+
+	t.Setenv("TMPDIR", tmpRoot)
+	inputs, err := recoverypipeline.Discover([]ui.VaultsDataFile{{File: zipPath}}, recoverypipeline.ErrorPresentation{})
+	require.NoError(t, err)
+	defer inputs.Close()
+	require.Len(t, bundleTempDirs(t, tmpRoot), 1)
+
+	require.NoError(t, os.Remove(zipPath))
+
+	_, _, _, orderedVaults, _, err := runTool(inputs, "", 0, false, "", 0, "", "", [][]byte{privPEM})
+	require.NoError(t, err)
+	require.Len(t, orderedVaults, 1)
+	require.Equal(t, bundleVaultID, orderedVaults[0].VaultID)
+	require.Len(t, bundleTempDirs(t, tmpRoot), 1)
+
+	_, ecSK, _, _, _, err := runTool(inputs, bundleVaultID, 0, false, "", 0, "", "", [][]byte{privPEM})
+	require.NoError(t, err)
+	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(secret)), hex.EncodeToString(ecSK))
+
+	// The recover pass owns the Close, so the run leaves nothing behind.
+	require.Empty(t, bundleTempDirs(t, tmpRoot))
+}
+
+// The dropped entry is found once by Discover, so the listing/recover pair must print it once
+// between them, not once each.
+func TestTool_BundleZip_EntryIgnoredWarning_RenderedOnce(t *testing.T) {
+	extra := []bundleFile{{name: "notes.txt", data: []byte("not a share")}}
+	zipPath, privPEM, secret := oneVaultBundle(t, t.TempDir(), extra)
+
+	inputs, err := recoverypipeline.Discover([]ui.VaultsDataFile{{File: zipPath}}, recoverypipeline.ErrorPresentation{})
+	require.NoError(t, err)
+	defer inputs.Close()
+
+	var (
+		orderedVaults []ui.VaultPickerItem
+		listErr       error
+	)
+	listingOut := captureStdout(t, func() {
+		_, _, _, orderedVaults, _, listErr = runTool(inputs, "", 0, false, "", 0, "", "", [][]byte{privPEM})
+	})
+	require.NoError(t, listErr)
+	require.Len(t, orderedVaults, 1)
+
+	var (
+		ecSK       []byte
+		recoverErr error
+	)
+	recoverOut := captureStdout(t, func() {
+		_, ecSK, _, _, _, recoverErr = runTool(inputs, bundleVaultID, 0, false, "", 0, "", "", [][]byte{privPEM})
+	})
+	require.NoError(t, recoverErr)
+	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(secret)), hex.EncodeToString(ecSK))
+
+	const marker = `ignoring unsupported entry "notes.txt"`
+	total := strings.Count(listingOut, marker) + strings.Count(recoverOut, marker)
+	require.Equal(t, 1, total, "listing output:\n%s\nrecover output:\n%s", listingOut, recoverOut)
+}
+
+// The extraction directory is made unwritable so os.RemoveAll genuinely fails; it returns nil
+// for a directory that is merely already gone, so that cannot be the setup.
+func TestTool_BundleZip_CleanupFailure_RecoversAndWarnsOnce(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs POSIX directory permissions to make os.RemoveAll fail")
+	}
+
+	tmpRoot := t.TempDir()
+	zipPath, privPEM, secret := oneVaultBundle(t, t.TempDir(), nil)
+
+	t.Setenv("TMPDIR", tmpRoot)
+	inputs, err := recoverypipeline.Discover([]ui.VaultsDataFile{{File: zipPath}}, recoverypipeline.ErrorPresentation{})
+	require.NoError(t, err)
+	defer inputs.Close()
+
+	dirs := bundleTempDirs(t, tmpRoot)
+	require.Len(t, dirs, 1)
+	require.NoError(t, os.Chmod(dirs[0], 0o500))
+	t.Cleanup(func() { _ = os.Chmod(dirs[0], 0o700) })
+
+	var (
+		ecSK       []byte
+		recoverErr error
+	)
+	out := captureStdout(t, func() {
+		_, ecSK, _, _, _, recoverErr = runTool(inputs, bundleVaultID, 0, false, "", 0, "", "", [][]byte{privPEM})
+	})
+	require.NoError(t, recoverErr)
+	require.Equal(t, hex.EncodeToString(leftPadTo32Bytes(secret)), hex.EncodeToString(ecSK))
+	require.Equal(t, 1, strings.Count(out, "failed to remove temporary recovery files"), "output:\n%s", out)
 }
