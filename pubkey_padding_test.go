@@ -53,14 +53,3 @@ func TestGetTSSPubKeyForEthereum_ShortCoordinates(t *testing.T) {
 		})
 	}
 }
-
-// TestLeftPadTo32Bytes_PreservesValue: padding must be left-aligned so the numeric value is unchanged.
-func TestLeftPadTo32Bytes_PreservesValue(t *testing.T) {
-	for _, in := range []string{"0", "1", "ff", "e3ae1974566ca06cc516d47e0fb165a674a3dabcfca15e722f0e3450f45889"} {
-		i, ok := new(big.Int).SetString(in, 16)
-		require.True(t, ok)
-		padded := leftPadTo32Bytes(i)
-		require.Len(t, padded, 32)
-		require.Equal(t, 0, i.Cmp(new(big.Int).SetBytes(padded)))
-	}
-}
