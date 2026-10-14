@@ -1,0 +1,24 @@
+coverage:
+  paths:
+    - coverage.out
+  exclude:
+    - "**/*.pb.go"
+codeToTestRatio:
+  code:
+    - "**/*.go"
+    - "!**/*_test.go"
+    - "!**/*.pb.go"
+  test:
+    - "**/*_test.go"
+comment:
+  if: is_pull_request
+  updatePrevious: true
+summary:
+  if: true
+report:
+  if: is_default_branch
+  datastores:
+    - artifact://${GITHUB_REPOSITORY}
+diff:
+  datastores:
+    - artifact://${GITHUB_REPOSITORY}

@@ -1,0 +1,28 @@
+name: Coverage
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+
+jobs:
+  coverage:
+    uses: IoFinnet/reusable-workflows/.github/workflows/coverage.yaml@main
+    with:
+      runner: ubuntu-latest
+      install-command: >-
+        GOPRIVATE=github.com/iofinnet,github.com/IoFinnet
+        GIT_CONFIG_COUNT=1
+        GIT_CONFIG_KEY_0="url.https://${NPM_AUTH_TOKEN}:x-oauth-basic@github.com/.insteadOf"
+        GIT_CONFIG_VALUE_0=https://github.com/
+        go mod download
+      coverage-command: go test -race ./... -coverprofile=coverage.out -covermode=atomic
+      coverage-path: coverage.out
+    secrets:
+      GH_TOKEN_SEMANTIC_RELEASE_AND_NPM_REGISTRY: ${{ secrets.GH_TOKEN_SEMANTIC_RELEASE_AND_NPM_REGISTRY }}
