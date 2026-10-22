@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   coverage:
-    uses: IoFinnet/reusable-workflows/.github/workflows/coverage-go.yaml@feat/reusable-go-coverage
+    uses: IoFinnet/reusable-workflows/.github/workflows/coverage-go.yaml@main
     with:
       runner: ubuntu-latest
       go-version: stable
