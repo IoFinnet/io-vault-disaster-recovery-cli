@@ -21,3 +21,6 @@ bin/*
 .claude/plans/
 .claude/settings.local.json
 .claude/worktrees/
+
+# Generated test coverage
+coverage.out

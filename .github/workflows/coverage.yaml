@@ -1,0 +1,61 @@
+name: Coverage
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: coverage-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  coverage:
+    name: coverage / Report coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
+        with:
+          egress-policy: audit
+
+      - name: Check out code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: stable
+
+      - name: Run tests with coverage
+        run: go test -race ./... -coverprofile=coverage.out -covermode=atomic
+
+      - name: Validate coverage profile and prepare gate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          test -s coverage.out
+          grep -Eq '^mode: atomic$' coverage.out
+          grep -Eq ':[0-9]+\.[0-9]+,[0-9]+\.[0-9]+ [1-9][0-9]* [1-9][0-9]*$' coverage.out
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            awk '{ print; if ($0 == "coverage:") print "  acceptable: diff >= 0%" }' .octocov.yml > .octocov.ci.yml
+          else
+            cp .octocov.yml .octocov.ci.yml
+          fi
+
+      - name: Report coverage
+        uses: k1LoW/octocov-action@a167dc0dee441b7ffc45e1b862ab55ec0d87f278 # v1.5.2
+        with:
+          version: v0.83.3
+          config: .octocov.ci.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
