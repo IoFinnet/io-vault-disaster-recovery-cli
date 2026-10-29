@@ -5,6 +5,7 @@
 package hd
 
 import (
+	"bytes"
 	"crypto/elliptic"
 	"crypto/hmac"
 	"crypto/sha512"
@@ -82,6 +83,17 @@ func (d *Deriver) deriveOne(rec AddressRecord) (DerivedRecord, error) {
 	parsedXpub, err := ParseXpub(rec.Xpub, rec.Curve)
 	if err != nil {
 		return result, fmt.Errorf("invalid xpub: %w", err)
+	}
+
+	// The xpub has to be the vault's own root xpub for this curve. Any other xpub still
+	// yields a valid-looking key, but one that controls nothing on chain.
+	masterPK, err := computePublicKey(masterSK, rec.Algorithm, rec.Curve)
+	if err != nil {
+		return result, err
+	}
+	if !bytes.Equal(masterPK, parsedXpub.PublicKey) {
+		return result, fmt.Errorf("%w (%s xpub has %x, recovered key is %x)",
+			ErrXpubKeyMismatch, rec.Curve, parsedXpub.PublicKey, masterPK)
 	}
 
 	// Parse derivation path

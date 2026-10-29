@@ -317,6 +317,31 @@ func TestDeriveAll_InvalidAlgorithmCurve(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalidAlgorithmCurve)
 }
 
+func TestDeriveAll_XpubFromAnotherKey(t *testing.T) {
+	// BIP32 test vector 1 master key
+	masterECDSA, _ := hex.DecodeString("e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35")
+	deriver, err := NewDeriver(masterECDSA, nil)
+	require.NoError(t, err)
+
+	record := AddressRecord{
+		Address:   "test",
+		Path:      "m/44/60/0/0/1",
+		Algorithm: AlgorithmECDSA,
+		Curve:     CurveSecp256k1,
+	}
+
+	// test vector 1 xpub belongs to the master key
+	record.Xpub = "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8"
+	_, err = deriver.DeriveAll([]AddressRecord{record})
+	require.NoError(t, err)
+
+	// test vector 2 xpub is a different wallet
+	record.Xpub = "xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB"
+	_, err = deriver.DeriveAll([]AddressRecord{record})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrXpubKeyMismatch)
+}
+
 func TestLeftPadTo32Bytes(t *testing.T) {
 	tests := []struct {
 		name     string

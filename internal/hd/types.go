@@ -34,6 +34,7 @@ var (
 	ErrInvalidAlgorithmCurve = errors.New("invalid algorithm/curve combination")
 	ErrHardenedDerivation    = errors.New("hardened derivation not supported")
 	ErrInvalidXpub           = errors.New("invalid xpub format")
+	ErrXpubKeyMismatch       = errors.New("xpub public key does not match the recovered master key")
 	ErrInvalidDerivationPath = errors.New("invalid derivation path")
 	ErrMissingMasterKey      = errors.New("missing master key for algorithm")
 	ErrCSVMissingColumn      = errors.New("CSV missing required column")
