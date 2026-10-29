@@ -204,7 +204,7 @@ func TestWriteCSV(t *testing.T) {
 	require.Len(t, lines, 3) // header + 2 records
 
 	// Check header
-	assert.Equal(t, "address,xpub,path,algorithm,curve,flags,publickey,privatekey", lines[0])
+	assert.Equal(t, "address,xpub,path,algorithm,curve,flags,publickey,privatekey,wif", lines[0])
 
 	// Check first data row
 	assert.Contains(t, lines[1], "addr1")
@@ -221,7 +221,7 @@ func TestWriteCSV(t *testing.T) {
 func TestInputOutputColumns(t *testing.T) {
 	// Verify the column names match expected
 	expectedInput := []string{"address", "xpub", "path", "algorithm", "curve", "flags"}
-	expectedOutput := []string{"address", "xpub", "path", "algorithm", "curve", "flags", "publickey", "privatekey"}
+	expectedOutput := []string{"address", "xpub", "path", "algorithm", "curve", "flags", "publickey", "privatekey", "wif"}
 
 	assert.Equal(t, expectedInput, InputColumns)
 	assert.Equal(t, expectedOutput, OutputColumns)
