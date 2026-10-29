@@ -18,7 +18,7 @@ import (
 var InputColumns = []string{"address", "xpub", "path", "algorithm", "curve", "flags"}
 
 // OutputColumns defines the output CSV column names
-var OutputColumns = []string{"address", "xpub", "path", "algorithm", "curve", "flags", "publickey", "privatekey"}
+var OutputColumns = []string{"address", "xpub", "path", "algorithm", "curve", "flags", "publickey", "privatekey", "wif"}
 
 // ParseCSV reads an input CSV file and returns address records
 func ParseCSV(filePath string) ([]AddressRecord, error) {
@@ -138,6 +138,7 @@ func WriteCSV(filePath string, records []DerivedRecord) error {
 			strconv.Itoa(rec.Flags),
 			rec.PublicKey,
 			rec.PrivateKey,
+			rec.WIF,
 		}
 		if err := writer.Write(row); err != nil {
 			return fmt.Errorf("failed to write CSV row: %w", err)

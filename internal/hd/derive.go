@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/wif"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/decred/dcrd/dcrec/edwards/v2"
 )
@@ -117,6 +118,11 @@ func (d *Deriver) deriveOne(rec AddressRecord) (DerivedRecord, error) {
 
 	result.PrivateKey = hex.EncodeToString(childSK)
 	result.PublicKey = hex.EncodeToString(childPK)
+
+	// Electrum and most Bitcoin wallets import keys as WIF, not hex
+	if rec.Algorithm == AlgorithmECDSA && rec.Curve == CurveSecp256k1 {
+		result.WIF = wif.ToBitcoinWIF(bytes.Clone(childSK), false, true)
+	}
 
 	return result, nil
 }

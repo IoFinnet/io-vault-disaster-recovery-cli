@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/btcsuite/btcd/btcutil"
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -340,6 +342,29 @@ func TestDeriveAll_XpubFromAnotherKey(t *testing.T) {
 	_, err = deriver.DeriveAll([]AddressRecord{record})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrXpubKeyMismatch)
+}
+
+func TestDeriveAll_WIF(t *testing.T) {
+	// BIP32 test vector 1 master key and xpub
+	masterECDSA, _ := hex.DecodeString("e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35")
+	deriver, err := NewDeriver(masterECDSA, nil)
+	require.NoError(t, err)
+
+	xpub := "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8"
+	derived, err := deriver.DeriveAll([]AddressRecord{
+		{Address: "ecdsa", Xpub: xpub, Path: "m/44/0/0/0/1", Algorithm: AlgorithmECDSA, Curve: CurveSecp256k1},
+		{Address: "schnorr", Xpub: xpub, Path: "m/86/0/0/0/0", Algorithm: AlgorithmSCHNORR, Curve: CurveSecp256k1},
+	})
+	require.NoError(t, err)
+
+	decoded, err := btcutil.DecodeWIF(derived[0].WIF)
+	require.NoError(t, err)
+	assert.True(t, decoded.CompressPubKey)
+	assert.True(t, decoded.IsForNet(&chaincfg.MainNetParams))
+	assert.Equal(t, derived[0].PrivateKey, hex.EncodeToString(decoded.PrivKey.Serialize()))
+
+	// Taproot keys are not imported via WIF + p2wpkh, so no WIF is written for them
+	assert.Empty(t, derived[1].WIF)
 }
 
 func TestLeftPadTo32Bytes(t *testing.T) {

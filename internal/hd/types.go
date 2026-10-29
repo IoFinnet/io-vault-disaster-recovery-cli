@@ -63,6 +63,7 @@ type DerivedRecord struct {
 	AddressRecord
 	PublicKey  string // hex-encoded
 	PrivateKey string // hex-encoded
+	WIF        string // mainnet compressed WIF, ECDSA/secp256k1 only
 }
 
 // ParsedXpub contains the decoded components of an extended public key
