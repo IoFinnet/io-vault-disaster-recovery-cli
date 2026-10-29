@@ -7,6 +7,7 @@ package hd
 import (
 	"encoding/csv"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -27,7 +28,12 @@ func ParseCSV(filePath string) ([]AddressRecord, error) {
 	}
 	defer file.Close()
 
-	reader := csv.NewReader(file)
+	return ReadCSV(file)
+}
+
+// ReadCSV reads input CSV data and returns address records
+func ReadCSV(r io.Reader) ([]AddressRecord, error) {
+	reader := csv.NewReader(r)
 
 	// Read header row
 	header, err := reader.Read()

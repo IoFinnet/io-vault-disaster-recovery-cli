@@ -1043,20 +1043,31 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Display HD addresses if present
-        displayHDAddresses(result.hdAddresses);
+        displayHDAddresses(result.hdAddresses, result.hdError);
     }
 
     // Display HD derived addresses in the results table
-    function displayHDAddresses(hdAddresses) {
+    function displayHDAddresses(hdAddresses, hdError) {
         const hdSection = document.getElementById('hd-addresses-section');
         const hdList = document.getElementById('hd-addresses-list');
         const copyBtn = document.getElementById('copy-hd-addresses');
+        const hdErrorText = document.getElementById('hd-addresses-error');
+        const hdTable = hdSection.querySelector('.hd-addresses-table-container');
+        const hdActions = hdSection.querySelector('.hd-addresses-actions');
 
         // Clear previous entries
         hdList.innerHTML = '';
 
-        if (!hdAddresses || hdAddresses.length === 0) {
-            hdSection.style.display = 'none';
+        // The master keys above are still valid when HD derivation fails, so show the error here
+        hdErrorText.textContent = hdError ? `HD addresses were not recovered: ${hdError}` : '';
+        hdErrorText.style.display = hdError ? 'block' : 'none';
+
+        const hasAddresses = hdAddresses && hdAddresses.length > 0;
+        hdTable.style.display = hasAddresses ? '' : 'none';
+        hdActions.style.display = hasAddresses ? '' : 'none';
+
+        if (!hasAddresses) {
+            hdSection.style.display = hdError ? 'block' : 'none';
             return;
         }
 

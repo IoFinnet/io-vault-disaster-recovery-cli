@@ -1236,6 +1236,11 @@ button:active {
     margin-top: 1rem;
 }
 
+.hd-error {
+    color: #c81e1e;
+    font-weight: bold;
+}
+
 @media (max-width: 768px) {
     .container {
         padding: 1rem;
