@@ -345,10 +345,13 @@ The recovery tool supports deriving child keys from recovered master keys using 
 
 ### HD Addresses CSV
 
-The HD addresses CSV file contains information about derived addresses that need their private keys recovered. This file can be exported through:
+The HD addresses CSV file contains information about derived addresses that need their private keys recovered. The io.vault dashboard does not export it yet, so build it from the io.finnet API:
 
-- **io.finnet API** - Available now for programmatic access
-- **io.vault Dashboard** - Coming soon through the web interface
+- `xpub`: `GET /v2/vaults/{vaultId}`, field `curves[].xpub`. A vault has one xpub per curve. Use the `secp256k1` one for ECDSA and Schnorr rows, and the `edwards` one for EdDSA rows.
+- `address` and `path`: `GET /v2/treasury/vaults/{vaultId}/addresses/ecosystem/{ecosystem}/chain/{chain}/hd-addresses`, fields `address` and `derivationPath`. Repeat for every chain the vault uses.
+- `algorithm` and `curve`: from the same address's `curve` field. `secp256k1` becomes `ECDSA,secp256k1`, and `edwards` becomes `EDDSA,Edwards25519`. The API's Bitcoin HD addresses are SegWit (`bc1q...`), so they are ECDSA rows. A Taproot address (`bc1p...`) is a `SCHNORR,secp256k1` row.
+
+Keep a current copy of this CSV together with your backups. Without the xpub's chain code, HD keys can't be derived, and the backup files don't contain it.
 
 #### CSV Format
 
@@ -396,6 +399,14 @@ Upload the CSV file in the "HD Addresses CSV" field alongside your backup files.
 The tool generates a `*_recovered.csv` file containing all original columns plus:
 - `publickey` - The derived public key (hex-encoded)
 - `privatekey` - The derived private key (hex-encoded)
+- `wif` - The derived key as a mainnet WIF, for ECDSA/secp256k1 rows only (the API has no Bitcoin testnet chain)
+
+The browser UI shows the same values in its HD table, and "Copy All HD Addresses" includes the `wif` column.
+
+Using the derived keys:
+- **EVM**: import `privatekey` into MetaMask, as described in [Ethereum & Ethereum-Like Recovery](#ethereum--ethereum-like-recovery).
+- **Bitcoin (SegWit)**: import `wif` into Electrum with the `p2wpkh:` prefix, as described in [Bitcoin Recovery](#bitcoin-recovery). Taproot rows have no `wif`, because Electrum can't import a Taproot key.
+- **Solana, XRP, TAO**: pass `privatekey` (and `publickey` for XRP) to the scripts in [Scripts for Other Chains](#scripts-for-other-chains). A new XRP HD address needs the reserve before it is active.
 
 > [!NOTE]
 > - Only non-hardened derivation paths are supported (no `'` or `h` suffix)

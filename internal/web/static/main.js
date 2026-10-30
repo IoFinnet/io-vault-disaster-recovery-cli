@@ -1085,6 +1085,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button class="copy-btn-small" data-value="${escapeHTML(addr.privateKey)}">Copy</button>
                     </div>
                 </td>
+                <td class="hd-wif">${addr.wif ? `
+                    <div class="key-cell sensitive" title="${escapeHTML(addr.wif)}">
+                        <span class="key-value">${escapeHTML(truncateMiddle(addr.wif, 6, 6))}</span>
+                        <button class="copy-btn-small" data-value="${escapeHTML(addr.wif)}">Copy</button>
+                    </div>` : '—'}
+                </td>
             `;
 
             hdList.appendChild(row);
@@ -1114,9 +1120,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 return str;
             };
-            let csvContent = 'address,path,algorithm,curve,publicKey,privateKey\n';
+            let csvContent = 'address,path,algorithm,curve,publicKey,privateKey,wif\n';
             hdAddresses.forEach(addr => {
-                csvContent += `${escapeCSV(addr.address)},${escapeCSV(addr.path)},${escapeCSV(addr.algorithm)},${escapeCSV(addr.curve)},${escapeCSV(addr.publicKey)},${escapeCSV(addr.privateKey)}\n`;
+                csvContent += `${escapeCSV(addr.address)},${escapeCSV(addr.path)},${escapeCSV(addr.algorithm)},${escapeCSV(addr.curve)},${escapeCSV(addr.publicKey)},${escapeCSV(addr.privateKey)},${escapeCSV(addr.wif || '')}\n`;
             });
 
             copyToClipboard(csvContent);

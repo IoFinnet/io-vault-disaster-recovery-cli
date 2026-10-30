@@ -54,6 +54,7 @@ type HDAddressResult struct {
 	Curve      string `json:"curve"`
 	PublicKey  string `json:"publicKey"`
 	PrivateKey string `json:"privateKey"`
+	WIF        string `json:"wif,omitempty"`
 }
 
 // RecoveryResult stores the recovery data to be sent to the frontend
@@ -784,6 +785,7 @@ func (s *Server) processHDAddresses(r *http.Request, ecdsaSK, eddsaSK []byte) ([
 			Curve:      string(rec.Curve),
 			PublicKey:  rec.PublicKey,
 			PrivateKey: rec.PrivateKey,
+			WIF:        rec.WIF,
 		}
 	}
 
