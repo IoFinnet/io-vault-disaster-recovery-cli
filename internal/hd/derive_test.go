@@ -359,48 +359,6 @@ func TestDeriveChildKey_EdDSA(t *testing.T) {
 	assert.NotEqual(t, masterSK, childSK)
 }
 
-func TestDeriveChildKey_P256(t *testing.T) {
-	// Test with P-256 curve
-	masterSK, _ := hex.DecodeString("e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35")
-	chainCode := make([]byte, 32)
-	for i := range chainCode {
-		chainCode[i] = byte(i)
-	}
-
-	// Compute parent public key
-	parentPubKey, err := computePublicKey(masterSK, AlgorithmECDSA, CurveP256)
-	require.NoError(t, err)
-	assert.Len(t, parentPubKey, 33) // Compressed P-256 key
-
-	// Derive child
-	childSK, childPK, err := deriveChildKey(masterSK, chainCode, parentPubKey, []uint32{0}, AlgorithmECDSA, CurveP256)
-	require.NoError(t, err)
-	assert.Len(t, childSK, 32)
-	assert.Len(t, childPK, 33)
-	assert.NotEqual(t, masterSK, childSK)
-}
-
-func TestDeriveChildKey_Schnorr(t *testing.T) {
-	// Test Schnorr derivation (uses secp256k1 with ECDSA master key)
-	masterSK, _ := hex.DecodeString("e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35")
-	chainCode := make([]byte, 32)
-	for i := range chainCode {
-		chainCode[i] = byte(i)
-	}
-
-	// Compute parent public key
-	parentPubKey, err := computePublicKey(masterSK, AlgorithmSCHNORR, CurveSecp256k1)
-	require.NoError(t, err)
-	assert.Len(t, parentPubKey, 33)
-
-	// Derive child - Schnorr uses same derivation as ECDSA on secp256k1
-	childSK, childPK, err := deriveChildKey(masterSK, chainCode, parentPubKey, []uint32{86, 0, 0}, AlgorithmSCHNORR, CurveSecp256k1)
-	require.NoError(t, err)
-	assert.Len(t, childSK, 32)
-	assert.Len(t, childPK, 33)
-	assert.NotEqual(t, masterSK, childSK)
-}
-
 // TestXRPLVector tests against the known XRPL test vector from TSS tests
 // xpub: xpub661MyMwAqRbcG9aErp1paHxw5LYRQd4t24d7CBReN2EeqynEr3uSSjfP6Jr1RgMYqEFzNPTGKsS96dAALutAnFpdhmVCgNxXW7cB5GVAWse
 // path: m/0

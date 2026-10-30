@@ -13,9 +13,8 @@ import (
 type Algorithm string
 
 const (
-	AlgorithmECDSA   Algorithm = "ECDSA"
-	AlgorithmEDDSA   Algorithm = "EDDSA"
-	AlgorithmSCHNORR Algorithm = "SCHNORR"
+	AlgorithmECDSA Algorithm = "ECDSA"
+	AlgorithmEDDSA Algorithm = "EDDSA"
 )
 
 // Curve represents the elliptic curve
@@ -23,7 +22,6 @@ type Curve string
 
 const (
 	CurveSecp256k1    Curve = "secp256k1"
-	CurveP256         Curve = "P-256"
 	CurveEdwards25519 Curve = "Edwards25519"
 )
 
@@ -82,8 +80,6 @@ func ParseAlgorithm(s string) (Algorithm, error) {
 		return AlgorithmECDSA, nil
 	case "EDDSA":
 		return AlgorithmEDDSA, nil
-	case "SCHNORR":
-		return AlgorithmSCHNORR, nil
 	default:
 		return "", ErrUnsupportedAlgorithm
 	}
@@ -95,8 +91,6 @@ func ParseCurve(s string) (Curve, error) {
 	switch upper {
 	case "SECP256K1":
 		return CurveSecp256k1, nil
-	case "P-256", "P256", "NIST P-256", "NISTP256":
-		return CurveP256, nil
 	case "EDWARDS25519", "ED25519":
 		return CurveEdwards25519, nil
 	default:
@@ -108,15 +102,11 @@ func ParseCurve(s string) (Curve, error) {
 func ValidateAlgorithmCurve(alg Algorithm, curve Curve) error {
 	switch alg {
 	case AlgorithmECDSA:
-		if curve == CurveSecp256k1 || curve == CurveP256 {
+		if curve == CurveSecp256k1 {
 			return nil
 		}
 	case AlgorithmEDDSA:
 		if curve == CurveEdwards25519 {
-			return nil
-		}
-	case AlgorithmSCHNORR:
-		if curve == CurveSecp256k1 {
 			return nil
 		}
 	}
@@ -125,7 +115,7 @@ func ValidateAlgorithmCurve(alg Algorithm, curve Curve) error {
 
 // RequiresECDSAKey returns true if the algorithm requires an ECDSA master key
 func RequiresECDSAKey(alg Algorithm) bool {
-	return alg == AlgorithmECDSA || alg == AlgorithmSCHNORR
+	return alg == AlgorithmECDSA
 }
 
 // RequiresEdDSAKey returns true if the algorithm requires an EdDSA master key

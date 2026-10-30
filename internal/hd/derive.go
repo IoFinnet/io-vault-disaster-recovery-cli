@@ -6,7 +6,6 @@ package hd
 
 import (
 	"bytes"
-	"crypto/elliptic"
 	"crypto/hmac"
 	"crypto/sha512"
 	"encoding/binary"
@@ -22,7 +21,7 @@ import (
 
 // Deriver handles HD key derivation for recovered master keys
 type Deriver struct {
-	ecdsaSK []byte // 32-byte ECDSA master private key (secp256k1/P-256)
+	ecdsaSK []byte // 32-byte ECDSA master private key (secp256k1)
 	eddsaSK []byte // 32-byte EdDSA master private key (Edwards25519)
 }
 
@@ -214,12 +213,6 @@ func computePublicKey(sk []byte, alg Algorithm, curve Curve) ([]byte, error) {
 		pubKey := privKey.PubKey()
 		return pubKey.SerializeCompressed(), nil
 
-	case CurveP256:
-		// Use standard crypto/elliptic for P-256
-		ec := elliptic.P256()
-		x, y := ec.ScalarBaseMult(sk)
-		return serializeCompressedP256(x, y), nil
-
 	case CurveEdwards25519:
 		// Use Edwards curve from dcrd
 		// First reduce the scalar modulo the curve order to ensure it's valid
@@ -320,26 +313,11 @@ func getCurveOrder(curve Curve) *big.Int {
 	switch curve {
 	case CurveSecp256k1:
 		return btcec.S256().N
-	case CurveP256:
-		return elliptic.P256().Params().N
 	case CurveEdwards25519:
 		return edwards.Edwards().N
 	default:
 		return nil
 	}
-}
-
-// serializeCompressedP256 serializes a P-256 point in compressed format (33 bytes)
-func serializeCompressedP256(x, y *big.Int) []byte {
-	result := make([]byte, 33)
-	if y.Bit(0) == 0 {
-		result[0] = 0x02
-	} else {
-		result[0] = 0x03
-	}
-	xBytes := x.Bytes()
-	copy(result[33-len(xBytes):], xBytes)
-	return result
 }
 
 // leftPadTo32Bytes pads a big.Int to 32 bytes with leading zeros

@@ -88,8 +88,8 @@ func HDAddressesUsage() string {
 	b += "    address   - Label/identifier for the address\n"
 	b += "    xpub      - Extended public key with chain code\n"
 	b += "    path      - BIP32 derivation path (e.g., m/44/60/0/0/0)\n"
-	b += "    algorithm - ECDSA, EDDSA, or SCHNORR\n"
-	b += "    curve     - secp256k1, P-256, or Edwards25519\n"
+	b += "    algorithm - ECDSA or EDDSA\n"
+	b += "    curve     - secp256k1 or Edwards25519\n"
 	b += "    flags     - Reserved (set to 0)\n"
 	b += "\n"
 	b += fmt.Sprintf("  %sExample:%s\n", AnsiCodes["bold"], AnsiCodes["reset"])

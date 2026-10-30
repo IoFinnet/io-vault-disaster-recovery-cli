@@ -119,6 +119,29 @@ addr1,xpub123,m/0,ECDSA,unknown,0
 	assert.Contains(t, err.Error(), "row 2")
 }
 
+func TestParseCSV_RejectsKeysNotInVaultBackup(t *testing.T) {
+	tests := []struct {
+		name     string
+		row      string
+		expected string
+	}{
+		{"SCHNORR", "addr1,xpub123,m/86/0/0/0/0,SCHNORR,secp256k1,0", "invalid algorithm"},
+		{"P-256", "addr1,xpub123,m/0,ECDSA,P-256,0", "invalid curve"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpFile := createTempCSV(t, "address,xpub,path,algorithm,curve,flags\n"+tc.row+"\n")
+			defer os.Remove(tmpFile)
+
+			_, err := ParseCSV(tmpFile)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.expected)
+			assert.Contains(t, err.Error(), "row 2")
+		})
+	}
+}
+
 func TestParseCSV_InvalidAlgorithmCurveCombination(t *testing.T) {
 	content := `address,xpub,path,algorithm,curve,flags
 addr1,xpub123,m/0,ECDSA,Edwards25519,0

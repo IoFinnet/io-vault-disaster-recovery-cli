@@ -1193,10 +1193,8 @@ func TestHDAddressRecovery_EndToEnd(t *testing.T) {
 	csvContent := `address,xpub,path,algorithm,curve,flags
 ecdsa_master,` + ecdsaXpub + `,m,ECDSA,secp256k1,0
 eddsa_master,` + eddsaXpub + `,m,EDDSA,Edwards25519,0
-schnorr_master,` + ecdsaXpub + `,m,SCHNORR,secp256k1,0
 eth_derived,` + ecdsaXpub + `,m/44/60/0/0/0,ECDSA,secp256k1,0
 xrpl_derived,` + eddsaXpub + `,m/44/144/0/0,EDDSA,Edwards25519,0
-taproot_derived,` + ecdsaXpub + `,m/86/0/0/0/0,SCHNORR,secp256k1,0
 `
 	err = os.WriteFile(inputCSV, []byte(csvContent), 0644)
 	require.NoError(t, err)
@@ -1224,14 +1222,12 @@ taproot_derived,` + ecdsaXpub + `,m/86/0/0/0/0,SCHNORR,secp256k1,0
 	// Verify all addresses are present (one for each algo/curve combo)
 	assert.Contains(t, outputStr, "ecdsa_master")
 	assert.Contains(t, outputStr, "eddsa_master")
-	assert.Contains(t, outputStr, "schnorr_master")
 	assert.Contains(t, outputStr, "eth_derived")
 	assert.Contains(t, outputStr, "xrpl_derived")
-	assert.Contains(t, outputStr, "taproot_derived")
 
 	// Parse output and verify key formats
 	lines := strings.Split(outputStr, "\n")
-	require.GreaterOrEqual(t, len(lines), 7, "Should have header + 6 data rows")
+	require.GreaterOrEqual(t, len(lines), 5, "Should have header + 4 data rows")
 
 	// Find column indices
 	headers := strings.Split(lines[0], ",")
@@ -1296,7 +1292,7 @@ taproot_derived,` + ecdsaXpub + `,m/86/0/0/0/0,SCHNORR,secp256k1,0
 		if strings.ToUpper(alg) == "EDDSA" {
 			assert.Len(t, pubKey, 64, "EdDSA public key should be 32 bytes hex for %s", addr)
 		} else {
-			assert.Len(t, pubKey, 66, "ECDSA/Schnorr public key should be 33 bytes hex for %s", addr)
+			assert.Len(t, pubKey, 66, "ECDSA public key should be 33 bytes hex for %s", addr)
 			assert.True(t, pubKey[:2] == "02" || pubKey[:2] == "03",
 				"Compressed public key should start with 02 or 03 for %s", addr)
 		}
@@ -1316,19 +1312,13 @@ taproot_derived,` + ecdsaXpub + `,m/86/0/0/0/0,SCHNORR,secp256k1,0
 					"EdDSA master at path 'm' must return exact master private key")
 				assert.Equal(t, eddsaMasterPKHex, pubKey,
 					"EdDSA master at path 'm' must return exact master public key")
-			case "schnorr_master":
-				// Schnorr uses same key as ECDSA on secp256k1
-				assert.Equal(t, ecdsaMasterSKHex, privKey,
-					"Schnorr master at path 'm' must return exact master private key")
-				assert.Equal(t, ecdsaMasterPKHex, pubKey,
-					"Schnorr master at path 'm' must return exact master public key")
 			}
 			t.Logf("Verified %s at path 'm': SK=%s PK=%s", addr, privKey, pubKey)
 		} else {
 			// For derived paths, verify keys are DIFFERENT from master (proving derivation happened)
 			switch addr {
-			case "eth_derived", "taproot_derived":
-				// These use ECDSA/Schnorr master key
+			case "eth_derived":
+				// This uses ECDSA master key
 				assert.NotEqual(t, ecdsaMasterSKHex, privKey,
 					"%s at path '%s' must be different from master private key", addr, path)
 				assert.NotEqual(t, ecdsaMasterPKHex, pubKey,
@@ -1615,10 +1605,8 @@ func TestHDAddressRecovery_GenerateTestVectors(t *testing.T) {
 	csvContent := `address,xpub,path,algorithm,curve,flags
 ecdsa_master,` + ecdsaXpub + `,m,ECDSA,secp256k1,0
 eddsa_master,` + eddsaXpub + `,m,EDDSA,Edwards25519,0
-schnorr_master,` + ecdsaXpub + `,m,SCHNORR,secp256k1,0
 eth_derived,` + ecdsaXpub + `,m/44/60/0/0/0,ECDSA,secp256k1,0
 xrpl_derived,` + eddsaXpub + `,m/44/144/0/0,EDDSA,Edwards25519,0
-taproot_derived,` + ecdsaXpub + `,m/86/0/0/0/0,SCHNORR,secp256k1,0
 `
 	err = os.WriteFile(inputCSV, []byte(csvContent), 0644)
 	require.NoError(t, err)

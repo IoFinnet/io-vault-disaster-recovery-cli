@@ -74,8 +74,8 @@ func ParseXpub(xpub string, curve Curve) (*ParsedXpub, error) {
 
 	// Validate public key format based on curve
 	switch curve {
-	case CurveSecp256k1, CurveP256:
-		// ECDSA curves use 33-byte compressed public key
+	case CurveSecp256k1:
+		// ECDSA uses a 33-byte compressed public key
 		if len(parsed.PublicKey) != XpubPublicKeyLength {
 			return nil, fmt.Errorf("%w: expected %d-byte public key for %s, got %d",
 				ErrInvalidXpub, XpubPublicKeyLength, curve, len(parsed.PublicKey))

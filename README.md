@@ -359,8 +359,8 @@ The CSV file must contain the following columns:
 | `address` | A label/identifier for the address |
 | `xpub` | The extended public key (xpub) encoding the master public key and chain code |
 | `path` | BIP32 derivation path (e.g., `m/44/60/0/0/0` for Ethereum, `m/0` for master key) |
-| `algorithm` | Signing algorithm: `ECDSA`, `EDDSA`, or `SCHNORR` |
-| `curve` | Elliptic curve: `secp256k1`, `P-256`, or `Edwards25519` |
+| `algorithm` | Signing algorithm: `ECDSA` or `EDDSA` |
+| `curve` | Elliptic curve: `secp256k1` or `Edwards25519` |
 | `flags` | Reserved for future use (set to `0`) |
 
 Example CSV content:
@@ -369,7 +369,6 @@ address,xpub,path,algorithm,curve,flags
 0x...,xpub661MyMwAqRbcF...,m/44/60/0/0/0,ECDSA,secp256k1,0
 0x...,xpub661MyMwAqRbcF...,m/44/60/0/0/1,ECDSA,secp256k1,0
 0x...,xpub661MyMwAqRbcE...,m/44/144/0/0,EDDSA,Edwards25519,0
-bc1...,xpub661MyMwAqRbcF...,m/86/0/0/0/0,SCHNORR,secp256k1,0
 ```
 
 #### Supported Algorithm/Curve Combinations
@@ -377,9 +376,9 @@ bc1...,xpub661MyMwAqRbcF...,m/86/0/0/0/0,SCHNORR,secp256k1,0
 | Algorithm | Curve | Use Case |
 |-----------|-------|----------|
 | ECDSA | secp256k1 | Ethereum, Bitcoin (legacy/segwit), Tron |
-| ECDSA | P-256 | Some enterprise applications |
 | EDDSA | Edwards25519 | XRP Ledger, Solana, Bittensor |
-| SCHNORR | secp256k1 | Bitcoin Taproot |
+
+Other combinations, such as `SCHNORR/secp256k1` or `ECDSA/P-256`, are rejected: a vault backup only holds the ECDSA/secp256k1 and EdDSA/Edwards25519 keys, so no other key can be recovered from it.
 
 #### Usage
 
@@ -400,8 +399,7 @@ The tool generates a `*_recovered.csv` file containing all original columns plus
 > [!NOTE]
 > - Only non-hardened derivation paths are supported (no `'` or `h` suffix)
 > - Path `m` returns the master key unchanged (useful for verification)
-> - The ECDSA master key is used for both ECDSA and Schnorr derivation
-> - The EdDSA master key is used for EdDSA derivation
+> - ECDSA rows derive from the ECDSA master key, EdDSA rows from the EdDSA master key
 
 > [!CAUTION]
 > **Input CSV Security**: The input CSV contains extended public keys (xpubs) which allow anyone to view your vault's total balance and transaction history. While it does not contain private keys, you should avoid sharing this file publicly.
