@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"strings"
 
-	ecdsa_keygen "github.com/iofinnet/tss-lib/v3/tss/ecdsa/keygen"
-	eddsa_keygen "github.com/iofinnet/tss-lib/v3/tss/schnorr/keygen"
+	ecdsa_keygen "github.com/iofinnet/tss-lib/v4/tss/ecdsa/keygen"
+	eddsa_keygen "github.com/iofinnet/tss-lib/v4/tss/schnorr/keygen"
 )
 
 // MobileShare is one opaque share blob in a mobile backup's decrypted request payload. Data is the

@@ -18,9 +18,9 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
-	"github.com/iofinnet/tss-lib/v3/crypto"
-	"github.com/iofinnet/tss-lib/v3/crypto/vss"
-	"github.com/iofinnet/tss-lib/v3/tss"
+	"github.com/iofinnet/tss-lib/v4/crypto"
+	"github.com/iofinnet/tss-lib/v4/crypto/vss"
+	"github.com/iofinnet/tss-lib/v4/tss"
 	"golang.org/x/crypto/sha3"
 )
 

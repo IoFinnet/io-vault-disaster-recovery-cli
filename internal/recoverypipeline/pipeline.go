@@ -24,8 +24,8 @@ import (
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/data"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/dr"
 	"github.com/IoFinnet/io-vault-disaster-recovery-cli/internal/ui"
-	ecdsa_keygen "github.com/iofinnet/tss-lib/v3/tss/ecdsa/keygen"
-	eddsa_keygen "github.com/iofinnet/tss-lib/v3/tss/schnorr/keygen"
+	ecdsa_keygen "github.com/iofinnet/tss-lib/v4/tss/ecdsa/keygen"
+	eddsa_keygen "github.com/iofinnet/tss-lib/v4/tss/schnorr/keygen"
 	errors2 "github.com/pkg/errors"
 	"github.com/tyler-smith/go-bip39"
 )
