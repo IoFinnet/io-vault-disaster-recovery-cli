@@ -5,6 +5,7 @@
 package hd
 
 import (
+	"bytes"
 	"crypto/elliptic"
 	"crypto/hmac"
 	"crypto/sha512"
@@ -82,6 +83,14 @@ func (d *Deriver) deriveOne(rec AddressRecord) (DerivedRecord, error) {
 	parsedXpub, err := ParseXpub(rec.Xpub, rec.Curve)
 	if err != nil {
 		return result, fmt.Errorf("invalid xpub: %w", err)
+	}
+
+	masterPK, err := computePublicKey(masterSK, rec.Algorithm, rec.Curve)
+	if err != nil {
+		return result, err
+	}
+	if !bytes.Equal(masterPK, parsedXpub.PublicKey) {
+		return result, ErrXpubKeyMismatch
 	}
 
 	// Parse derivation path

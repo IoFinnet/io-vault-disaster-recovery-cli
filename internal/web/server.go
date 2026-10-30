@@ -71,6 +71,7 @@ type RecoveryResult struct {
 	SolanaAddress    string            `json:"solanaAddress,omitempty"`
 	ExportedKsFile   string            `json:"exportedKsFile,omitempty"`
 	HDAddresses      []HDAddressResult `json:"hdAddresses,omitempty"`
+	HDError          string            `json:"hdError,omitempty"`
 }
 
 // Server represents the http server for the disaster recovery tool
@@ -428,6 +429,7 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 		if hdErr != nil {
 			// Log the error but don't fail the entire recovery
 			log.Printf("HD address derivation error: %v", hdErr)
+			result.HDError = hdErr.Error()
 		} else if len(hdAddresses) > 0 {
 			result.HDAddresses = hdAddresses
 			log.Printf("Derived %d HD addresses", len(hdAddresses))
@@ -739,21 +741,8 @@ func (s *Server) processHDAddresses(r *http.Request, ecdsaSK, eddsaSK []byte) ([
 	}
 	defer file.Close()
 
-	// Save the CSV to a temp file
-	csvPath := filepath.Join(s.tempDir, "hd_addresses_"+fileHeader.Filename)
-	outFile, err := os.Create(csvPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temporary HD CSV file: %w", err)
-	}
-
-	if _, err := io.Copy(outFile, file); err != nil {
-		outFile.Close()
-		return nil, fmt.Errorf("failed to save HD CSV file: %w", err)
-	}
-	outFile.Close()
-
 	// Parse the CSV
-	records, err := hd.ParseCSV(csvPath)
+	records, err := hd.ParseCSVReader(file)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse HD addresses CSV: %w", err)
 	}

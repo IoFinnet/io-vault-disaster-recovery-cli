@@ -425,3 +425,55 @@ func TestXRPLVector_Format(t *testing.T) {
 	t.Logf("XRPL xpub chain code: %s", hex.EncodeToString(parsed.ChainCode))
 	t.Logf("XRPL xpub public key: %s", strings.ToUpper(hex.EncodeToString(parsed.PublicKey)))
 }
+
+func TestDeriveAll_XpubNotMatchingMasterKey(t *testing.T) {
+	wrongSK, err := hex.DecodeString("0000000000000000000000000000000000000000000000000000000000000001")
+	require.NoError(t, err)
+	deriver, err := NewDeriver(wrongSK, nil)
+	require.NoError(t, err)
+
+	_, err = deriver.DeriveAll([]AddressRecord{{
+		Address:   "addr1",
+		Xpub:      testXpubECDSA,
+		Path:      "m/5",
+		Algorithm: AlgorithmECDSA,
+		Curve:     CurveSecp256k1,
+	}})
+
+	assert.ErrorIs(t, err, ErrXpubKeyMismatch)
+}
+
+func TestDeriveAll_EdDSAXpubNotMatchingMasterKey(t *testing.T) {
+	wrongSK, err := hex.DecodeString("0000000000000000000000000000000000000000000000000000000000000001")
+	require.NoError(t, err)
+	deriver, err := NewDeriver(nil, wrongSK)
+	require.NoError(t, err)
+
+	_, err = deriver.DeriveAll([]AddressRecord{{
+		Address:   "addr1",
+		Xpub:      testXpubEdDSA,
+		Path:      "m/0",
+		Algorithm: AlgorithmEDDSA,
+		Curve:     CurveEdwards25519,
+	}})
+
+	assert.ErrorIs(t, err, ErrXpubKeyMismatch)
+}
+
+func TestDeriveAll_XpubMatchingMasterKey(t *testing.T) {
+	masterSK, err := hex.DecodeString("e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35")
+	require.NoError(t, err)
+	deriver, err := NewDeriver(masterSK, nil)
+	require.NoError(t, err)
+
+	derived, err := deriver.DeriveAll([]AddressRecord{{
+		Address:   "addr1",
+		Xpub:      testXpubECDSA,
+		Path:      "m/5",
+		Algorithm: AlgorithmECDSA,
+		Curve:     CurveSecp256k1,
+	}})
+
+	require.NoError(t, err)
+	assert.Len(t, derived, 1)
+}

@@ -7,6 +7,7 @@ package hd
 import (
 	"encoding/csv"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -27,7 +28,12 @@ func ParseCSV(filePath string) ([]AddressRecord, error) {
 	}
 	defer file.Close()
 
-	reader := csv.NewReader(file)
+	return ParseCSVReader(file)
+}
+
+// ParseCSVReader reads input CSV content from r and returns address records
+func ParseCSVReader(r io.Reader) ([]AddressRecord, error) {
+	reader := csv.NewReader(r)
 
 	// Read header row
 	header, err := reader.Read()
@@ -105,16 +111,22 @@ func ParseCSV(filePath string) ([]AddressRecord, error) {
 // WriteCSV writes derived records to the output CSV file.
 // The file contains private keys, so it is created 0600 (owner read/write only)
 // rather than via os.Create, whose 0666-before-umask default can leave it
-// group/world-readable.
-func WriteCSV(filePath string, records []DerivedRecord) error {
-	file, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+// group/world-readable. An existing file is never overwritten.
+func WriteCSV(filePath string, records []DerivedRecord) (err error) {
+	file, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to create output CSV: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); err == nil && closeErr != nil {
+			err = fmt.Errorf("failed to close output CSV: %w", closeErr)
+		}
+		if err != nil {
+			os.Remove(filePath)
+		}
+	}()
 
 	writer := csv.NewWriter(file)
-	defer writer.Flush()
 
 	// Write header
 	if err := writer.Write(OutputColumns); err != nil {
@@ -136,6 +148,11 @@ func WriteCSV(filePath string, records []DerivedRecord) error {
 		if err := writer.Write(row); err != nil {
 			return fmt.Errorf("failed to write CSV row: %w", err)
 		}
+	}
+
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return fmt.Errorf("failed to flush output CSV: %w", err)
 	}
 
 	return nil

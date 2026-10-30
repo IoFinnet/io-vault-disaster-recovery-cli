@@ -36,6 +36,7 @@ var (
 	ErrInvalidXpub           = errors.New("invalid xpub format")
 	ErrInvalidDerivationPath = errors.New("invalid derivation path")
 	ErrMissingMasterKey      = errors.New("missing master key for algorithm")
+	ErrXpubKeyMismatch       = errors.New("xpub does not belong to the recovered master key")
 	ErrCSVMissingColumn      = errors.New("CSV missing required column")
 	ErrCSVInvalidFormat      = errors.New("invalid CSV format")
 )

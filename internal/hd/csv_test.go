@@ -235,3 +235,25 @@ func createTempCSV(t *testing.T, content string) string {
 	require.NoError(t, err)
 	return tmpFile
 }
+
+func TestWriteCSV_RefusesToOverwriteExistingFile(t *testing.T) {
+	existing := filepath.Join(t.TempDir(), "output.csv")
+	require.NoError(t, os.WriteFile(existing, []byte("keep me"), 0644))
+
+	err := WriteCSV(existing, nil)
+
+	require.Error(t, err)
+	content, readErr := os.ReadFile(existing)
+	require.NoError(t, readErr)
+	assert.Equal(t, "keep me", string(content))
+}
+
+func TestParseCSVReader_Valid(t *testing.T) {
+	input := "address,xpub,path,algorithm,curve,flags\naddr1," + testXpubECDSA + ",m/0,ecdsa,secp256k1,0\n"
+
+	records, err := ParseCSVReader(strings.NewReader(input))
+
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+	assert.Equal(t, "addr1", records[0].Address)
+}
