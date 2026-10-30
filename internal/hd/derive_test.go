@@ -327,9 +327,16 @@ func TestDeriveAll_WIF(t *testing.T) {
 	xpub := "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8"
 	derived, err := deriver.DeriveAll([]AddressRecord{
 		{Address: "ecdsa", Xpub: xpub, Path: "m/44/0/0/0/1", Algorithm: AlgorithmECDSA, Curve: CurveSecp256k1},
+		{Address: "master", Xpub: xpub, Path: "m", Algorithm: AlgorithmECDSA, Curve: CurveSecp256k1},
 		{Address: "schnorr", Xpub: xpub, Path: "m/86/0/0/0/0", Algorithm: AlgorithmSCHNORR, Curve: CurveSecp256k1},
+		{Address: "p256", Xpub: xpub, Path: "m/0", Algorithm: AlgorithmECDSA, Curve: CurveP256},
 	})
 	require.NoError(t, err)
+
+	// Expected values are encoded independently (base58check of 0x80 || key || 0x01).
+	// The path m value is the well-known WIF of the BIP32 test vector 1 master key.
+	assert.Equal(t, "KzcVf7oxHrwoWx1r1q4pScsTmjXpR6iPve2oq3awF4KTYAhDeWWn", derived[0].WIF)
+	assert.Equal(t, "L52XzL2cMkHxqxBXRyEpnPQZGUs3uKiL3R11XbAdHigRzDozKZeW", derived[1].WIF)
 
 	// version 0x80 = mainnet, trailing 0x01 = compressed public key
 	payload, version, err := base58.CheckDecode(derived[0].WIF)
@@ -339,8 +346,9 @@ func TestDeriveAll_WIF(t *testing.T) {
 	assert.Equal(t, byte(0x01), payload[32])
 	assert.Equal(t, derived[0].PrivateKey, hex.EncodeToString(payload[:32]))
 
-	// Taproot keys are not imported via WIF + p2wpkh, so no WIF is written for them
-	assert.Empty(t, derived[1].WIF)
+	// Taproot keys are not imported via WIF + p2wpkh, and WIF is a Bitcoin format, so neither row gets one
+	assert.Empty(t, derived[2].WIF)
+	assert.Empty(t, derived[3].WIF)
 }
 
 func TestLeftPadTo32Bytes(t *testing.T) {
