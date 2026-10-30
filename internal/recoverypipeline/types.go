@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"strconv"
 
-	ecdsa_keygen "github.com/iofinnet/tss-lib/v4/tss/ecdsa/keygen"
-	eddsa_keygen "github.com/iofinnet/tss-lib/v4/tss/schnorr/keygen"
+	ecdsa_keygen "github.com/iofinnet/tss-lib/v3/tss/ecdsa/keygen"
+	eddsa_keygen "github.com/iofinnet/tss-lib/v3/tss/schnorr/keygen"
 )
 
 const (
