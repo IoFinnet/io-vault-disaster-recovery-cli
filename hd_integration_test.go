@@ -17,7 +17,7 @@ import (
 
 // Known master keys for testing (derived from BIP32 test vectors)
 var (
-	// Master ECDSA private key for secp256k1/P-256 (BIP32 Test Vector 1)
+	// Master ECDSA private key for secp256k1 (BIP32 Test Vector 1)
 	testMasterECDSASK, _ = hex.DecodeString("e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35")
 
 	// Master EdDSA private key for Edwards25519 (matches tss-lib test vectors)
@@ -40,8 +40,6 @@ func TestHDIntegration_ParseCSV(t *testing.T) {
 
 	assert.Equal(t, 3, algCurveCount["ECDSA/secp256k1"], "Expected 3 ECDSA/secp256k1 records")
 	assert.Equal(t, 2, algCurveCount["EDDSA/Edwards25519"], "Expected 2 EdDSA/Edwards25519 records")
-	assert.Equal(t, 1, algCurveCount["SCHNORR/secp256k1"], "Expected 1 Schnorr/secp256k1 record")
-	assert.Equal(t, 1, algCurveCount["ECDSA/P-256"], "Expected 1 ECDSA/P-256 record")
 }
 
 func TestHDIntegration_DeriverCreation(t *testing.T) {
@@ -166,66 +164,6 @@ func TestHDIntegration_DeriveEdDSA(t *testing.T) {
 			assert.Equal(t, tc.expectedPK, d.PublicKey, "Public key mismatch for %s", tc.path)
 		})
 	}
-}
-
-func TestHDIntegration_DeriveSchnorr(t *testing.T) {
-	deriver, err := hd.NewDeriver(testMasterECDSASK, nil)
-	require.NoError(t, err)
-
-	// Test Schnorr/secp256k1 derivation with expected values from tss-lib
-	records := []hd.AddressRecord{
-		{
-			Address:   "test_schnorr_taproot",
-			Xpub:      "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8",
-			Path:      "m/86/0/0/0/0",
-			Algorithm: hd.AlgorithmSCHNORR,
-			Curve:     hd.CurveSecp256k1,
-			Flags:     0,
-		},
-	}
-
-	derived, err := deriver.DeriveAll(records)
-	require.NoError(t, err)
-	require.Len(t, derived, 1)
-
-	d := derived[0]
-
-	// Expected values from tss-lib
-	expectedSK := "989ad7fcd714e2ffed41e287422e96e39df6225e4145bc45dc0cbc024c4641fb"
-	expectedPK := "0258387941128a0f18720ff2ba08416015dca2603a86a9a62b98dfbc1130b291e7"
-
-	assert.Equal(t, expectedSK, d.PrivateKey, "Schnorr private key mismatch")
-	assert.Equal(t, expectedPK, d.PublicKey, "Schnorr public key mismatch")
-}
-
-func TestHDIntegration_DeriveP256(t *testing.T) {
-	deriver, err := hd.NewDeriver(testMasterECDSASK, nil)
-	require.NoError(t, err)
-
-	// Test ECDSA/P-256 derivation with expected values from tss-lib
-	records := []hd.AddressRecord{
-		{
-			Address:   "test_p256_m0",
-			Xpub:      "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ1rxaVqyxRSgbLorQN2Q1RJiLfHtqHqAcK8WosMpL4tCGungDyV",
-			Path:      "m/0",
-			Algorithm: hd.AlgorithmECDSA,
-			Curve:     hd.CurveP256,
-			Flags:     0,
-		},
-	}
-
-	derived, err := deriver.DeriveAll(records)
-	require.NoError(t, err)
-	require.Len(t, derived, 1)
-
-	d := derived[0]
-
-	// Expected values from tss-lib
-	expectedSK := "aa99fd5bdbefd92f802f278e0c8998ac0408b8afab8a77e695dcb9dc3addcc81"
-	expectedPK := "02d3cbd426c052a03c9027eafcb4b13873163ad24680b0cc58c76d3762fbc6cebf"
-
-	assert.Equal(t, expectedSK, d.PrivateKey, "P-256 private key mismatch")
-	assert.Equal(t, expectedPK, d.PublicKey, "P-256 public key mismatch")
 }
 
 func TestHDIntegration_FullCSVFlow(t *testing.T) {

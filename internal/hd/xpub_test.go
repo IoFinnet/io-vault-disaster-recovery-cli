@@ -44,16 +44,6 @@ func TestParseXpub_ECDSA_Secp256k1(t *testing.T) {
 	t.Logf("ECDSA xpub public key: %s", hex.EncodeToString(parsed.PublicKey))
 }
 
-func TestParseXpub_ECDSA_P256(t *testing.T) {
-	// Use the same xpub format - P-256 uses same BIP32 format
-	parsed, err := ParseXpub(testXpubECDSA, CurveP256)
-	require.NoError(t, err)
-
-	assert.Len(t, parsed.ChainCode, 32)
-	assert.Len(t, parsed.PublicKey, 33)
-	assert.True(t, parsed.PublicKey[0] == 0x02 || parsed.PublicKey[0] == 0x03)
-}
-
 func TestParseXpub_EdDSA_Edwards25519(t *testing.T) {
 	parsed, err := ParseXpub(testXpubEdDSA, CurveEdwards25519)
 	require.NoError(t, err)

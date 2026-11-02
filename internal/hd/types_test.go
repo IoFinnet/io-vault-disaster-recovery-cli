@@ -24,8 +24,6 @@ func TestParseAlgorithm(t *testing.T) {
 		{"ECDSA mixed case", "EcDsA", AlgorithmECDSA, false},
 		{"EDDSA uppercase", "EDDSA", AlgorithmEDDSA, false},
 		{"EDDSA lowercase", "eddsa", AlgorithmEDDSA, false},
-		{"SCHNORR uppercase", "SCHNORR", AlgorithmSCHNORR, false},
-		{"SCHNORR lowercase", "schnorr", AlgorithmSCHNORR, false},
 		{"with leading space", " ECDSA", AlgorithmECDSA, false},
 		{"with trailing space", "ECDSA ", AlgorithmECDSA, false},
 
@@ -33,6 +31,8 @@ func TestParseAlgorithm(t *testing.T) {
 		{"empty string", "", "", true},
 		{"invalid algorithm", "RSA", "", true},
 		{"partial match", "ECD", "", true},
+		{"SCHNORR not recoverable", "SCHNORR", "", true},
+		{"schnorr not recoverable", "schnorr", "", true},
 		{"typo", "ECSDA", "", true},
 	}
 
@@ -62,13 +62,6 @@ func TestParseCurve(t *testing.T) {
 		{"SECP256K1 uppercase", "SECP256K1", CurveSecp256k1, false},
 		{"Secp256k1 mixed case", "Secp256k1", CurveSecp256k1, false},
 
-		// P-256 variants
-		{"P-256 with dash", "P-256", CurveP256, false},
-		{"P256 without dash", "P256", CurveP256, false},
-		{"p-256 lowercase", "p-256", CurveP256, false},
-		{"NIST P-256", "NIST P-256", CurveP256, false},
-		{"NISTP256", "NISTP256", CurveP256, false},
-
 		// Edwards25519 variants
 		{"Edwards25519", "Edwards25519", CurveEdwards25519, false},
 		{"EDWARDS25519 uppercase", "EDWARDS25519", CurveEdwards25519, false},
@@ -83,6 +76,10 @@ func TestParseCurve(t *testing.T) {
 		{"empty string", "", "", true},
 		{"invalid curve", "secp384r1", "", true},
 		{"typo", "secp256k", "", true},
+		{"P-256 not recoverable", "P-256", "", true},
+		{"P256 not recoverable", "P256", "", true},
+		{"NIST P-256 not recoverable", "NIST P-256", "", true},
+		{"NISTP256 not recoverable", "NISTP256", "", true},
 	}
 
 	for _, tc := range tests {
@@ -105,9 +102,7 @@ func TestValidateAlgorithmCurve(t *testing.T) {
 		curve Curve
 	}{
 		{AlgorithmECDSA, CurveSecp256k1},
-		{AlgorithmECDSA, CurveP256},
 		{AlgorithmEDDSA, CurveEdwards25519},
-		{AlgorithmSCHNORR, CurveSecp256k1},
 	}
 
 	for _, tc := range validCombinations {
@@ -123,9 +118,6 @@ func TestValidateAlgorithmCurve(t *testing.T) {
 	}{
 		{AlgorithmECDSA, CurveEdwards25519},
 		{AlgorithmEDDSA, CurveSecp256k1},
-		{AlgorithmEDDSA, CurveP256},
-		{AlgorithmSCHNORR, CurveP256},
-		{AlgorithmSCHNORR, CurveEdwards25519},
 	}
 
 	for _, tc := range invalidCombinations {
@@ -138,12 +130,10 @@ func TestValidateAlgorithmCurve(t *testing.T) {
 
 func TestRequiresECDSAKey(t *testing.T) {
 	assert.True(t, RequiresECDSAKey(AlgorithmECDSA))
-	assert.True(t, RequiresECDSAKey(AlgorithmSCHNORR)) // Schnorr uses ECDSA master key on secp256k1
 	assert.False(t, RequiresECDSAKey(AlgorithmEDDSA))
 }
 
 func TestRequiresEdDSAKey(t *testing.T) {
 	assert.True(t, RequiresEdDSAKey(AlgorithmEDDSA))
 	assert.False(t, RequiresEdDSAKey(AlgorithmECDSA))
-	assert.False(t, RequiresEdDSAKey(AlgorithmSCHNORR))
 }

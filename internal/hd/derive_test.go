@@ -328,8 +328,6 @@ func TestDeriveAll_WIF(t *testing.T) {
 	derived, err := deriver.DeriveAll([]AddressRecord{
 		{Address: "ecdsa", Xpub: xpub, Path: "m/44/0/0/0/1", Algorithm: AlgorithmECDSA, Curve: CurveSecp256k1},
 		{Address: "master", Xpub: xpub, Path: "m", Algorithm: AlgorithmECDSA, Curve: CurveSecp256k1},
-		{Address: "schnorr", Xpub: xpub, Path: "m/86/0/0/0/0", Algorithm: AlgorithmSCHNORR, Curve: CurveSecp256k1},
-		{Address: "p256", Xpub: xpub, Path: "m/0", Algorithm: AlgorithmECDSA, Curve: CurveP256},
 	})
 	require.NoError(t, err)
 
@@ -345,10 +343,6 @@ func TestDeriveAll_WIF(t *testing.T) {
 	require.Len(t, payload, 33)
 	assert.Equal(t, byte(0x01), payload[32])
 	assert.Equal(t, derived[0].PrivateKey, hex.EncodeToString(payload[:32]))
-
-	// Taproot keys are not imported via WIF + p2wpkh, and WIF is a Bitcoin format, so neither row gets one
-	assert.Empty(t, derived[2].WIF)
-	assert.Empty(t, derived[3].WIF)
 }
 
 func TestLeftPadTo32Bytes(t *testing.T) {
@@ -393,48 +387,6 @@ func TestDeriveChildKey_EdDSA(t *testing.T) {
 	assert.NotEqual(t, masterSK, childSK)
 }
 
-func TestDeriveChildKey_P256(t *testing.T) {
-	// Test with P-256 curve
-	masterSK, _ := hex.DecodeString("e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35")
-	chainCode := make([]byte, 32)
-	for i := range chainCode {
-		chainCode[i] = byte(i)
-	}
-
-	// Compute parent public key
-	parentPubKey, err := computePublicKey(masterSK, AlgorithmECDSA, CurveP256)
-	require.NoError(t, err)
-	assert.Len(t, parentPubKey, 33) // Compressed P-256 key
-
-	// Derive child
-	childSK, childPK, err := deriveChildKey(masterSK, chainCode, parentPubKey, []uint32{0}, AlgorithmECDSA, CurveP256)
-	require.NoError(t, err)
-	assert.Len(t, childSK, 32)
-	assert.Len(t, childPK, 33)
-	assert.NotEqual(t, masterSK, childSK)
-}
-
-func TestDeriveChildKey_Schnorr(t *testing.T) {
-	// Test Schnorr derivation (uses secp256k1 with ECDSA master key)
-	masterSK, _ := hex.DecodeString("e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35")
-	chainCode := make([]byte, 32)
-	for i := range chainCode {
-		chainCode[i] = byte(i)
-	}
-
-	// Compute parent public key
-	parentPubKey, err := computePublicKey(masterSK, AlgorithmSCHNORR, CurveSecp256k1)
-	require.NoError(t, err)
-	assert.Len(t, parentPubKey, 33)
-
-	// Derive child - Schnorr uses same derivation as ECDSA on secp256k1
-	childSK, childPK, err := deriveChildKey(masterSK, chainCode, parentPubKey, []uint32{86, 0, 0}, AlgorithmSCHNORR, CurveSecp256k1)
-	require.NoError(t, err)
-	assert.Len(t, childSK, 32)
-	assert.Len(t, childPK, 33)
-	assert.NotEqual(t, masterSK, childSK)
-}
-
 // TestXRPLVector tests against the known XRPL test vector from TSS tests
 // xpub: xpub661MyMwAqRbcG9aErp1paHxw5LYRQd4t24d7CBReN2EeqynEr3uSSjfP6Jr1RgMYqEFzNPTGKsS96dAALutAnFpdhmVCgNxXW7cB5GVAWse
 // path: m/0
@@ -458,4 +410,56 @@ func TestXRPLVector_Format(t *testing.T) {
 
 	t.Logf("XRPL xpub chain code: %s", hex.EncodeToString(parsed.ChainCode))
 	t.Logf("XRPL xpub public key: %s", strings.ToUpper(hex.EncodeToString(parsed.PublicKey)))
+}
+
+func TestDeriveAll_XpubNotMatchingMasterKey(t *testing.T) {
+	wrongSK, err := hex.DecodeString("0000000000000000000000000000000000000000000000000000000000000001")
+	require.NoError(t, err)
+	deriver, err := NewDeriver(wrongSK, nil)
+	require.NoError(t, err)
+
+	_, err = deriver.DeriveAll([]AddressRecord{{
+		Address:   "addr1",
+		Xpub:      testXpubECDSA,
+		Path:      "m/5",
+		Algorithm: AlgorithmECDSA,
+		Curve:     CurveSecp256k1,
+	}})
+
+	assert.ErrorIs(t, err, ErrXpubKeyMismatch)
+}
+
+func TestDeriveAll_EdDSAXpubNotMatchingMasterKey(t *testing.T) {
+	wrongSK, err := hex.DecodeString("0000000000000000000000000000000000000000000000000000000000000001")
+	require.NoError(t, err)
+	deriver, err := NewDeriver(nil, wrongSK)
+	require.NoError(t, err)
+
+	_, err = deriver.DeriveAll([]AddressRecord{{
+		Address:   "addr1",
+		Xpub:      testXpubEdDSA,
+		Path:      "m/0",
+		Algorithm: AlgorithmEDDSA,
+		Curve:     CurveEdwards25519,
+	}})
+
+	assert.ErrorIs(t, err, ErrXpubKeyMismatch)
+}
+
+func TestDeriveAll_XpubMatchingMasterKey(t *testing.T) {
+	masterSK, err := hex.DecodeString("e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35")
+	require.NoError(t, err)
+	deriver, err := NewDeriver(masterSK, nil)
+	require.NoError(t, err)
+
+	derived, err := deriver.DeriveAll([]AddressRecord{{
+		Address:   "addr1",
+		Xpub:      testXpubECDSA,
+		Path:      "m/5",
+		Algorithm: AlgorithmECDSA,
+		Curve:     CurveSecp256k1,
+	}})
+
+	require.NoError(t, err)
+	assert.Len(t, derived, 1)
 }

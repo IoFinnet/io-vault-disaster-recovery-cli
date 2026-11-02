@@ -1043,11 +1043,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Display HD addresses if present
-        displayHDAddresses(result.hdAddresses);
+        displayHDAddresses(result.hdAddresses, result.hdError);
     }
 
     // Display HD derived addresses in the results table
-    function displayHDAddresses(hdAddresses) {
+    function displayHDAddresses(hdAddresses, hdError) {
+        const hdErrorBox = document.getElementById('hd-addresses-error');
+        document.getElementById('hd-addresses-error-message').textContent = hdError || '';
+        hdErrorBox.style.display = hdError ? 'flex' : 'none';
+
         const hdSection = document.getElementById('hd-addresses-section');
         const hdList = document.getElementById('hd-addresses-list');
         const copyBtn = document.getElementById('copy-hd-addresses');
@@ -1080,7 +1084,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </td>
                 <td class="hd-privkey">
-                    <div class="key-cell sensitive" title="${escapeHTML(addr.privateKey)}">
+                    <div class="key-cell sensitive">
                         <span class="key-value">${escapeHTML(truncateMiddle(addr.privateKey, 6, 6))}</span>
                         <button class="copy-btn-small" data-value="${escapeHTML(addr.privateKey)}">Copy</button>
                     </div>

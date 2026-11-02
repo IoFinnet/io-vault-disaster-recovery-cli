@@ -119,6 +119,29 @@ addr1,xpub123,m/0,ECDSA,unknown,0
 	assert.Contains(t, err.Error(), "row 2")
 }
 
+func TestParseCSV_RejectsKeysNotInVaultBackup(t *testing.T) {
+	tests := []struct {
+		name     string
+		row      string
+		expected string
+	}{
+		{"SCHNORR", "addr1,xpub123,m/86/0/0/0/0,SCHNORR,secp256k1,0", "invalid algorithm"},
+		{"P-256", "addr1,xpub123,m/0,ECDSA,P-256,0", "invalid curve"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpFile := createTempCSV(t, "address,xpub,path,algorithm,curve,flags\n"+tc.row+"\n")
+			defer os.Remove(tmpFile)
+
+			_, err := ParseCSV(tmpFile)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.expected)
+			assert.Contains(t, err.Error(), "row 2")
+		})
+	}
+}
+
 func TestParseCSV_InvalidAlgorithmCurveCombination(t *testing.T) {
 	content := `address,xpub,path,algorithm,curve,flags
 addr1,xpub123,m/0,ECDSA,Edwards25519,0
@@ -234,4 +257,26 @@ func createTempCSV(t *testing.T, content string) string {
 	err := os.WriteFile(tmpFile, []byte(content), 0644)
 	require.NoError(t, err)
 	return tmpFile
+}
+
+func TestWriteCSV_RefusesToOverwriteExistingFile(t *testing.T) {
+	existing := filepath.Join(t.TempDir(), "output.csv")
+	require.NoError(t, os.WriteFile(existing, []byte("keep me"), 0644))
+
+	err := WriteCSV(existing, nil)
+
+	require.Error(t, err)
+	content, readErr := os.ReadFile(existing)
+	require.NoError(t, readErr)
+	assert.Equal(t, "keep me", string(content))
+}
+
+func TestParseCSVReader_Valid(t *testing.T) {
+	input := "address,xpub,path,algorithm,curve,flags\naddr1," + testXpubECDSA + ",m/0,ecdsa,secp256k1,0\n"
+
+	records, err := ParseCSVReader(strings.NewReader(input))
+
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+	assert.Equal(t, "addr1", records[0].Address)
 }
