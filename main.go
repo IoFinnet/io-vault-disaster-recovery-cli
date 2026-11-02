@@ -98,7 +98,7 @@ func run() int {
 	flag.Var(&keyPaths, "private-key", "(Alias for -keys) Path to an ML-KEM-768 private key PEM.")
 	addressesCSV := flag.String("addresses-csv", "", "(Optional) CSV file with HD addresses to derive child keys for. "+
 		"Input columns: address,xpub,path,algorithm,curve,flags. "+
-		"Output CSV will be written with _recovered suffix containing derived publickey and privatekey.")
+		"Output CSV will be written with _recovered suffix containing derived publickey, privatekey and wif (Bitcoin WIF, ECDSA/secp256k1 rows only).")
 
 	// Note: Transaction modes have been removed - use scripts in scripts/ directory instead
 

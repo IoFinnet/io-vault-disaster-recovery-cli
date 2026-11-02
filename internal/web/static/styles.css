@@ -1184,7 +1184,8 @@ button:active {
 }
 
 #hd-addresses-table td.hd-pubkey,
-#hd-addresses-table td.hd-privkey {
+#hd-addresses-table td.hd-privkey,
+#hd-addresses-table td.hd-wif {
     max-width: 200px;
 }
 

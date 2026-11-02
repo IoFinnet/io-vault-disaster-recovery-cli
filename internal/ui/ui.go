@@ -96,7 +96,8 @@ func HDAddressesUsage() string {
 	b += "    ./recovery-tool -addresses-csv addresses.csv backup1.json backup2.json\n"
 	b += "\n"
 	b += fmt.Sprintf("  %sOutput:%s\n", AnsiCodes["bold"], AnsiCodes["reset"])
-	b += "    Creates addresses_recovered.csv with derived public and private keys.\n"
+	b += "    Creates addresses_recovered.csv with derived public and private keys,\n"
+	b += "    plus a mainnet WIF for ECDSA/secp256k1 rows.\n"
 	b += "\n"
 	b += fmt.Sprintf("  %sSecurity:%s\n", AnsiCodes["bold"], AnsiCodes["reset"])
 	b += "    - Input CSV: Contains xpubs which reveal your vault's balance. Do not share.\n"
