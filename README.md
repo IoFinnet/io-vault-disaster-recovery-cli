@@ -338,3 +338,81 @@ npm start -- --private-key YourPrivateKey --destination XXX... --amount 10 --net
 ### Others (TON, ATOM, etc.)
 
 Use the EdDSA key output for these chains that use EdDSA (Edwards / Ed25519) keys.
+
+## HD Address Recovery
+
+The recovery tool supports deriving child keys from recovered master keys using BIP32-style hierarchical deterministic (HD) derivation. This is useful when your vault has multiple derived addresses (e.g., multiple Ethereum accounts, Bitcoin addresses, etc.).
+
+### HD Addresses CSV
+
+The HD addresses CSV file contains information about derived addresses that need their private keys recovered. The io.vault dashboard does not export it yet, so build it from the io.finnet API:
+
+- `xpub`: `GET /v2/vaults/{vaultId}`, field `curves[].xpub`. A vault has one xpub per curve. Use the `secp256k1` one for ECDSA rows and the `edwards` one for EdDSA rows.
+- `address` and `path`: `GET /v2/treasury/vaults/{vaultId}/addresses/ecosystem/{ecosystem}/chain/{chain}/hd-addresses`, fields `address` and `derivationPath`. Repeat for every chain the vault uses.
+- `algorithm` and `curve`: from the same address's `curve` field. `secp256k1` becomes `ECDSA,secp256k1`, and `edwards` becomes `EDDSA,Edwards25519`. The API's Bitcoin HD addresses are SegWit (`bc1q...`), so they are ECDSA rows.
+
+Keep a current copy of this CSV together with your backups. Without the xpub's chain code, HD keys can't be derived, and the backup files don't contain it.
+
+#### CSV Format
+
+The CSV file must contain the following columns:
+
+| Column | Description |
+|--------|-------------|
+| `address` | A label/identifier for the address |
+| `xpub` | The extended public key (xpub) encoding the master public key and chain code |
+| `path` | BIP32 derivation path (e.g., `m/44/60/0/0/0` for Ethereum, `m/0` for master key) |
+| `algorithm` | Signing algorithm: `ECDSA` or `EDDSA` |
+| `curve` | Elliptic curve: `secp256k1` or `Edwards25519` |
+| `flags` | Reserved for future use (set to `0`) |
+
+Example CSV content:
+```csv
+address,xpub,path,algorithm,curve,flags
+0x...,xpub661MyMwAqRbcF...,m/44/60/0/0/0,ECDSA,secp256k1,0
+0x...,xpub661MyMwAqRbcF...,m/44/60/0/0/1,ECDSA,secp256k1,0
+0x...,xpub661MyMwAqRbcE...,m/44/144/0/0,EDDSA,Edwards25519,0
+```
+
+#### Supported Algorithm/Curve Combinations
+
+| Algorithm | Curve | Use Case |
+|-----------|-------|----------|
+| ECDSA | secp256k1 | Ethereum, Bitcoin (legacy/segwit), Tron |
+| EDDSA | Edwards25519 | XRP Ledger, Solana, Bittensor |
+
+Other combinations, such as `SCHNORR/secp256k1` or `ECDSA/P-256`, are rejected: a vault backup only holds the ECDSA/secp256k1 and EdDSA/Edwards25519 keys, so no other key can be recovered from it.
+
+#### Usage
+
+**CLI Mode:**
+```bash
+./recovery-tool-mac -addresses-csv hd_addresses.csv file1.json file2.json file3.json
+```
+
+**Browser UI Mode:**
+Upload the CSV file in the "HD Addresses CSV" field alongside your backup files.
+
+#### Output
+
+The tool generates a `*_recovered.csv` file containing all original columns plus:
+- `publickey` - The derived public key (hex-encoded)
+- `privatekey` - The derived private key (hex-encoded)
+- `wif` - The derived key as a mainnet WIF, for ECDSA/secp256k1 rows only (the API has no Bitcoin testnet chain)
+
+The browser UI shows the same values in its HD table, and "Copy All HD Addresses" includes the `wif` column.
+
+Using the derived keys:
+- **EVM**: import `privatekey` into MetaMask, as described in [Ethereum & Ethereum-Like Recovery](#ethereum--ethereum-like-recovery).
+- **Bitcoin (SegWit)**: import `wif` into Electrum with the `p2wpkh:` prefix, as described in [Bitcoin Recovery](#bitcoin-recovery).
+- **Solana, XRP, TAO**: pass `privatekey` (and `publickey` for XRP) to the scripts in [Scripts for Other Chains](#scripts-for-other-chains). A new XRP HD address needs the reserve before it is active.
+
+> [!NOTE]
+> - Only non-hardened derivation paths are supported (no `'` or `h` suffix)
+> - Path `m` returns the master key unchanged (useful for verification)
+> - ECDSA rows derive from the ECDSA master key, EdDSA rows from the EdDSA master key
+
+> [!CAUTION]
+> **Input CSV Security**: The input CSV contains extended public keys (xpubs) which allow anyone to view your vault's total balance and transaction history. While it does not contain private keys, you should avoid sharing this file publicly.
+>
+> **Output CSV Security**: The recovered CSV file contains private keys and must be treated as highly confidential. Only generate this file on an air-gapped machine with no network connection. Never share this file with anyone, ever. Anyone with access to the private keys can steal your funds.

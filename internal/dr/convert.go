@@ -7,9 +7,9 @@ package dr
 import (
 	"fmt"
 
-	"github.com/binance-chain/tss-lib/crypto"
-	ecdsa_keygen "github.com/binance-chain/tss-lib/ecdsa/keygen"
-	eddsa_keygen "github.com/binance-chain/tss-lib/eddsa/keygen"
+	"github.com/iofinnet/tss-lib/v3/crypto"
+	ecdsa_keygen "github.com/iofinnet/tss-lib/v3/tss/ecdsa/keygen"
+	eddsa_keygen "github.com/iofinnet/tss-lib/v3/tss/schnorr/keygen"
 )
 
 // ToECDSASaveData converts decrypted .dr ECDSA shares into the legacy tss-lib LocalPartySaveData

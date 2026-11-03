@@ -8,7 +8,7 @@ import (
 	"crypto/elliptic"
 	"fmt"
 
-	"github.com/binance-chain/tss-lib/tss"
+	"github.com/iofinnet/tss-lib/v3/tss"
 )
 
 // ResolveCurve maps a tss-lib/v4 curve name (from a decrypted ECPoint's "Curve" field) to the
