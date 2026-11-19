@@ -97,6 +97,11 @@ var ErrAmbiguousRootRequestID = errors.New("ambiguous root request id")
 // for it from another input file. Same pattern as ErrAmbiguousRootRequestID.
 var ErrRequestIDMismatch = errors.New("non matching current request id")
 
+// ErrNotEnoughShares signals that no reshare in a vault's .dr chain has enough shares to meet its
+// threshold. Unlike the errors above it describes missing input, not conflicting input, which is
+// how Verify tells "below threshold" apart from "files disagree".
+var ErrNotEnoughShares = errors.New("not enough shares at any reshare")
+
 // Options are Prepare's inputs. The zero value means listing mode, CLI-style error
 // presentation, and no overrides.
 type Options struct {
@@ -106,6 +111,10 @@ type Options struct {
 	RequestIDOverride string
 	PrivateKeysPEM    [][]byte
 	Presentation      ErrorPresentation
+
+	// quiet suppresses the per-share progress lines a recovery-mode pass prints. Verify runs a
+	// recovery-mode pass per vault without reconstructing anything, so those lines are noise there.
+	quiet bool
 }
 
 // Prepare decodes and decrypts every input backup file — mnemonic-encrypted JSON in
@@ -128,6 +137,9 @@ func Prepare(inputs *InputSet, opts Options) (res *Result, welp error) {
 	presentation := opts.Presentation
 
 	justListingVaults := vaultID == ""
+	// quietShares silences inflateSharesForCurve's progress lines: always while listing, and in a
+	// recovery-mode pass when the caller (Verify) asked for quiet.
+	quietShares := justListingVaults || opts.quiet
 
 	artifacts := inputs.artifacts
 
@@ -332,7 +344,7 @@ func Prepare(inputs *InputSet, opts Options) (res *Result, welp error) {
 					welp = fmt.Errorf("no legacy or new shares found for vault %s %s", vID, clearVaults[vID].Name)
 					return
 				}
-				if vaultSharesECDSA, welp = inflateSharesForCurve[ecdsa_keygen.LocalPartySaveData](sharesECDSA, justListingVaults); welp != nil {
+				if vaultSharesECDSA, welp = inflateSharesForCurve[ecdsa_keygen.LocalPartySaveData](sharesECDSA, quietShares); welp != nil {
 					return
 				}
 				if _, ok := vaultAllSharesECDSA[vID]; !ok {
@@ -342,7 +354,7 @@ func Prepare(inputs *InputSet, opts Options) (res *Result, welp error) {
 				// / ECDSA
 				// EDDSA
 				if sharesEDDSA != nil {
-					if vaultSharesEDDSA, welp = inflateSharesForCurve[eddsa_keygen.LocalPartySaveData](sharesEDDSA, justListingVaults); welp != nil {
+					if vaultSharesEDDSA, welp = inflateSharesForCurve[eddsa_keygen.LocalPartySaveData](sharesEDDSA, quietShares); welp != nil {
 						return
 					}
 					if _, ok := vaultAllSharesEDDSA[vID]; !ok {
@@ -468,7 +480,7 @@ func Prepare(inputs *InputSet, opts Options) (res *Result, welp error) {
 	orderedVaults := make([]ui.VaultPickerItem, 0, len(vaultIDs))
 	for _, vID := range vaultIDs {
 		vault := clearVaults[vID]
-		vaultFormData := ui.VaultPickerItem{VaultID: vID, Name: vault.Name, Quorum: vault.Quroum, NumberOfShares: len(vaultAllSharesECDSA[vID])}
+		vaultFormData := ui.VaultPickerItem{VaultID: vID, Name: vault.Name, Quorum: vault.Quroum, LastRequestID: vault.LastRequestID, NumberOfShares: len(vaultAllSharesECDSA[vID])}
 		orderedVaults = append(orderedVaults, vaultFormData)
 	}
 
