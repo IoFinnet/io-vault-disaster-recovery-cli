@@ -16,7 +16,7 @@ import (
 
 // NetworkStatus says whether this computer has an active network connection. It is worked out
 // from the local network adapters only: the tool sends no traffic to find out, so it cannot tell
-// whether a connection actually reaches the internet. Any adapter with a usable address counts.
+// whether a connection actually reaches the internet. See checkLocalNetwork for what counts.
 type NetworkStatus struct {
 	Connected bool             `json:"connected"`
 	Adapters  []NetworkAdapter `json:"adapters"` // the active adapters; empty when offline
@@ -48,9 +48,13 @@ type systemAdapters struct{}
 func (systemAdapters) Interfaces() ([]net.Interface, error)          { return net.Interfaces() }
 func (systemAdapters) Addrs(iface net.Interface) ([]net.Addr, error) { return iface.Addrs() }
 
-// checkLocalNetwork lists the adapters that are up, are not loopback, and hold an address other
-// systems could reach: any IPv4 or IPv6 address except loopback and link-local. A link-local-only
-// adapter (169.254.x.x, fe80::) has no working network, so it does not count.
+// checkLocalNetwork lists the adapters that are up, are not loopback, and could reach another
+// system: any adapter holding an IPv4 or IPv6 address other than loopback, unspecified or
+// link-local; or a running adapter whose only addresses are link-local (169.254.x.x, fe80::),
+// since those still reach other hosts on the same link, such as a laptop cabled to another
+// machine. Point-to-point adapters are not counted for link-local addresses alone: tunnels such as
+// macOS utun always carry an fe80:: address and reach nothing until a VPN routes through them.
+// An adapter whose addresses cannot be read is counted, like an unreadable adapter list.
 func checkLocalNetwork(src adapterSource) NetworkStatus {
 	status := NetworkStatus{Adapters: []NetworkAdapter{}, CheckedAt: time.Now().UTC().Format(time.RFC3339)}
 	ifaces, err := src.Interfaces()
@@ -67,9 +71,17 @@ func checkLocalNetwork(src adapterSource) NetworkStatus {
 		}
 		addrs, err := src.Addrs(iface)
 		if err != nil {
+			// An active adapter we cannot inspect may be connected; as above, never assume offline.
+			log.Printf("network check: could not read the addresses of adapter %s: %v", iface.Name, err)
+			status.Adapters = append(status.Adapters, NetworkAdapter{
+				Name:    iface.Name + " (addresses could not be read)",
+				Virtual: looksVirtual(iface.Name),
+			})
 			continue
 		}
-		if !hasUsableAddress(addrs) {
+		routable, linkLocal := classifyAddresses(addrs)
+		linkLocalReachable := linkLocal && iface.Flags&net.FlagRunning != 0 && iface.Flags&net.FlagPointToPoint == 0
+		if !routable && !linkLocalReachable {
 			continue
 		}
 		status.Adapters = append(status.Adapters, NetworkAdapter{Name: iface.Name, Virtual: looksVirtual(iface.Name)})
@@ -84,7 +96,9 @@ func checkLocalNetwork(src adapterSource) NetworkStatus {
 	return status
 }
 
-func hasUsableAddress(addrs []net.Addr) bool {
+// classifyAddresses reports whether addrs include a routable address (anything but loopback,
+// unspecified and link-local), and whether they include a link-local unicast address.
+func classifyAddresses(addrs []net.Addr) (routable, linkLocal bool) {
 	for _, addr := range addrs {
 		var ip net.IP
 		switch a := addr.(type) {
@@ -95,12 +109,16 @@ func hasUsableAddress(addrs []net.Addr) bool {
 		default:
 			continue
 		}
-		if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+		switch {
+		case ip == nil || ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalMulticast():
 			continue
+		case ip.IsLinkLocalUnicast():
+			linkLocal = true
+		default:
+			routable = true
 		}
-		return true
 	}
-	return false
+	return routable, linkLocal
 }
 
 func looksVirtual(name string) bool {

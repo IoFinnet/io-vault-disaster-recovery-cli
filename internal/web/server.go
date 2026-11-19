@@ -10,6 +10,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -297,7 +298,7 @@ func (s *Server) handleListVaults(w http.ResponseWriter, r *http.Request) {
 	defer clearKeys(privateKeysPEM)
 
 	// Run the tool to get vault information
-	_, _, _, vaultsFormInfo, _, err := runTool(vaultsDataFiles, "", 0, false, "", 0, "", "", privateKeysPEM)
+	_, _, _, vaultsFormInfo, _, err := runTool(vaultsDataFiles, "", 0, false, "", 0, "", "", privateKeysPEM, nil)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to retrieve vault information: %v", err), http.StatusInternalServerError)
 		return
@@ -333,18 +334,10 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 	// Recovery rebuilds a full private key, so it refuses to run while this computer has an active
 	// network adapter, unless the user explicitly confirmed it in the UI (for example a disposable
 	// VM whose virtual adapter has no internet route). The UI enforces the same rule; this is the
-	// server-side backstop.
-	if status := s.networkStatus(); status.Connected && r.FormValue("allowConnected") != "true" {
-		names := make([]string, 0, len(status.Adapters))
-		for _, a := range status.Adapters {
-			names = append(names, a.Name)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(RecoveryResult{
-			NetworkBlocked: true,
-			ErrorMessage: fmt.Sprintf("This computer is connected to a network (%s). Disconnect it before you recover, "+
-				"or confirm that you want to recover anyway.", strings.Join(names, ", ")),
-		})
+	// server-side backstop. This first check saves the upload work when the computer is already
+	// connected; a second one runs just before the key is rebuilt.
+	allowConnected := r.FormValue("allowConnected") == "true"
+	if s.refuseWhileConnected(w, allowConnected) {
 		return
 	}
 
@@ -398,9 +391,27 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 	}
 	defer clearKeys(privateKeysPEM)
 
+	// The computer may connect while the uploads are saved and the shares decrypted, so the check
+	// runs again inside runTool: after decryption and immediately before the key is rebuilt.
+	var connectedBeforeReconstruct *NetworkStatus
+	beforeReconstruct := func() error {
+		if allowConnected {
+			return nil
+		}
+		if status := s.networkStatus(); status.Connected {
+			connectedBeforeReconstruct = &status
+			return errConnectedBeforeReconstruct
+		}
+		return nil
+	}
+
 	// Run the recovery tool
 	result := RecoveryResult{}
-	address, ecSK, edSK, orderedVaults, exportedKsFile, err := runTool(vaultsDataFiles, vaultID, nonceOverride, nonceOverrideSet, requestIDOverride, quorumOverride, exportFile, passwordForKS, privateKeysPEM)
+	address, ecSK, edSK, orderedVaults, exportedKsFile, err := runTool(vaultsDataFiles, vaultID, nonceOverride, nonceOverrideSet, requestIDOverride, quorumOverride, exportFile, passwordForKS, privateKeysPEM, beforeReconstruct)
+	if connectedBeforeReconstruct != nil {
+		writeNetworkBlocked(w, *connectedBeforeReconstruct)
+		return
+	}
 	if err == nil {
 		// In recovery mode the pipeline only processes the selected vault, so its entry records the
 		// reshare the shares came from and how many were used.
@@ -501,6 +512,37 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// refuseWhileConnected writes the networkBlocked recovery result and returns true when this
+// computer is connected and the request did not confirm recovering anyway. No key is rebuilt for a
+// refused request.
+func (s *Server) refuseWhileConnected(w http.ResponseWriter, allowConnected bool) bool {
+	status := s.networkStatus()
+	if !status.Connected || allowConnected {
+		return false
+	}
+	writeNetworkBlocked(w, status)
+	return true
+}
+
+// errConnectedBeforeReconstruct stops runTool before any key is rebuilt when the computer connected
+// to a network after the request's first check.
+var errConnectedBeforeReconstruct = errors.New("computer connected to a network before the key was rebuilt")
+
+// writeNetworkBlocked writes the recovery result that refuses to rebuild a key on a connected
+// computer, naming the active adapters.
+func writeNetworkBlocked(w http.ResponseWriter, status NetworkStatus) {
+	names := make([]string, 0, len(status.Adapters))
+	for _, a := range status.Adapters {
+		names = append(names, a.Name)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(RecoveryResult{
+		NetworkBlocked: true,
+		ErrorMessage: fmt.Sprintf("This computer is connected to a network (%s). Disconnect it before you recover, "+
+			"or confirm that you want to recover anyway.", strings.Join(names, ", ")),
+	})
+}
+
 // readPrivateKeysPEM extracts the ML-KEM-768 private key PEMs needed to decrypt any Virtual Signer
 // .dr inputs from the request: every uploaded "privateKeyFile" part (one per Virtual Signer), plus
 // pasted PEM text in the "privateKey" field. The pipeline tries each key against each .dr file.
@@ -554,12 +596,19 @@ type uploadedFile struct {
 	fromZip bool   // extracted from a legacy (non-bundle) ZIP archive of exports
 }
 
+// uploadFailure is an uploaded file that could not be read at all, such as a damaged ZIP archive.
+// Only verification collects these, to report them as that file's error.
+type uploadFailure struct {
+	name string // base name as uploaded
+	err  string // why it could not be read, without temp paths
+}
+
 // processFilesAndMnemonics processes the uploaded files and their mnemonics for listing and
 // recovery, where every JSON export needs its mnemonic. On success it also returns a cleanup func
 // the caller must defer to remove this request's temp files; on error they are already removed and
 // the cleanup func is a no-op.
 func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, func(), error) {
-	files, _, reqCleanup, err := s.processUploadedFiles(r, false)
+	files, _, _, reqCleanup, err := s.processUploadedFiles(r, false)
 	return files, reqCleanup, err
 }
 
@@ -573,16 +622,19 @@ func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, 
 // upload position, when that field is absent.
 //
 // With mnemonicsOptional (verify), a JSON file with no mnemonic is kept with an empty one so it can
-// be checked by its header, and a supplied mnemonic is passed through unvalidated so a bad one
-// shows up as that file's error. Otherwise (list and recover) a JSON file without a mnemonic is
-// skipped when it came from a zip and is an error when uploaded directly, as before.
+// be checked by its header, a supplied mnemonic is passed through unvalidated so a bad one shows up
+// as that file's error, and a ZIP archive that cannot be opened is returned as an uploadFailure
+// while the other uploads are still processed. Otherwise (list and recover) a JSON file without a
+// mnemonic is skipped when it came from a zip and is an error when uploaded directly, and an
+// unreadable ZIP fails the request, as before.
 //
-// On success it also returns how each input path was uploaded, and a cleanup func the caller must
-// defer to remove this request's temp files; on error they are already removed and the cleanup
-// func is a no-op.
-func (s *Server) processUploadedFiles(r *http.Request, mnemonicsOptional bool) (ui.VaultsDataFiles, map[string]uploadedFile, func(), error) {
+// On success it also returns how each input path was uploaded, any upload failures, and a cleanup
+// func the caller must defer to remove this request's temp files; on error they are already
+// removed and the cleanup func is a no-op.
+func (s *Server) processUploadedFiles(r *http.Request, mnemonicsOptional bool) (
+	ui.VaultsDataFiles, map[string]uploadedFile, []uploadFailure, func(), error) {
 	if r.MultipartForm == nil || len(r.MultipartForm.File["files"]) == 0 {
-		return nil, nil, noopCleanup, fmt.Errorf("no files uploaded")
+		return nil, nil, nil, noopCleanup, fmt.Errorf("no files uploaded")
 	}
 	// Only the "files" field carries vault data files; other file fields (e.g. "privateKeyFile",
 	// "hdAddressesCSV") carry unrelated data and must not be swept in here.
@@ -593,18 +645,19 @@ func (s *Server) processUploadedFiles(r *http.Request, mnemonicsOptional bool) (
 	requestDir, err := os.MkdirTemp(s.tempDir, "request-")
 	if err != nil {
 		log.Printf("⚠ failed to create a request directory: %v", err)
-		return nil, nil, noopCleanup, fmt.Errorf("failed to create a temporary directory: %w", fileutils.StripPathFromError(err))
+		return nil, nil, nil, noopCleanup, fmt.Errorf("failed to create a temporary directory: %w", fileutils.StripPathFromError(err))
 	}
 	requestDirs := []string{requestDir}
-	fail := func(err error) (ui.VaultsDataFiles, map[string]uploadedFile, func(), error) {
+	fail := func(err error) (ui.VaultsDataFiles, map[string]uploadedFile, []uploadFailure, func(), error) {
 		for _, dir := range requestDirs {
 			os.RemoveAll(dir)
 		}
-		return nil, nil, noopCleanup, err
+		return nil, nil, nil, noopCleanup, err
 	}
 
 	vaultsDataFiles := make([]ui.VaultsDataFile, 0, len(fileHeaders))
 	uploads := make(map[string]uploadedFile, len(fileHeaders))
+	var failures []uploadFailure
 	seenNames := make(map[string]bool, len(fileHeaders))
 	add := func(path, mnemonic string, upload uploadedFile) {
 		vaultsDataFiles = append(vaultsDataFiles, ui.VaultsDataFile{File: path, Mnemonics: mnemonic})
@@ -636,6 +689,12 @@ func (s *Server) processUploadedFiles(r *http.Request, mnemonicsOptional bool) (
 			// The uploaded ZIP is no longer needed after extraction, whether or not it succeeded.
 			os.Remove(filePath)
 			if err != nil {
+				if mnemonicsOptional {
+					// Verification reports a damaged archive as that file's error and still checks the
+					// other uploads; listing and recovery need every file, so they stop here.
+					failures = append(failures, uploadFailure{name: name, err: fileutils.StripPathFromError(err).Error()})
+					continue
+				}
 				return fail(err)
 			}
 			if len(extractedFiles) > 0 {
@@ -691,8 +750,9 @@ func (s *Server) processUploadedFiles(r *http.Request, mnemonicsOptional bool) (
 		}
 	}
 
-	// Ensure we have at least one vault data file to process
-	if len(vaultsDataFiles) == 0 {
+	// Ensure we have at least one vault data file to process. Verification with only unreadable
+	// uploads still answers, so the user sees why each one failed.
+	if len(vaultsDataFiles) == 0 && len(failures) == 0 {
 		return fail(fmt.Errorf("no valid JSON files were uploaded (directly or in ZIP archives)"))
 	}
 
@@ -701,7 +761,7 @@ func (s *Server) processUploadedFiles(r *http.Request, mnemonicsOptional bool) (
 	s.trackZipExtractedDirs(requestDirs)
 
 	reqCleanup := func() { s.cleanupRequestDirs(requestDirs) }
-	return vaultsDataFiles, uploads, reqCleanup, nil
+	return vaultsDataFiles, uploads, failures, reqCleanup, nil
 }
 
 // saveUploadedFile writes one upload to dst, readable by the owner only.

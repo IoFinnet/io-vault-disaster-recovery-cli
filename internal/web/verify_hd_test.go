@@ -143,6 +143,26 @@ func TestHandleVerify_HDAddresses(t *testing.T) {
 	require.Empty(t, rows[4].VaultID)
 }
 
+// Each row reports the CSV line it starts on, although the CSV reader skips blank lines and a
+// quoted field can span lines.
+func TestHandleVerify_HDAddresses_RowIsTheCSVLine(t *testing.T) {
+	ecdsaXpub, _, _, _ := lqnsXpubs(t)
+	csv := "address,xpub,path,algorithm,curve,flags\n" + // line 1
+		"\n" + // line 2
+		fmt.Sprintf("first,%s,m/0,ECDSA,secp256k1,0\n", ecdsaXpub) + // line 3
+		"\n\n" + // lines 4-5
+		fmt.Sprintf("\"second\nlabel\",%s,m/1,ECDSA,secp256k1,0\n", ecdsaXpub) + // lines 6-7
+		fmt.Sprintf("third,%s,m/2,ECDSA,secp256k1,0\n", ecdsaXpub) // line 8
+
+	resp := postVerifyWithCSV(t, lqnsUploads(), csv)
+	require.Empty(t, resp.HDAddresses.Error)
+	rows := resp.HDAddresses.Rows
+	require.Len(t, rows, 3)
+	require.Equal(t, 3, rows[0].Row)
+	require.Equal(t, 6, rows[1].Row)
+	require.Equal(t, 8, rows[2].Row)
+}
+
 func TestHandleVerify_HDAddresses_LockedVaultIsNoVault(t *testing.T) {
 	ecdsaXpub, _, _, _ := lqnsXpubs(t)
 	// Without mnemonics no share is decrypted, so no public key is known to match the xpub.

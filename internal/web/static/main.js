@@ -124,12 +124,15 @@
         area.setAttribute('readonly', '');
         area.style.position = 'fixed';
         area.style.opacity = '0';
-        document.body.appendChild(area);
+        // An open modal <dialog> (the chain tool) makes everything outside it inert, so a textarea
+        // appended to <body> could not be selected. Put it inside the open dialog instead.
+        const host = document.querySelector('dialog[open]') || document.body;
+        host.appendChild(area);
         area.select();
         let ok = false;
         try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
         area.value = '';
-        document.body.removeChild(area);
+        area.remove();
         return ok;
     }
 
@@ -226,16 +229,22 @@
         return { threshold: '', requestId: '', nonce: '', exportWallet: false, exportFile: '', password: '', hdFile: null };
     }
 
+    // Phrase and skip state is keyed by a name taken from a file name. A prototype-less object
+    // keeps a file called e.g. "constructor.json" from reading an inherited Object member.
+    function freshKeyed() {
+        return Object.create(null);
+    }
+
     const state = {
         view: 'home',
         loadingFor: '',
         task: 'verify',
         sources: { mobile: false, vs: false, hd: false },
         phraseIndex: 0,
-        skipped: {},
+        skipped: freshKeyed(),
         files: [],
         keys: [],
-        mnemonics: {},
+        mnemonics: freshKeyed(),
         error: '',
         busyText: '',
         report: null,
@@ -252,6 +261,31 @@
         network: null, // null until the first check: { connected, adapters, unknown? }
         allowConnected: false, // the user confirmed recovering on a connected computer
     };
+
+    // Results belong to the inputs that produced them. When an input changes the result is dropped,
+    // so the sidebar can never reopen a report or vault list that no longer describes the files,
+    // keys and phrases on screen. Changing views alone keeps them.
+    //   report: files, keys, entered or skipped phrases, and the HD addresses CSV.
+    //   vault list: files, keys and phrases (the CSV is not sent to list vaults).
+    function invalidateReport() {
+        state.report = null;
+    }
+    function invalidateResults() {
+        invalidateReport();
+        state.vaults = null;
+        state.vaultInfo = {};
+        state.vaultSources = [];
+        // state.selectedVaultId is kept on purpose: it is only a preference (e.g. the vault the user
+        // chose with Recover on the report), and loadVaults checks it against the new list.
+    }
+
+    // Forgets one export's phrase, skip and reveal state.
+    function forgetPhrase(key) {
+        state.mnemonics[key] = '';
+        delete state.mnemonics[key];
+        delete state.skipped[key];
+        delete state.revealed['mn:' + key];
+    }
 
     // ------------------------------------------------------------------
     // Files and keys
@@ -307,8 +341,7 @@
         }
         if (added) {
             state.error = '';
-            state.report = null;
-            state.vaults = null;
+            invalidateResults();
         }
         render();
     }
@@ -357,12 +390,14 @@
         if (wc === 0) { return 'empty'; }
         return wc === 24 ? 'ready' : 'partial';
     }
+    // Two uploads with the same field name would both claim one recovery phrase. A Set (not a
+    // plain object) so a name such as "constructor" is not already "seen" through the prototype.
     function duplicateMnemonicKeys() {
-        const seen = {};
+        const seen = new Set();
         const dups = [];
         mnemonicTargets().forEach((t) => {
-            if (seen[t.key]) { dups.push(t.key); }
-            seen[t.key] = true;
+            if (seen.has(t.key)) { dups.push(t.key); }
+            seen.add(t.key);
         });
         return dups;
     }
@@ -626,8 +661,7 @@
     function syncRecoverButton() {
         const btn = document.getElementById('recover-btn');
         if (!btn) { return; }
-        const hasVault = (state.vaults || []).some((v) => v.VaultID === state.selectedVaultId);
-        btn.disabled = !hasVault || networkBlocksRecover();
+        btn.disabled = !selectedVault() || networkBlocksRecover();
         const hint = document.getElementById('recover-hint');
         if (hint) { hint.textContent = recoverHint(); }
     }
@@ -809,7 +843,9 @@
         }
         html += '<div class="stack" style="gap:24px">';
         // A kind of backup shows when chosen, or when it already has files, so nothing added is hidden.
-        const hasGroup = (g) => state.sources[g] || state.files.some((f) => f.group === g) || (g === 'vs' && state.keys.length > 0);
+        // Virtual Signer also shows whenever a file needs a key (e.g. a ZIP of .dr files added with
+        // only the mobile app chosen), so the key picker is never hidden when a key can be used.
+        const hasGroup = (g) => state.sources[g] || state.files.some((f) => f.group === g) || (g === 'vs' && (state.keys.length > 0 || needsKey()));
         if (hasGroup('mobile')) {
             html += card('io.vault mobile app exports', 'You enter each export\'s recovery phrase on the next step.',
                 dropzone('mobile', 'Drop mobile app exports here', '.json exports, or a ZIP of them. A ZIP must be flat, with no folders inside.', '.json,.zip') + fileRows('mobile'));
@@ -897,6 +933,7 @@
         const key = input.getAttribute('data-mnemonic-key');
         state.mnemonics[key] = input.value;
         delete state.skipped[key];
+        invalidateResults();
         const t = mnemonicTargets().find((x) => x.key === key);
         if (!t) { return; }
         const s = mnemonicState(key);
@@ -964,6 +1001,7 @@
         'legacy-zip-entry': ['phone', 'Export from a ZIP archive'],
         'dr-share': ['server', 'Virtual Signer share'],
         'signer-bundle': ['folder', 'Signer backup bundle'],
+        'zip-archive': ['folder', 'ZIP archive'],
     };
     function vaultLabel(v) {
         return v.name && v.name !== v.vaultId ? v.name : 'Vault ' + truncateMiddle(v.vaultId, 5, 4);
@@ -1161,7 +1199,8 @@
 
         // Files: counted shares first, then the rest; a long list is cut with a count.
         const order = { counted: 0, 'other-reshare': 1, header: 2, conflict: 3, error: 4 };
-        const contribs = (v.contributions || []).slice().sort((a, b) => (order[a.state] || 9) - (order[b.state] || 9));
+        // `??`, not `||`: counted has rank 0, which `||` would treat as unknown and sort last.
+        const contribs = (v.contributions || []).slice().sort((a, b) => (order[a.state] ?? 9) - (order[b.state] ?? 9));
         const files = contribs.slice(0, MAX_ROW_FILES).map((c) => {
             const s = sources[c.source] || { name: 'Unknown file', kind: '' };
             const m = CONTRIB[c.state] || CONTRIB.header;
@@ -1199,12 +1238,28 @@
     function vaultTitle(v) {
         return v.Name && v.Name !== v.VaultID ? v.Name : 'Vault ' + truncateMiddle(v.VaultID, 5, 4);
     }
+    // A reshare request ID or nonce under Advanced options picks a reshare other than the latest.
+    // The listed share count and the verify verdict describe the latest reshare only, so they say
+    // nothing about the one entered: a vault is not blocked on them then. The server checks the
+    // entered reshare when recovering, and returns an error if it is short of shares.
+    function reshareOverridden() {
+        const o = state.options;
+        return !!(o.requestId.trim() || o.nonce.trim());
+    }
     function vaultBlocked(v) {
+        if (reshareOverridden()) { return ''; }
         const info = state.vaultInfo[v.VaultID];
         const threshold = Number(state.options.threshold) || v.Quorum;
         if (threshold > 0 && v.NumberOfShares < threshold) { return 'Below threshold: ' + v.NumberOfShares + ' of ' + threshold + ' shares'; }
         if (info && info.status === 'below-threshold' && !state.options.threshold) { return info.message || 'Below threshold'; }
         return '';
+    }
+
+    // The vault Recover acts on: the chosen one, unless the current options block it. The choice
+    // itself is kept, so it comes back if the options change again.
+    function selectedVault() {
+        const sel = (state.vaults || []).find((v) => v.VaultID === state.selectedVaultId);
+        return sel && !vaultBlocked(sel) ? sel : null;
     }
 
     // Tags a vault by the kind of file that actually holds its shares, read from the verify report.
@@ -1226,8 +1281,9 @@
 
     function renderSelectVault() {
         const vaults = state.vaults || [];
-        const sel = vaults.find((v) => v.VaultID === state.selectedVaultId);
+        const sel = selectedVault();
         const o = state.options;
+        const overridden = reshareOverridden();
 
         let html = wizardStepper() + pageHeader({
             title: 'Select a vault',
@@ -1250,10 +1306,12 @@
             // the whole card, and the copy button sits on top of it.
             html += '<div class="choice-group" role="radiogroup" aria-label="Vault to recover">' + vaults.map((v, i) => {
                 const blocked = vaultBlocked(v);
-                const checked = v.VaultID === state.selectedVaultId;
+                // A blocked card is never shown as chosen, matching what Recover would act on.
+                const checked = v.VaultID === state.selectedVaultId && !blocked;
                 const info = state.vaultInfo[v.VaultID];
                 const notes = [];
                 if (!v.Quorum) { notes.push('threshold not in backup: enter it under Advanced options'); }
+                if (overridden) { notes.push('recovery uses the reshare entered under Advanced options; its shares are checked when you recover'); }
                 if (blocked) { notes.push(blocked); } else if (info && info.status === 'conflict' && info.message) { notes.push(info.message); }
                 const tag = vaultSourceTag(v.VaultID);
                 const sep = '<span aria-hidden="true">·</span>';
@@ -1263,7 +1321,7 @@
                     '<button type="button" class="choice-hit" role="radio" aria-checked="' + checked + '"' + (blocked ? ' aria-disabled="true"' : '') +
                     ' aria-describedby="vault-desc-' + i + '" data-action="select-vault" data-vault="' + esc(v.VaultID) + '">' +
                     '<span class="choice-title">' + esc(vaultTitle(v)) + (tag ? '<span class="choice-tag">' + tag + '</span>' : '') + '</span></button>' +
-                    '<span class="choice-desc with-copy" id="vault-desc-' + i + '"><span>' + esc(v.NumberOfShares + ' of ' + (v.Quorum || '?') + ' shares') + '</span>' + sep +
+                    '<span class="choice-desc with-copy" id="vault-desc-' + i + '"><span>' + esc(v.NumberOfShares + ' of ' + (v.Quorum || '?') + ' shares' + (overridden ? ' in the latest reshare' : '')) + '</span>' + sep +
                     copyField(v.VaultID, { compact: true, head: 8, tail: 4, label: 'Copy vault ID' }) +
                     (notes.length ? sep + '<span>' + esc(notes.join(' · ')) + '</span>' : '') + '</span></span>' +
                     '<span class="choice-indicator">' + icon('check') + '</span></div>';
@@ -1296,7 +1354,7 @@
             html += card('Selected vault', '',
                 '<div>' + kv('Name', esc(vaultTitle(sel))) + kv('Vault ID', copyField(sel.VaultID, { label: 'Copy vault ID' })) +
                 kv('Threshold', sel.Quorum ? esc(plural(sel.Quorum, 'share')) : '<span class="muted">Not in backup</span>') +
-                kv('Shares found', esc(String(sel.NumberOfShares))) + '</div>' +
+                kv('Shares found', esc(String(sel.NumberOfShares)) + (overridden ? ' <span class="small muted">(latest reshare)</span>' : '')) + '</div>' +
                 '<div class="vault-section"><span class="vault-section-label">Addresses</span>' + vaultAddresses(info, 'Shown after recovery') + '</div>' +
                 '<div class="note-box">' + icon('info') + '<span>Check that these addresses match the vault in io.vault before you continue. They come from the shares\' public keys, so no private key is needed to show them.</span></div>');
         } else {
@@ -1599,31 +1657,57 @@
         if (heading) { heading.focus({ preventScroll: true }); }
     }
 
+    // Request ownership. Each server operation (verify, list vaults, recover) takes a token when it
+    // starts. Clearing the session, leaving the loading screen (the sidebar is the only way off it)
+    // or starting another operation makes the token stale. A response whose token is stale is
+    // discarded: it writes no results or secrets, changes no view and resets no attempt state, so a
+    // late reply can never reopen a screen the user cleared or left.
+    let currentOp = 0;
+    function beginOp() {
+        currentOp += 1;
+        return currentOp;
+    }
+    function cancelOps() {
+        currentOp += 1;
+    }
+    function ownsOp(token) {
+        // Every operation waits on the loading screen, so leaving it by any route also disowns it.
+        return token === currentOp && state.view === 'loading';
+    }
+
     async function runVerify() {
+        const op = beginOp();
         state.error = '';
         state.busyText = 'Checking ' + plural(state.files.length, 'file') + '…';
         state.loadingFor = 'verify-results';
         go('loading');
+        let report;
         try {
             const fd = buildForm();
             if (state.options.hdFile) {
                 fd.append('hdAddressesCSV', state.options.hdFile, state.options.hdFile.name);
             }
-            state.report = await postForm('/api/verify', fd);
-            state.reportFilter = 'all';
-            go('verify-results');
+            report = await postForm('/api/verify', fd);
         } catch (err) {
+            if (!ownsOp(op)) { return; }
             state.error = err.message;
             go('files');
+            return;
         }
+        if (!ownsOp(op)) { return; }
+        state.report = report;
+        state.reportFilter = 'all';
+        go('verify-results');
     }
 
     async function loadVaults() {
+        const op = beginOp();
         state.error = '';
         state.busyText = 'Reading vaults from ' + plural(state.files.length, 'file') + '…';
         state.loadingFor = 'select-vault';
         go('loading');
         const results = await Promise.allSettled([postForm('/api/list-vaults', buildForm()), postForm('/api/verify', buildForm())]);
+        if (!ownsOp(op)) { return; }
         if (results[0].status === 'rejected') {
             state.error = results[0].reason.message;
             go('files');
@@ -1645,7 +1729,9 @@
     }
 
     async function recover() {
-        const sel = (state.vaults || []).find((v) => v.VaultID === state.selectedVaultId);
+        // selectedVault() is null when the current options block the chosen vault, so this sends
+        // only what the cards and the Recover button show as recoverable.
+        const sel = selectedVault();
         if (!sel) { return; }
         const o = state.options;
         const fail = (message) => { state.error = message; render(); window.scrollTo(0, 0); };
@@ -1668,6 +1754,13 @@
         if (networkBlocksRecover()) { return fail('This computer is connected to a network. Disconnect it, or confirm that you want to recover anyway.'); }
         if (state.allowConnected && isConnected()) { fd.append('allowConnected', 'true'); }
 
+        // The wallet password and the "recover anyway" confirmation belong to this one attempt.
+        // Clear them now, before any screen is rendered: a failed attempt then shows both empty
+        // (the user enters and confirms again), and a stale response has nothing to reset.
+        o.password = '';
+        state.allowConnected = false;
+
+        const op = beginOp();
         state.error = '';
         state.busyText = 'Recovering ' + vaultTitle(sel) + '…';
         state.loadingFor = 'recover-results';
@@ -1676,13 +1769,15 @@
         try {
             result = await postForm('/api/recover', fd);
         } catch (err) {
+            if (!ownsOp(op)) { return; }
             state.error = err.message;
             go('select-vault');
             return;
-        } finally {
-            o.password = '';
-            // Recovering while connected is confirmed once per attempt.
-            state.allowConnected = false;
+        }
+        if (!ownsOp(op)) {
+            // The session was cleared or the user moved on: never publish these keys.
+            discardRecoverResult(result);
+            return;
         }
         if (result && result.networkBlocked) {
             refreshNetwork();
@@ -1723,6 +1818,8 @@
             requestSource: o.requestId.trim() ? 'request' : (o.nonce.trim() ? 'nonce' : 'auto'),
             thresholdManual: !!o.threshold.trim(),
         };
+        // The keys now live in the secrets map only; drop the response's copies.
+        discardRecoverResult(result);
         state.revealed = {};
         updateNav();
         go('recover-results');
@@ -1733,15 +1830,30 @@
         secrets.clear();
     }
 
+    // Drops the key material a /api/recover response holds. JavaScript strings cannot be
+    // overwritten in place, so, like wipeSecrets(), this removes the references to them.
+    function discardRecoverResult(result) {
+        if (!result || typeof result !== 'object') { return; }
+        ['ecdsaPrivateKey', 'mainnetWIF', 'testnetWIF', 'eddsaPrivateKey'].forEach((k) => { result[k] = ''; });
+        (Array.isArray(result.hdAddresses) ? result.hdAddresses : []).forEach((a) => {
+            if (a && typeof a === 'object') {
+                a.privateKey = '';
+                a.wif = '';
+            }
+        });
+    }
+
     function clearAll() {
+        // A response still in flight must not refill the session after it is cleared.
+        cancelOps();
         wipeSecrets();
         const dialog = document.getElementById('chain-dialog');
         if (dialog.open) { dialog.close(); }
         document.getElementById('chain-dialog-inner').innerHTML = '';
         Object.keys(state.mnemonics).forEach((k) => { state.mnemonics[k] = ''; });
         Object.assign(state, {
-            sources: { mobile: false, vs: false, hd: false }, phraseIndex: 0, skipped: {},
-            files: [], keys: [], mnemonics: {}, error: '', report: null, vaults: null, vaultInfo: {}, vaultSources: [], selectedVaultId: null,
+            sources: { mobile: false, vs: false, hd: false }, phraseIndex: 0, skipped: freshKeyed(),
+            files: [], keys: [], mnemonics: freshKeyed(), error: '', report: null, vaults: null, vaultInfo: {}, vaultSources: [], selectedVaultId: null,
             options: freshOptions(), recovered: null, recoveredVault: null, revealed: {}, chain: null, allowConnected: false,
         });
         updateNav();
@@ -1795,6 +1907,13 @@
             wrapper.innerHTML = secretBlock(id, labels[id][0], labels[id][1]);
         }
         el.replaceWith(wrapper.firstElementChild);
+    }
+
+    // renderChain() rebuilds the whole dialog, which drops keyboard focus from the option just
+    // chosen. Put it back on that option's replacement.
+    function focusChainOption(action, value) {
+        const again = document.querySelector('#chain-dialog [data-action="' + action + '"][data-value="' + CSS.escape(value) + '"]');
+        if (again) { again.focus(); }
     }
 
     // Puts the cursor in the phrase field after moving between exports.
@@ -1875,6 +1994,7 @@
                     if (!canSkipPhrase(t)) { return; }
                     state.mnemonics[t.key] = '';
                     state.skipped[t.key] = true;
+                    invalidateResults();
                 } else if (!phraseCheck(t).ok) {
                     return;
                 }
@@ -1903,19 +2023,27 @@
                 break;
             case 'remove-file': {
                 const id = Number(el.getAttribute('data-id'));
+                // Phrase, skip and reveal state is keyed by a name derived from the file name (also the
+                // multipart field name). Forget it for every export in the removed upload, ZIP entries
+                // included, so a different file added later under the same name cannot inherit its
+                // phrase or its revealed (plain-text) state. If another upload shares that name the
+                // phrase was ambiguous anyway, so it is entered again.
+                mnemonicTargets().filter((t) => t.fileId === id).forEach((t) => forgetPhrase(t.key));
                 state.files = state.files.filter((f) => f.id !== id);
-                state.report = null;
+                invalidateResults();
                 render();
                 break;
             }
             case 'remove-key': {
                 const id = Number(el.getAttribute('data-id'));
                 state.keys = state.keys.filter((k) => k.id !== id);
+                invalidateResults();
                 render();
                 break;
             }
             case 'remove-hd':
                 state.options.hdFile = null;
+                invalidateReport();
                 render();
                 break;
             case 'toggle-mnemonic': {
@@ -2029,14 +2157,17 @@
             case 'chain-network':
                 state.chain.network = el.getAttribute('data-value');
                 renderChain();
+                focusChainOption(action, state.chain.network);
                 break;
             case 'chain-tab':
                 state.chain.tab = el.getAttribute('data-value');
                 renderChain();
+                focusChainOption(action, state.chain.tab);
                 break;
             case 'chain-shell':
                 state.chain.shell = el.getAttribute('data-value');
                 renderChain();
+                focusChainOption(action, state.chain.shell);
                 break;
             case 'copy-chain-install': {
                 const ok = await copyText(chainCommands(false).install);
@@ -2095,14 +2226,19 @@
     }
 
     function onNav(nav) {
+        // The sidebar is the way off the loading screen: leaving it abandons any request in flight.
+        cancelOps();
+        // A result dropped because its inputs changed falls back to the files step, so the files
+        // already added are one click from a fresh check.
+        const start = state.files.length ? 'files' : 'sources';
         if (nav === 'home') {
             go('home');
         } else if (nav === 'verify') {
             state.task = 'verify';
-            go(state.report ? 'verify-results' : 'sources');
+            go(state.report ? 'verify-results' : start);
         } else if (nav === 'recover') {
             state.task = 'recover';
-            go(state.recovered ? 'recover-results' : (state.vaults ? 'select-vault' : 'sources'));
+            go(state.recovered ? 'recover-results' : (state.vaults ? 'select-vault' : start));
         } else if (nav === 'tools' && state.recovered && state.recovered.eddsaPrivateKey) {
             state.task = 'recover';
             go('recover-results');
@@ -2136,23 +2272,29 @@
                 addFiles(el.files, el.id.slice('file-input-'.length));
                 el.value = '';
             } else if (el.id === 'key-input') {
+                let added = 0;
                 Array.from(el.files || []).forEach((file) => {
                     if (ext(file.name) !== '.pem') {
                         toast('Skipped ' + file.name + ': keys must be .pem files.');
                         return;
                     }
                     state.keys.push({ id: nextId++, name: file.name, file: file });
+                    added++;
                 });
+                if (added) { invalidateResults(); }
                 el.value = '';
                 render();
             } else if (el.id === 'hd-input') {
                 state.options.hdFile = el.files && el.files[0] ? el.files[0] : null;
+                // The CSV is an input of the verify report only, not of the vault list, so it can be
+                // added on the select-vault step without losing the list.
+                invalidateReport();
                 el.value = '';
                 render();
             } else if (el.type === 'checkbox' && el.hasAttribute('data-action')) {
                 onAction(el, null);
-            } else if (el.getAttribute('data-model') === 'options.threshold' && state.view === 'select-vault') {
-                // A threshold override changes which vaults can be selected.
+            } else if (['options.threshold', 'options.requestId', 'options.nonce'].indexOf(el.getAttribute('data-model')) >= 0 && state.view === 'select-vault') {
+                // A threshold, reshare request ID or nonce override changes which vaults can be selected.
                 render();
             }
         });

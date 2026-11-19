@@ -216,6 +216,54 @@ func TestHandleVerify_WrongMnemonic(t *testing.T) {
 	require.NotContains(t, body, fixtureMnemonicV2)
 }
 
+// writeBrokenZip writes a file that is named like a ZIP archive but cannot be opened as one.
+func writeBrokenZip(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "broken.zip")
+	require.NoError(t, os.WriteFile(path, []byte("PK\x03\x04 truncated"), 0o600))
+	return path
+}
+
+// A ZIP that cannot be opened is that file's error in the report; the other uploads are checked.
+func TestHandleVerify_BrokenZipIsThatFilesError(t *testing.T) {
+	resp, body := postVerify(t, append(lqnsUploads(), uploadFixture{path: writeBrokenZip(t)}))
+
+	require.Len(t, resp.Sources, 4)
+	for _, src := range resp.Sources[:3] {
+		require.Equal(t, "decrypted", src.Level, src.Error)
+	}
+	broken := resp.Sources[3]
+	require.Equal(t, "broken.zip", broken.Name)
+	require.Equal(t, sourceKindZipArchive, broken.Kind)
+	require.Equal(t, "error", broken.Level)
+	require.Contains(t, broken.Error, "broken.zip")
+	require.Zero(t, broken.FileCount)
+	require.NotContains(t, body, tempDirPrefix, "no temp path may leave the server")
+
+	v := findVault(t, resp, fixtureLqnsVaultID)
+	require.Equal(t, "recoverable", v.Status, v.Message)
+	for _, vault := range resp.Vaults {
+		for _, c := range vault.Contributions {
+			require.Less(t, c.Source, 3, "the broken archive holds no shares")
+		}
+	}
+
+	// Only a broken archive: still a report, with nothing else in it.
+	only, _ := postVerify(t, []uploadFixture{{path: writeBrokenZip(t)}})
+	require.Len(t, only.Sources, 1)
+	require.Equal(t, "error", only.Sources[0].Level)
+	require.Empty(t, only.Vaults)
+}
+
+// Listing keeps failing the whole request on a ZIP it cannot open.
+func TestHandleListVaults_BrokenZipFailsRequest(t *testing.T) {
+	rec := httptest.NewRecorder()
+	newTestServer(t).handleListVaults(rec, multipartRequest(t, "/api/list-vaults",
+		append(lqnsUploads(), uploadFixture{path: writeBrokenZip(t)}), nil))
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "broken.zip")
+}
+
 func TestHandleVerify_NoFiles(t *testing.T) {
 	rec := httptest.NewRecorder()
 	newTestServer(t).handleVerify(rec, multipartRequest(t, "/api/verify", nil, func(form *multipart.Writer) {

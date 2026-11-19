@@ -430,6 +430,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
     font-size: var(--io-text-label); font-weight: 500; color: var(--io-text-dimmed-700);
 }
 .toggle-group button[aria-pressed="true"] { background: var(--io-layer-white); color: var(--io-text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
+/* The pressed shadow above replaces the box-shadow focus ring, so a focused toggle also gets an
+   outline. It matches the ring (2px, primary, following the radius) and does not depend on the
+   pressed state, so focus stays visible on the selected option too. */
+.toggle-group button:focus-visible { outline: 2px solid var(--io-primary); outline-offset: 0; }
 .tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--io-border-light); }
 .tabs button {
     border: 0; background: transparent; padding: 8px 0; margin-bottom: -1px; cursor: pointer;
@@ -644,6 +648,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .footer-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-top: 16px; border-top: 1px solid var(--io-border-light); }
 .footer-bar .hint { font-size: var(--io-text-label); line-height: var(--io-lh-label); color: var(--io-text-dimmed-700); max-width: 460px; }
 .footer-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: flex-end; }
+/* The Recover button's label carries the vault name, which can be long: on a narrow screen it
+   wraps within the footer instead of overflowing it. A short label still fits on one line. */
+#recover-btn { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
 
 /* ---------- Loading ---------- */
 .loading-panel {

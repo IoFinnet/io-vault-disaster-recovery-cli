@@ -259,9 +259,16 @@ The page loads no remote resources, so it works on an air-gapped device.
 The browser UI shows whether this computer is offline, in the sidebar and on each step of the
 wizard. The tool reads the computer's own network adapters every few seconds. It sends no traffic
 to find out, so it never contacts the internet. An adapter counts as connected when it is up, is
-not loopback, and has an address other than a link-local one (`169.254.x.x`, `fe80::`). Only
-adapter names reach the page, never their addresses. If the adapters cannot be read, the computer
-is treated as connected.
+not loopback, and either:
+
+- has an address other than a link-local one (`169.254.x.x`, `fe80::`); or
+- is running and has only link-local addresses, because those still reach other computers on the
+  same link (for example a cable straight to another machine). Point-to-point tunnels, such as
+  macOS `utun` adapters, always carry an `fe80::` address, so a link-local address alone does not
+  count for them.
+
+Only adapter names reach the page, never their addresses. If the adapters, or the addresses of an
+active adapter, cannot be read, the computer is treated as connected.
 
 | Status | What the UI does |
 | --- | --- |
@@ -269,7 +276,8 @@ is treated as connected.
 | Connected | Names the active adapters, such as `Wi-Fi`. Adapters that look virtual (VM, container or VPN) are marked as virtual. Verify still runs, with a warning. Recover keys is blocked until you disconnect, or until you tick **Recover anyway**. Use that only on a disposable virtual machine or another isolated environment. You confirm it for each recovery attempt. |
 
 The server enforces the block as well as the page: `/api/recover` refuses to rebuild a key while
-the computer is connected, unless the request includes `allowConnected=true`. The check shows only
+the computer is connected, unless the request includes `allowConnected=true`. It checks when the
+request arrives and again after the uploaded files are processed, just before recovery runs. The check shows only
 whether the computer has a network connection, not whether that connection reaches the internet,
 so a disposable or air-gapped machine is still the safest setup.
 
@@ -284,6 +292,9 @@ here, and a file you can't unlock is still checked:
 | --- | --- |
 | Unlocked (mnemonic or key supplied) | The share is decrypted in memory to read its vault, threshold, reshare and public key, then counted |
 | Locked | Only the unencrypted header is read: vault IDs and reshare request IDs, without threshold or public key |
+
+A file that can't be read, such as a damaged ZIP archive or an export with one damaged vault, is
+listed with its error, and everything else that can be read is still checked.
 
 Verification uses the same reshare selection as recovery. The report shows:
 
@@ -309,8 +320,11 @@ public key and chain code. No private key is derived. For each row it reports:
 | Invalid row | The xpub or path can't be read, or the path is hardened |
 
 An HD address counts as recoverable when it matches or is derived and its vault is recoverable from
-the same files. A CSV added during verification is reused when you go on to recover keys. You can export the report as JSON. It lists vault IDs, file names and public
-addresses only, with no key material.
+the same files. A CSV added during verification is reused when you go on to recover keys. You can export the report as JSON. The export is the full verification result:
+the time of the check, file names, vault IDs and any vault names, reshare request IDs, thresholds,
+public keys and addresses, the checked HD address rows, and the error and warning messages. It
+contains no private keys, shares or mnemonics. Review that metadata before you share the report,
+because it identifies your vaults and their addresses.
 
 ## Key Recovery
 

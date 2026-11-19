@@ -162,6 +162,9 @@ func checkRecord(rec AddressRecord, keys []VaultKey) RecordCheck {
 	}
 	result.Status = CheckMismatch
 	result.Message = "This address is not the one its path derives from the vault's key. Check the path and xpub in the CSV."
+	if isMixedCaseBech32(rec.Address) {
+		result.Message = "This Bitcoin address mixes upper and lower case, which is not a valid address (BIP 173). Check the address in the CSV."
+	}
 	return result
 }
 
@@ -324,21 +327,36 @@ func segwitAddress(hrp string, hash160 []byte) (string, error) {
 }
 
 // sameAddress compares addresses, ignoring case only where the format is case-insensitive
-// (0x hex and bech32).
+// (0x hex and bech32). A bech32 address must be all lower or all upper case (BIP 173), so a
+// mixed-case one never matches.
 func sameAddress(derived, given string) bool {
 	given = strings.TrimSpace(given)
 	if given == "" {
 		return false
 	}
 	lower := strings.ToLower(given)
-	if strings.HasPrefix(lower, "0x") || strings.HasPrefix(lower, "bc1") || strings.HasPrefix(lower, "tb1") {
+	if strings.HasPrefix(lower, "bc1") || strings.HasPrefix(lower, "tb1") {
+		return !isMixedCaseBech32(given) && strings.EqualFold(derived, given)
+	}
+	if strings.HasPrefix(lower, "0x") {
 		return strings.EqualFold(derived, given)
 	}
 	return derived == given
 }
 
+// isMixedCaseBech32 reports whether a bc1/tb1 address mixes upper and lower case letters.
+func isMixedCaseBech32(address string) bool {
+	a := strings.TrimSpace(address)
+	lower := strings.ToLower(a)
+	if !strings.HasPrefix(lower, "bc1") && !strings.HasPrefix(lower, "tb1") {
+		return false
+	}
+	return a != lower && a != strings.ToUpper(a)
+}
+
 var (
-	evmAddressPattern    = regexp.MustCompile(`^0x[0-9a-fA-F]{40}$`)
+	// Both 0x and 0X prefixes are recognised, as sameAddress accepts either.
+	evmAddressPattern    = regexp.MustCompile(`^0[xX][0-9a-fA-F]{40}$`)
 	bech32AddressPattern = regexp.MustCompile(`^(?i)(bc1|tb1)[02-9ac-hj-np-z]{8,87}$`)
 	tronAddressPattern   = regexp.MustCompile(`^T[1-9A-HJ-NP-Za-km-z]{33}$`)
 	xrplAddressPattern   = regexp.MustCompile(`^r[1-9A-HJ-NP-Za-km-z]{24,34}$`)

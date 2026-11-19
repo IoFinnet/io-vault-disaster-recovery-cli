@@ -24,7 +24,12 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID string, nonceOverride int, nonceOverrideSet bool, requestIDOverride string, quorumOverride int, exportKSFile, passwordForKS string, privateKeysPEM [][]byte) (
+// runTool lists the vaults in the inputs (vaultID empty) or rebuilds one vault's keys.
+//
+// beforeReconstruct, when not nil, runs after the shares are decrypted and assembled and
+// immediately before the private keys are rebuilt. An error from it stops the run before any key
+// exists; handleRecovery uses it to re-check the network at the last possible moment.
+func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID string, nonceOverride int, nonceOverrideSet bool, requestIDOverride string, quorumOverride int, exportKSFile, passwordForKS string, privateKeysPEM [][]byte, beforeReconstruct func() error) (
 	address string, ecdsaSK, eddsaSK []byte, orderedVaults []ui.VaultPickerItem, exportedKsFile *string, welp error) {
 
 	opts := recoverypipeline.Options{
@@ -123,6 +128,12 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID string, nonceOverride i
 			if i == 0 {
 				share0EDDSAPubKey = el.EDDSAPub
 			}
+		}
+	}
+
+	if beforeReconstruct != nil {
+		if welp = beforeReconstruct(); welp != nil {
+			return
 		}
 	}
 

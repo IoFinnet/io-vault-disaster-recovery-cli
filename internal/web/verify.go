@@ -5,9 +5,12 @@
 package web
 
 import (
+	"bytes"
+	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -21,9 +24,14 @@ import (
 	"github.com/decred/dcrd/dcrec/edwards/v2"
 )
 
-// sourceKindLegacyZipEntry marks a JSON export the server extracted from a legacy ZIP archive.
-// Only the web layer knows a file came from an archive, so the pipeline never reports it.
-const sourceKindLegacyZipEntry = "legacy-zip-entry"
+// Source kinds only the web layer knows, so the pipeline never reports them.
+const (
+	// sourceKindLegacyZipEntry marks a JSON export the server extracted from a legacy ZIP archive.
+	sourceKindLegacyZipEntry = "legacy-zip-entry"
+	// sourceKindZipArchive marks an uploaded ZIP archive that could not be opened, so none of its
+	// files were checked. It is always reported at the error level.
+	sourceKindZipArchive = "zip-archive"
+)
 
 // VerifyResponse is the /api/verify response. It holds identifiers, public keys and addresses
 // only, never key material.
@@ -108,7 +116,7 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vaultsDataFiles, uploads, reqCleanup, err := s.processUploadedFiles(r, true)
+	vaultsDataFiles, uploads, failures, reqCleanup, err := s.processUploadedFiles(r, true)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to process files: %v", err), http.StatusBadRequest)
 		return
@@ -139,6 +147,16 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := buildVerifyResponse(report, uploads, time.Now())
+	// Uploads that could not be opened never reached the pipeline. They go after its sources, so
+	// the contributions' source indexes stay valid, and in the same per-file error shape.
+	for _, f := range failures {
+		resp.Sources = append(resp.Sources, VerifySourceResult{
+			Name:  f.name,
+			Kind:  sourceKindZipArchive,
+			Level: string(recoverypipeline.VerifyLevelError),
+			Error: f.err,
+		})
+	}
 	resp.HDAddresses = verifyHDAddresses(r, report)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -163,11 +181,17 @@ func verifyHDAddresses(r *http.Request, report *recoverypipeline.VerifyReport) *
 		return result
 	}
 	defer file.Close()
-	records, err := hd.ParseCSVReader(file)
+	raw, err := io.ReadAll(file)
+	if err != nil {
+		result.Error = fmt.Sprintf("the CSV could not be read: %v", fileutils.StripPathFromError(err))
+		return result
+	}
+	records, err := hd.ParseCSVReader(bytes.NewReader(raw))
 	if err != nil {
 		result.Error = err.Error()
 		return result
 	}
+	lines := csvRecordLines(raw)
 
 	keys := make([]hd.VaultKey, 0, len(report.PublicKeys))
 	for _, k := range report.PublicKeys {
@@ -188,8 +212,12 @@ func verifyHDAddresses(r *http.Request, report *recoverypipeline.VerifyReport) *
 	}
 
 	for i, check := range hd.CheckRecords(records, keys) {
+		line := i + 2 // header on line 1; only a fallback, csvRecordLines knows the real line
+		if i < len(lines) {
+			line = lines[i]
+		}
 		row := VerifyHDRow{
-			Row:              i + 2,
+			Row:              line,
 			Address:          check.Record.Address,
 			Path:             check.Record.Path,
 			Algorithm:        string(check.Record.Algorithm),
@@ -206,6 +234,25 @@ func verifyHDAddresses(r *http.Request, report *recoverypipeline.VerifyReport) *
 		result.Rows = append(result.Rows, row)
 	}
 	return result
+}
+
+// csvRecordLines returns the line each data record of an HD addresses CSV starts on, in the order
+// hd.ParseCSVReader returns the records. encoding/csv skips blank lines and lets a quoted field
+// span lines, so a record's index does not give its line number. It reads the CSV with the same
+// default reader settings as hd.ParseCSVReader, so the two agree record for record.
+func csvRecordLines(raw []byte) []int {
+	reader := csv.NewReader(bytes.NewReader(raw))
+	if _, err := reader.Read(); err != nil { // the header
+		return nil
+	}
+	var lines []int
+	for {
+		if _, err := reader.Read(); err != nil {
+			return lines
+		}
+		line, _ := reader.FieldPos(0)
+		lines = append(lines, line)
+	}
 }
 
 // buildVerifyResponse turns the pipeline's report into the JSON contract: display names for the

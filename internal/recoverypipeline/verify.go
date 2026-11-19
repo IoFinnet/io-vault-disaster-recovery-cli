@@ -64,7 +64,7 @@ const (
 	ContributionOtherReshare ContributionState = "other-reshare"
 	// ContributionHeader: the source names the vault in its header but was not decrypted.
 	ContributionHeader ContributionState = "header"
-	// ContributionError: the source names the vault but could not be decrypted.
+	// ContributionError: the source names the vault, but its share could not be decrypted or read.
 	ContributionError ContributionState = "error"
 	// ContributionConflict: decrypted shares for a vault whose files disagree with each other.
 	ContributionConflict ContributionState = "conflict"
@@ -162,6 +162,12 @@ type verifyRecord struct {
 	level    VerifyLevel
 	err      string
 	vaults   map[string]*verifyRecordVault
+
+	// drEnvelope is a .dr file's plaintext envelope: its request id, previous request id and
+	// algorithm. It is kept apart from vaults because the envelope's vaultId is unauthenticated and
+	// may be missing or differ from the decrypted payload's, while the request link belongs to the
+	// file whatever vault the payload names.
+	drEnvelope *verifyRecordVault
 }
 
 // verifyRecordVault is what one artifact says about one vault.
@@ -173,8 +179,17 @@ type verifyRecordVault struct {
 	threshold         int
 	ecdsaIDs          []string
 	eddsaIDs          []string
-	ecdsaPub          *crypto.ECPoint
-	eddsaPub          *crypto.ECPoint
+	ecdsaPub          *crypto.ECPoint   // the first stated key, shown for a below-threshold vault
+	eddsaPub          *crypto.ECPoint   // likewise for EdDSA
+	ecdsaPubs         []*crypto.ECPoint // every distinct stated key, for matching HD xpubs
+	eddsaPubs         []*crypto.ECPoint
+
+	// legacy marks a legacy flat-nonce entry, whose requestID is a reshare nonce, not a request id.
+	legacy bool
+
+	// err is set when this vault's entry in an otherwise readable multi-vault export could not be
+	// decrypted or decoded. The file's other vaults still count; this one contributes nothing.
+	err string
 }
 
 func newRecordVault(requestID string) *verifyRecordVault {
@@ -200,7 +215,12 @@ func Verify(inputs *InputSet, privateKeysPEM [][]byte, presentation ErrorPresent
 
 	// Pass 1: headers.
 	for _, rec := range records {
-		vaults, legacy, err := readVerifyHeader(rec.artifact.Path, rec.isDR)
+		header, err := readVerifyHeader(rec.artifact.Path, rec.isDR)
+		if err == nil && rec.isDR && len(header.vaults) == 0 && len(privateKeysPEM) == 0 {
+			// Without a key the envelope's vaultId is the only way to attribute the file. With one,
+			// the decrypted payload names the vault, as it does for recovery.
+			err = errors.New("invalid .dr file: missing vaultId (add the ML-KEM-768 key to read the vault from the encrypted payload)")
+		}
 		if err != nil {
 			rec.level = VerifyLevelError
 			rec.err = presentation.err(err).Error()
@@ -208,15 +228,15 @@ func Verify(inputs *InputSet, privateKeysPEM [][]byte, presentation ErrorPresent
 			continue
 		}
 		rec.level = VerifyLevelHeader
-		rec.legacy = legacy
-		rec.vaults = vaults
-		if legacy && report.Sources[rec.source].Kind == SourceKindMobileExport {
+		rec.legacy = header.legacy
+		rec.vaults = header.vaults
+		rec.drEnvelope = header.drEnvelope
+		if header.legacy && report.Sources[rec.source].Kind == SourceKindMobileExport {
 			report.Sources[rec.source].Kind = SourceKindLegacyExport
 		}
 	}
 
 	// Pass 2: decrypt each file on its own.
-	var decrypted []Artifact
 	for _, rec := range records {
 		if rec.level == VerifyLevelError {
 			continue
@@ -225,27 +245,29 @@ func Verify(inputs *InputSet, privateKeysPEM [][]byte, presentation ErrorPresent
 		if locked {
 			continue
 		}
-		vaults, err := decryptVerifyRecord(rec.artifact, privateKeysPEM, presentation)
+		vaults, err := decryptVerifyRecord(rec.artifact, "", privateKeysPEM, presentation)
+		if err != nil && !rec.isDR && len(rec.vaults) > 1 {
+			// The listing pass stops at the first vault that fails, so retry vault by vault: one
+			// damaged entry must not hide the usable shares the export holds for its other vaults. A
+			// wrong mnemonic fails every vault, which still makes the whole file an error below.
+			vaults, err = decryptVerifyRecordByVault(rec, privateKeysPEM, presentation)
+		}
 		if err != nil {
 			// Keep the header's vaults, so the report still shows which vaults this file names.
 			rec.level = VerifyLevelError
 			rec.err = presentation.err(err).Error()
 			continue
 		}
-		for vID, header := range rec.vaults {
-			if dv, ok := vaults[vID]; ok {
-				dv.previousRequestID = header.previousRequestID
-				for alg := range header.algorithms {
-					dv.algorithms[alg] = true
-				}
-			}
-		}
+		mergeVerifyHeader(rec, vaults)
 		rec.vaults = vaults
 		rec.level = VerifyLevelDecrypted
-		decrypted = append(decrypted, rec.artifact)
 		for vID, rv := range vaults {
-			report.addPublicKey(vID, false, rv.ecdsaPub)
-			report.addPublicKey(vID, true, rv.eddsaPub)
+			for _, p := range rv.ecdsaPubs {
+				report.addPublicKey(vID, false, p)
+			}
+			for _, p := range rv.eddsaPubs {
+				report.addPublicKey(vID, true, p)
+			}
 		}
 	}
 	sort.SliceStable(report.PublicKeys, func(i, j int) bool {
@@ -263,7 +285,7 @@ func Verify(inputs *InputSet, privateKeysPEM [][]byte, presentation ErrorPresent
 				continue
 			}
 			holders = append(holders, rec)
-			if rec.level == VerifyLevelDecrypted {
+			if rec.level == VerifyLevelDecrypted && rv.err == "" {
 				decryptedHolders = append(decryptedHolders, rec)
 			}
 			if vv.Name == "" {
@@ -277,7 +299,7 @@ func Verify(inputs *InputSet, privateKeysPEM [][]byte, presentation ErrorPresent
 			vv.Message = notCheckedMessage(holders)
 		} else {
 			var warnings []Warning
-			conflict, warnings = checkVerifyVault(&vv, decryptedHolders, decrypted, inputs.bundles, privateKeysPEM, presentation)
+			conflict, warnings = checkVerifyVault(&vv, decryptedHolders, inputs.bundles, privateKeysPEM, presentation)
 			selectionWarnings = append(selectionWarnings, warnings...)
 		}
 
@@ -360,8 +382,9 @@ func verifySources(inputs *InputSet, report *VerifyReport) ([]*verifyRecord, map
 	return records, sourceIndex
 }
 
-// setVerifySourceLevels rolls each source's files up into one level: any error wins, then any
-// header-only file, otherwise the source was fully decrypted.
+// setVerifySourceLevels rolls each source's files up into one level: any error wins (including one
+// vault of a multi-vault export that could not be decrypted), then any header-only file, otherwise
+// the source was fully decrypted.
 func setVerifySourceLevels(report *VerifyReport, records []*verifyRecord, sourceIndex map[string]int) {
 	type rollup struct {
 		files     int
@@ -381,6 +404,15 @@ func setVerifySourceLevels(report *VerifyReport, records []*verifyRecord, source
 			r.hasErrors = true
 		case VerifyLevelHeader:
 			r.headers++
+		case VerifyLevelDecrypted:
+			for _, vID := range sortedVaultKeys(rec.vaults) {
+				if msg := rec.vaults[vID].err; msg != "" {
+					if !r.hasErrors {
+						r.firstErr = msg
+					}
+					r.hasErrors = true
+				}
+			}
 		}
 	}
 	for _, idx := range sourceIndex {
@@ -401,42 +433,51 @@ func setVerifySourceLevels(report *VerifyReport, records []*verifyRecord, source
 	}
 }
 
+// verifyHeader is what a file's plaintext says about it.
+type verifyHeader struct {
+	vaults map[string]*verifyRecordVault
+	legacy bool
+	// drEnvelope is set for a .dr file. Its vault appears in vaults only when the envelope names
+	// one; a key can still attribute the file through its decrypted payload.
+	drEnvelope *verifyRecordVault
+}
+
 // readVerifyHeader reads what a file says about its vaults without decrypting it.
-func readVerifyHeader(path string, isDR bool) (vaults map[string]*verifyRecordVault, legacy bool, err error) {
+func readVerifyHeader(path string, isDR bool) (verifyHeader, error) {
+	header := verifyHeader{vaults: make(map[string]*verifyRecordVault)}
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, false, fmt.Errorf("failed to read file: %w", err)
+		return header, fmt.Errorf("failed to read file: %w", err)
 	}
-	vaults = make(map[string]*verifyRecordVault)
 
 	if isDR {
 		envelope, err := dr.ParseEnvelope(raw)
 		if err != nil {
-			return nil, false, err
-		}
-		if envelope.VaultId == "" {
-			return nil, false, errors.New("invalid .dr file: missing vaultId")
+			return header, err
 		}
 		rv := newRecordVault(envelope.RequestId)
 		rv.previousRequestID = envelope.PreviousRequestId
 		if alg := algorithmLabel(envelope.Algo); alg != "" {
 			rv.algorithms[alg] = true
 		}
-		vaults[envelope.VaultId] = rv
-		return vaults, false, nil
+		header.drEnvelope = rv
+		if envelope.VaultId != "" {
+			header.vaults[envelope.VaultId] = rv
+		}
+		return header, nil
 	}
 
 	var saved SavedData
 	if err := json.Unmarshal(raw, &saved); err != nil {
-		return nil, false, fmt.Errorf("not a recognised io.vault backup file: %w", err)
+		return header, fmt.Errorf("not a recognised io.vault backup file: %w", err)
 	}
 	if len(saved.Vaults) == 0 {
-		return nil, false, errors.New("not a recognised io.vault backup file: it holds no vaults")
+		return header, errors.New("not a recognised io.vault backup file: it holds no vaults")
 	}
 	for vID, entry := range saved.Vaults {
 		requestID := entry.CurrentRequestID
 		if entry.IsLegacy {
-			legacy = true
+			header.legacy = true
 			highest := -1
 			for nonce := range entry.LegacyByNonce {
 				if nonce > highest {
@@ -447,15 +488,48 @@ func readVerifyHeader(path string, isDR bool) (vaults map[string]*verifyRecordVa
 				requestID = strconv.Itoa(highest)
 			}
 		}
-		vaults[vID] = newRecordVault(requestID)
+		rv := newRecordVault(requestID)
+		rv.legacy = entry.IsLegacy
+		header.vaults[vID] = rv
 	}
-	return vaults, legacy, nil
+	return header, nil
 }
 
-// decryptVerifyRecord runs Prepare's listing pass over one artifact and keeps only identifiers
-// and public keys from it. The secret share values are wiped before returning.
-func decryptVerifyRecord(a Artifact, privateKeysPEM [][]byte, presentation ErrorPresentation) (map[string]*verifyRecordVault, error) {
-	res, err := Prepare(&InputSet{artifacts: []Artifact{a}}, Options{PrivateKeysPEM: privateKeysPEM, Presentation: presentation})
+// mergeVerifyHeader carries what only the plaintext header records into the decrypted vaults: the
+// algorithms it names, whether a JSON entry is legacy and, for a .dr file, its previous request
+// id. A .dr file's request link is
+// attached to the vault its authenticated payload names, even when the unauthenticated envelope
+// names another vault or none, because Prepare walks the chain with that same link.
+func mergeVerifyHeader(rec *verifyRecord, decrypted map[string]*verifyRecordVault) {
+	if rec.isDR {
+		if rec.drEnvelope == nil {
+			return
+		}
+		for _, dv := range decrypted {
+			dv.previousRequestID = rec.drEnvelope.previousRequestID
+			for alg := range rec.drEnvelope.algorithms {
+				dv.algorithms[alg] = true
+			}
+		}
+		return
+	}
+	for vID, header := range rec.vaults {
+		if dv, ok := decrypted[vID]; ok {
+			dv.legacy = header.legacy
+			for alg := range header.algorithms {
+				dv.algorithms[alg] = true
+			}
+		}
+	}
+}
+
+// decryptVerifyRecord runs one Prepare pass over one artifact and keeps only identifiers and
+// public keys from it: the listing pass when vaultID is empty, else a recovery-mode pass for that
+// vault alone. Every secret share value the pass decrypts is wiped before returning.
+func decryptVerifyRecord(a Artifact, vaultID string, privateKeysPEM [][]byte, presentation ErrorPresentation) (map[string]*verifyRecordVault, error) {
+	res, err := Prepare(&InputSet{artifacts: []Artifact{a}}, Options{
+		VaultID: vaultID, PrivateKeysPEM: privateKeysPEM, Presentation: presentation, quiet: true, secrets: &secretTracker{},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -475,9 +549,7 @@ func decryptVerifyRecord(a Artifact, privateKeysPEM [][]byte, presentation Error
 			}
 			rv.algorithms["ECDSA"] = true
 			rv.ecdsaIDs = append(rv.ecdsaIDs, shareIDKey(s.ShareID))
-			if rv.ecdsaPub == nil {
-				rv.ecdsaPub = s.ECDSAPub
-			}
+			rv.ecdsaPubs = appendDistinctPoint(rv.ecdsaPubs, s.ECDSAPub)
 		}
 		for _, s := range res.SharesEdDSA[vID] {
 			if s == nil {
@@ -485,25 +557,73 @@ func decryptVerifyRecord(a Artifact, privateKeysPEM [][]byte, presentation Error
 			}
 			rv.algorithms["EdDSA"] = true
 			rv.eddsaIDs = append(rv.eddsaIDs, shareIDKey(s.ShareID))
-			if rv.eddsaPub == nil {
-				rv.eddsaPub = s.EDDSAPub
-			}
+			rv.eddsaPubs = appendDistinctPoint(rv.eddsaPubs, s.EDDSAPub)
+		}
+		if len(rv.ecdsaPubs) > 0 {
+			rv.ecdsaPub = rv.ecdsaPubs[0]
+		}
+		if len(rv.eddsaPubs) > 0 {
+			rv.eddsaPub = rv.eddsaPubs[0]
 		}
 		out[vID] = rv
 	}
 	return out, nil
 }
 
+// decryptVerifyRecordByVault decrypts a multi-vault export one vault at a time, after its listing
+// pass failed. A vault that fails keeps its header entry with err set; the others are read as
+// usual. If no vault can be read (a wrong mnemonic, say), the first error is the whole file's.
+func decryptVerifyRecordByVault(rec *verifyRecord, privateKeysPEM [][]byte, presentation ErrorPresentation) (map[string]*verifyRecordVault, error) {
+	out := make(map[string]*verifyRecordVault, len(rec.vaults))
+	var firstErr error
+	readAny := false
+	for _, vID := range sortedVaultKeys(rec.vaults) {
+		vaults, err := decryptVerifyRecord(rec.artifact, vID, privateKeysPEM, presentation)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			failed := newRecordVault(rec.vaults[vID].requestID)
+			failed.err = presentation.err(err).Error()
+			out[vID] = failed
+			continue
+		}
+		readAny = true
+		if rv, ok := vaults[vID]; ok {
+			out[vID] = rv
+		}
+	}
+	if !readAny && firstErr != nil {
+		return nil, firstErr
+	}
+	return out, nil
+}
+
 // checkVerifyVault fills in the verdict for a vault that at least one decrypted file holds. It
 // reports whether the vault's files conflict, plus any reshare-selection warnings.
-func checkVerifyVault(vv *VerifyVault, holders []*verifyRecord, decrypted []Artifact, bundles []BundleInfo,
+//
+// Only the files that hold this vault go into Prepare. Prepare would ignore the others anyway, but
+// it decrypts a .dr file before it can tell which vault the file is for, so passing every file
+// would decrypt each of them again for every vault in the report.
+func checkVerifyVault(vv *VerifyVault, holders []*verifyRecord, bundles []BundleInfo,
 	privateKeysPEM [][]byte, presentation ErrorPresentation) (conflict bool, warnings []Warning) {
 
 	vID := vv.VaultID
-	res, err := Prepare(&InputSet{artifacts: decrypted, bundles: bundles},
-		Options{VaultID: vID, PrivateKeysPEM: privateKeysPEM, Presentation: presentation, quiet: true})
+	artifacts := make([]Artifact, 0, len(holders))
+	for _, rec := range holders {
+		artifacts = append(artifacts, rec.artifact)
+	}
+	res, err := Prepare(&InputSet{artifacts: artifacts, bundles: bundles}, Options{
+		VaultID: vID, PrivateKeysPEM: privateKeysPEM, Presentation: presentation, quiet: true, secrets: &secretTracker{},
+	})
 	if err != nil {
 		if errors.Is(err, ErrNotEnoughShares) {
+			if requestID, thresholds, ok := thresholdDisagreement(vID, holders); ok {
+				vv.Status = VerifyStatusConflict
+				vv.Message = fmt.Sprintf("These files state different thresholds (%s) for the same reshare of this vault (%s), so their shares cannot be combined.",
+					joinInts(thresholds), requestID)
+				return true, nil
+			}
 			belowThresholdFromRecords(vv, holders)
 			return false, nil
 		}
@@ -585,9 +705,72 @@ func checkVerifyVault(vv *VerifyVault, holders []*verifyRecord, decrypted []Arti
 		vv.Status = VerifyStatusRecoverable
 	default:
 		vv.Status = VerifyStatusBelowThreshold
-		vv.Message = belowThresholdMessage(vv.SharesCounted, vv.Threshold)
+		vv.Message = belowThresholdMessage(vv.SharesCounted, vv.EdDSAShares, vv.HasEdDSA, vv.Threshold)
 	}
 	return false, warnings
+}
+
+// thresholdDisagreement finds a reshare at which the decrypted files state different thresholds.
+// Prepare compares thresholds only once it has selected a reshare with enough shares, so when none
+// has enough it stops before that check. Without this, Verify would ask for another signer although
+// recovery would still fail on the mismatch once one was added.
+//
+// It mirrors which shares Prepare combines at a .dr reshare (see jsonExtras): .dr and mobile files
+// at that request id, plus legacy exports, which carry no request id and count at the mobile
+// export's reshare if there is one, else at every reshare.
+func thresholdDisagreement(vID string, holders []*verifyRecord) (requestID string, thresholds []int, found bool) {
+	drRequests := make(map[string]bool)
+	mobileRequestID := ""
+	var legacyThresholds []int
+	for _, rec := range holders {
+		rv := rec.vaults[vID]
+		switch {
+		case rec.isDR:
+			drRequests[rv.requestID] = true
+		case rv.legacy:
+			if rv.threshold > 0 {
+				legacyThresholds = append(legacyThresholds, rv.threshold)
+			}
+		default:
+			mobileRequestID = rv.requestID
+		}
+	}
+
+	requestIDs := make([]string, 0, len(drRequests))
+	for reqID := range drRequests {
+		requestIDs = append(requestIDs, reqID)
+	}
+	sort.Strings(requestIDs)
+	for _, reqID := range requestIDs {
+		stated := make(map[int]bool)
+		for _, rec := range holders {
+			rv := rec.vaults[vID]
+			if !rv.legacy && rv.requestID == reqID && rv.threshold > 0 {
+				stated[rv.threshold] = true
+			}
+		}
+		if mobileRequestID == "" || mobileRequestID == reqID {
+			for _, t := range legacyThresholds {
+				stated[t] = true
+			}
+		}
+		if len(stated) > 1 {
+			for t := range stated {
+				thresholds = append(thresholds, t)
+			}
+			sort.Ints(thresholds)
+			return reqID, thresholds, true
+		}
+	}
+	return "", nil, false
+}
+
+func joinInts(values []int) string {
+	parts := make([]string, len(values))
+	for i, v := range values {
+		parts[i] = strconv.Itoa(v)
+	}
+	return strings.Join(parts, " and ")
 }
 
 // belowThresholdFromRecords fills in a vault whose .dr chain has no reshare with enough shares.
@@ -635,20 +818,39 @@ func belowThresholdFromRecords(vv *VerifyVault, holders []*verifyRecord) {
 	vv.EdDSAShares = len(eddsaIDs)
 	vv.HasEdDSA = len(eddsaIDs) > 0
 	vv.Status = VerifyStatusBelowThreshold
-	vv.Message = belowThresholdMessage(vv.SharesCounted, vv.Threshold)
+	vv.Message = belowThresholdMessage(vv.SharesCounted, vv.EdDSAShares, vv.HasEdDSA, vv.Threshold)
 }
 
-func belowThresholdMessage(counted, threshold int) string {
+// belowThresholdMessage explains a shortfall at the current reshare. When the ECDSA count alone
+// tells the story (no EdDSA shortfall, or one of the same size, as when whole signers are missing)
+// it keeps the plain wording; otherwise each short curve is named with its own count, so the
+// message never asks for a negative number of signers.
+func belowThresholdMessage(ecdsa, eddsa int, hasEdDSA bool, threshold int) string {
 	if threshold < 1 {
-		return fmt.Sprintf("%d shares found at the current reshare, which is not enough to recover this vault.", counted)
+		return fmt.Sprintf("%d shares found at the current reshare, which is not enough to recover this vault.", ecdsa)
 	}
-	missing := threshold - counted
-	plural := "s"
-	if missing == 1 {
-		plural = ""
+	ecdsaShort := ecdsa < threshold
+	eddsaShort := hasEdDSA && eddsa < threshold
+	switch {
+	case ecdsaShort && (!eddsaShort || eddsa == ecdsa):
+		return fmt.Sprintf("%d of %d required shares found at the current reshare. Add backups from %s.",
+			ecdsa, threshold, moreSigners(threshold-ecdsa))
+	case eddsaShort && !ecdsaShort:
+		return fmt.Sprintf("%d of %d required EdDSA shares found at the current reshare. Add EdDSA backups from %s.",
+			eddsa, threshold, moreSigners(threshold-eddsa))
+	case ecdsaShort && eddsaShort:
+		return fmt.Sprintf("%d of %d required ECDSA shares and %d of %d required EdDSA shares found at the current reshare. Add backups from %s.",
+			ecdsa, threshold, eddsa, threshold, moreSigners(threshold-min(ecdsa, eddsa)))
+	default:
+		return "Not enough shares were found at the current reshare to recover this vault."
 	}
-	return fmt.Sprintf("%d of %d required shares found at the current reshare. Add backups from %d more signer%s.",
-		counted, threshold, missing, plural)
+}
+
+func moreSigners(n int) string {
+	if n == 1 {
+		return "1 more signer"
+	}
+	return fmt.Sprintf("%d more signers", n)
 }
 
 func notCheckedMessage(holders []*verifyRecord) string {
@@ -657,7 +859,7 @@ func notCheckedMessage(holders []*verifyRecord) string {
 			return "Found by file header only. Add the mnemonic or ML-KEM key for its files to check its threshold and shares."
 		}
 	}
-	return "The files that name this vault could not be decrypted."
+	return "The files that name this vault could not be decrypted or read. Each file's error says why."
 }
 
 // verifyContributions rolls each source's files up into one contribution for vault vID.
@@ -704,6 +906,9 @@ func contributionState(rec *verifyRecord, rv *verifyRecordVault, chosen string, 
 	case VerifyLevelHeader:
 		return ContributionHeader
 	case VerifyLevelError:
+		return ContributionError
+	}
+	if rv.err != "" {
 		return ContributionError
 	}
 	if conflict {
@@ -849,25 +1054,127 @@ func agreedPublicKey(pubs []*crypto.ECPoint) (*crypto.ECPoint, bool) {
 	return pubs[0], true
 }
 
+// sortedVaultKeys returns a record's vault ids in order, so per-vault work is deterministic.
+func sortedVaultKeys(vaults map[string]*verifyRecordVault) []string {
+	keys := make([]string, 0, len(vaults))
+	for vID := range vaults {
+		keys = append(keys, vID)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// appendDistinctPoint appends p unless it is nil or already listed.
+func appendDistinctPoint(points []*crypto.ECPoint, p *crypto.ECPoint) []*crypto.ECPoint {
+	if p == nil {
+		return points
+	}
+	for _, q := range points {
+		if q.Equals(p) {
+			return points
+		}
+	}
+	return append(points, p)
+}
+
 // wipeResultShares zeroes every secret share value a Prepare result holds, once Verify has read
-// the identifiers it needs. big.Int does not promise to scrub old backing arrays, so this is best
-// effort, like the rest of the tool's key hygiene.
+// the identifiers it needs.
 func wipeResultShares(res *Result) {
 	if res == nil {
 		return
 	}
 	for _, shares := range res.SharesECDSA {
 		for _, s := range shares {
-			if s != nil && s.Xi != nil {
-				s.Xi.SetInt64(0)
+			if s != nil {
+				zeroBigInt(s.Xi)
 			}
 		}
 	}
 	for _, shares := range res.SharesEdDSA {
 		for _, s := range shares {
-			if s != nil && s.Xi != nil {
-				s.Xi.SetInt64(0)
+			if s != nil {
+				zeroBigInt(s.Xi)
 			}
+		}
+	}
+}
+
+// zeroBigInt overwrites x's current backing words, then sets it to zero. Earlier copies big.Int
+// made while computing x are out of reach, so this is best effort, like the rest of the tool's key
+// hygiene.
+func zeroBigInt(x *big.Int) {
+	if x == nil {
+		return
+	}
+	words := x.Bits()
+	clear(words[:cap(words)])
+	x.SetInt64(0)
+}
+
+// secretTracker records the secret share values (Xi) a verify-only Prepare pass decrypts, so the
+// pass can zero every value it does not hand back. Values are recorded as soon as they are decoded,
+// before any check can drop them, and shares decoded from the same payload share their Xi pointer,
+// so recording the payload covers the save data built from it. A tracker serves one Prepare pass.
+// A nil tracker records nothing, which is how the recovery path runs.
+type secretTracker struct {
+	xis []*big.Int
+}
+
+// addShare records a decoded ECDSA or EdDSA share's secret value.
+func (t *secretTracker) addShare(share any) {
+	if t == nil {
+		return
+	}
+	if xi, _ := secretOf(share); xi != nil {
+		t.xis = append(t.xis, xi)
+	}
+}
+
+// addDR records every secret value in a decrypted .dr payload.
+func (t *secretTracker) addDR(p *dr.Parsed) {
+	if t == nil || p == nil {
+		return
+	}
+	if p.ECDSA != nil {
+		for _, s := range p.ECDSA.Data {
+			if s != nil && s.Xi != nil {
+				t.xis = append(t.xis, s.Xi)
+			}
+		}
+	}
+	if p.EdDSA != nil {
+		for _, s := range p.EdDSA.Data {
+			if s != nil && s.Xi != nil {
+				t.xis = append(t.xis, s.Xi)
+			}
+		}
+	}
+}
+
+// wipeExcept zeroes every recorded value except the secrets of the shares in the given pools,
+// which the pass hands back to its caller. Nil pools wipe everything.
+func (t *secretTracker) wipeExcept(ecdsa VaultAllSharesECDSA, eddsa VaultAllSharesEdDSA) {
+	if t == nil {
+		return
+	}
+	kept := make(map[*big.Int]bool)
+	for _, shares := range ecdsa {
+		for _, s := range shares {
+			if s != nil && s.Xi != nil {
+				kept[s.Xi] = true
+			}
+		}
+	}
+	for _, shares := range eddsa {
+		for _, s := range shares {
+			if s != nil && s.Xi != nil {
+				kept[s.Xi] = true
+			}
+		}
+	}
+	for _, xi := range t.xis {
+		if !kept[xi] {
+			zeroBigInt(xi)
 		}
 	}
 }

@@ -186,9 +186,46 @@ func TestCheckRecords(t *testing.T) {
 	assert.Empty(t, none[0].VaultID)
 }
 
+// Address case: 0x/0X hex both count as Ethereum addresses, and bech32 accepts all-lower or
+// all-upper but never mixed case (BIP 173).
+func TestCheckRecords_AddressCase(t *testing.T) {
+	parsed, err := ParseXpub(testXpubECDSA, CurveSecp256k1)
+	require.NoError(t, err)
+	const path = "m/44/60/0/0/0"
+	indices, err := ParseDerivationPath(path)
+	require.NoError(t, err)
+	childPK, err := DerivePublicChild(parsed.PublicKey, parsed.ChainCode, indices, CurveSecp256k1)
+	require.NoError(t, err)
+	derived := addressMap(AddressesForPublicKey(childPK, CurveSecp256k1))
+	eth, btc := derived[ChainEthereum], derived[ChainBitcoin]
+	require.True(t, strings.HasPrefix(btc, "bc1"))
+
+	rec := func(address string) AddressRecord {
+		return AddressRecord{Address: address, Xpub: testXpubECDSA, Path: path, Algorithm: AlgorithmECDSA, Curve: CurveSecp256k1}
+	}
+	keys := []VaultKey{{VaultID: "vault-1", Curve: CurveSecp256k1, PublicKey: parsed.PublicKey}}
+	checks := CheckRecords([]AddressRecord{
+		rec("0X" + eth[2:]),
+		rec("0X" + strings.Repeat("ab", 20)),
+		rec(btc),
+		rec(strings.ToUpper(btc)),
+		rec("B" + btc[1:]),
+	}, keys)
+	require.Len(t, checks, 5)
+
+	assert.Equal(t, CheckMatch, checks[0].Status, checks[0].Message)
+	assert.Equal(t, CheckMismatch, checks[1].Status, "a different 0X address is a mismatch, not a label")
+	assert.Equal(t, ChainEthereum, checks[1].PreferredAddress().Chain)
+	assert.Equal(t, CheckMatch, checks[2].Status, checks[2].Message)
+	assert.Equal(t, CheckMatch, checks[3].Status, checks[3].Message)
+	assert.Equal(t, CheckMismatch, checks[4].Status, "mixed-case bech32 is not a valid address")
+	assert.Contains(t, checks[4].Message, "BIP 173")
+}
+
 func TestAddressFamily(t *testing.T) {
 	cases := map[string]string{
 		"0x52908400098527886E0F7030069857D2E4169EE7": ChainEthereum,
+		"0X52908400098527886E0F7030069857D2E4169EE7": ChainEthereum,
 		"bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4": ChainBitcoin,
 		"tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx": ChainBitcoinTestnet,
 		"15mKKb2eos1hWa6tisdPwwDC1a5J1y9nma":         ChainBitcoinLegacy, // BIP32 test vector 1

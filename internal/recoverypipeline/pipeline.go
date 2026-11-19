@@ -115,6 +115,12 @@ type Options struct {
 	// quiet suppresses the per-share progress lines a recovery-mode pass prints. Verify runs a
 	// recovery-mode pass per vault without reconstructing anything, so those lines are noise there.
 	quiet bool
+
+	// secrets, when set, records every secret share value the pass decrypts and zeroes the ones it
+	// does not hand back (all of them when it fails). Only Verify sets it: Verify never reconstructs
+	// a key, so nothing it decrypts may outlive the metadata it reads. Recovery leaves it nil and
+	// keeps its existing cleanup.
+	secrets *secretTracker
 }
 
 // Prepare decodes and decrypts every input backup file — mnemonic-encrypted JSON in
@@ -143,6 +149,20 @@ func Prepare(inputs *InputSet, opts Options) (res *Result, welp error) {
 
 	artifacts := inputs.artifacts
 
+	// A verify-only pass owns cleanup of everything it decrypts: on error nothing is handed back, so
+	// every recorded value is zeroed; on success only the shares in the returned pools survive (the
+	// caller wipes those once it has read their metadata), so unselected reshares and skipped vaults
+	// are zeroed here. This runs after the return values are set.
+	if opts.secrets != nil {
+		defer func() {
+			if welp != nil || res == nil {
+				opts.secrets.wipeExcept(nil, nil)
+				return
+			}
+			opts.secrets.wipeExcept(res.SharesECDSA, res.SharesEdDSA)
+		}()
+	}
+
 	// Internal & returned data structures
 	clearVaults := make(ClearVaultMap, len(artifacts)*16)
 	vaultAllSharesECDSA := make(VaultAllSharesECDSA, len(artifacts)*16) // headroom
@@ -169,7 +189,7 @@ func Prepare(inputs *InputSet, opts Options) (res *Result, welp error) {
 	// Process each vault data file
 	for _, artifact := range artifacts {
 		if strings.EqualFold(filepath.Ext(artifact.Path), ".dr") {
-			if err := processDRFile(artifact.Path, privateKeysPEM, vaultID, justListingVaults, drSharesByVault, presentation); err != nil {
+			if err := processDRFile(artifact.Path, privateKeysPEM, vaultID, justListingVaults, drSharesByVault, presentation, opts.secrets); err != nil {
 				welp = err
 				return
 			}
@@ -344,7 +364,10 @@ func Prepare(inputs *InputSet, opts Options) (res *Result, welp error) {
 					welp = fmt.Errorf("no legacy or new shares found for vault %s %s", vID, clearVaults[vID].Name)
 					return
 				}
-				if vaultSharesECDSA, welp = inflateSharesForCurve[ecdsa_keygen.LocalPartySaveData](sharesECDSA, quietShares); welp != nil {
+				if vaultSharesECDSA, welp = inflateSharesForCurve[ecdsa_keygen.LocalPartySaveData](sharesECDSA, quietShares, opts.secrets); welp != nil {
+					return
+				}
+				if welp = requireShareSecrets(vaultSharesECDSA, presentation.path(artifact.Path), vID); welp != nil {
 					return
 				}
 				if _, ok := vaultAllSharesECDSA[vID]; !ok {
@@ -354,7 +377,10 @@ func Prepare(inputs *InputSet, opts Options) (res *Result, welp error) {
 				// / ECDSA
 				// EDDSA
 				if sharesEDDSA != nil {
-					if vaultSharesEDDSA, welp = inflateSharesForCurve[eddsa_keygen.LocalPartySaveData](sharesEDDSA, quietShares); welp != nil {
+					if vaultSharesEDDSA, welp = inflateSharesForCurve[eddsa_keygen.LocalPartySaveData](sharesEDDSA, quietShares, opts.secrets); welp != nil {
+						return
+					}
+					if welp = requireShareSecrets(vaultSharesEDDSA, presentation.path(artifact.Path), vID); welp != nil {
 						return
 					}
 					if _, ok := vaultAllSharesEDDSA[vID]; !ok {
@@ -374,8 +400,20 @@ func Prepare(inputs *InputSet, opts Options) (res *Result, welp error) {
 					welp = errors2.Wrapf(err, "invalid saveData format - is this an old backup file? (code: 3)")
 					return
 				}
+				for _, s := range parsedMobile.ECDSA {
+					opts.secrets.addShare(s)
+				}
+				for _, s := range parsedMobile.EdDSA {
+					opts.secrets.addShare(s)
+				}
 				if parsedMobile.VaultId != vID {
 					welp = fmt.Errorf("⚠ mobile backup for vault %s at request %s carries mismatched embedded vault id %s", vID, lastRequestID, parsedMobile.VaultId)
+					return
+				}
+				if welp = requireShareSecrets(parsedMobile.ECDSA, presentation.path(artifact.Path), vID); welp != nil {
+					return
+				}
+				if welp = requireShareSecrets(parsedMobile.EdDSA, presentation.path(artifact.Path), vID); welp != nil {
 					return
 				}
 				mobileVaults[vID] = true
@@ -498,9 +536,10 @@ func Prepare(inputs *InputSet, opts Options) (res *Result, welp error) {
 
 // processDRFile decrypts a Virtual Signer .dr file and folds its shares into the same per-vault
 // share pools the legacy mnemonic-encrypted path populates, so a single recovery run can mix both
-// file formats for the same vault.
+// file formats for the same vault. secrets (nil outside Verify) records the decrypted share values
+// as soon as they exist, so a file skipped or rejected below is still wiped by a verify-only pass.
 func processDRFile(path string, privateKeysPEM [][]byte, vaultID string, justListingVaults bool,
-	drSharesByVault map[string]drReshareChain, presentation ErrorPresentation) error {
+	drSharesByVault map[string]drReshareChain, presentation ErrorPresentation, secrets *secretTracker) error {
 
 	if len(privateKeysPEM) == 0 {
 		return fmt.Errorf("⚠ %s %w", presentation.path(path), ErrPrivateKeyRequired)
@@ -533,6 +572,7 @@ func processDRFile(path string, privateKeysPEM [][]byte, vaultID string, justLis
 		}
 		return fmt.Errorf("⚠ failed to decrypt %s: %s", presentation.path(path), presentation.err(firstErr))
 	}
+	secrets.addDR(parsed)
 
 	// The reconstructed vault ID and threshold come from the decrypted (AEAD-authenticated)
 	// payload, not the plaintext envelope fields, since the latter aren't tamper-evident.
@@ -580,11 +620,17 @@ func processDRFile(path string, privateKeysPEM [][]byte, vaultID string, justLis
 		if err != nil {
 			return fmt.Errorf("⚠ %s: %s", presentation.path(path), err)
 		}
+		if err := requireShareSecrets(shares, presentation.path(path), vID); err != nil {
+			return err
+		}
 		entry.ecdsa = append(entry.ecdsa, shares...)
 	case dr.KindEdDSA:
 		shares, err := parsed.EdDSA.ToEdDSASaveData()
 		if err != nil {
 			return fmt.Errorf("⚠ %s: %s", presentation.path(path), err)
+		}
+		if err := requireShareSecrets(shares, presentation.path(path), vID); err != nil {
+			return err
 		}
 		entry.eddsa = append(entry.eddsa, shares...)
 		entry.hasEdDSA = true
@@ -613,8 +659,43 @@ func ensureClearVaultThreshold(clearVaults ClearVaultMap, vID string, threshold 
 	return nil
 }
 
-// inflateSharesForCurve inflates shares for a specific curve
-func inflateSharesForCurve[T SaveData](shares []string, justListingVaults bool) ([]*T, error) {
+// requireShareSecrets rejects a decoded share that has no secret value (Xi) or no share ID. Such a
+// share still states the vault's public key, so without this check Verify would count it towards
+// the threshold and report the vault recoverable, and recovery would only fail at reconstruction
+// with an unclear error. Failing here names the file instead. source is the file as presented.
+func requireShareSecrets[T SaveData](shares []*T, source, vID string) error {
+	for i, s := range shares {
+		xi, id := secretOf(s)
+		switch {
+		case xi == nil:
+			return fmt.Errorf("⚠ %s: share %d for vault %s has no secret share value (Xi), so this file cannot be used to recover the vault",
+				source, i+1, vID)
+		case id == nil:
+			return fmt.Errorf("⚠ %s: share %d for vault %s has no share ID, so this file cannot be used to recover the vault",
+				source, i+1, vID)
+		}
+	}
+	return nil
+}
+
+// secretOf returns a decoded share's secret value (Xi) and share ID, or nils for a nil share.
+func secretOf(share any) (xi, shareID *big.Int) {
+	switch s := share.(type) {
+	case *ecdsa_keygen.LocalPartySaveData:
+		if s != nil {
+			return s.Xi, s.ShareID
+		}
+	case *eddsa_keygen.LocalPartySaveData:
+		if s != nil {
+			return s.Xi, s.ShareID
+		}
+	}
+	return nil, nil
+}
+
+// inflateSharesForCurve inflates shares for a specific curve. secrets (nil outside Verify) records
+// each decoded share's secret value straight away, so it is wiped even if a later share fails.
+func inflateSharesForCurve[T SaveData](shares []string, justListingVaults bool, secrets *secretTracker) ([]*T, error) {
 	shareDatas := make([]*T, len(shares))
 	for j, strShare := range shares {
 		// handle compressed "V2" format (ECDSA)
@@ -661,6 +742,7 @@ func inflateSharesForCurve[T SaveData](shares []string, justListingVaults bool) 
 			err2 := errors2.Wrapf(err, "invalid data format - is this an old backup file? (code: 4)")
 			return nil, err2
 		}
+		secrets.addShare(shareData)
 		shareDatas[j] = shareData
 	}
 	return shareDatas, nil
