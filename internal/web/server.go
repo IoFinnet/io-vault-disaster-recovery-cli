@@ -664,6 +664,15 @@ func (s *Server) processUploadedFiles(r *http.Request, mnemonicsOptional bool) (
 		uploads[path] = upload
 	}
 
+	// A directly uploaded JSON file owns the "mnemonic_<name>" field for its name. A ZIP entry only
+	// falls back to that field (see zipEntryMnemonic) when no direct upload and no other entry uses it.
+	plainFieldTaken := make(map[string]bool, len(fileHeaders))
+	for _, fh := range fileHeaders {
+		if name := filepath.Base(fh.Filename); strings.EqualFold(filepath.Ext(name), ".json") {
+			plainFieldTaken[strings.TrimSuffix(name, filepath.Ext(name))] = true
+		}
+	}
+
 	for i, fileHeader := range fileHeaders {
 		name := filepath.Base(fileHeader.Filename)
 		if name == "" || name == "." || name == string(filepath.Separator) {
@@ -711,7 +720,7 @@ func (s *Server) processUploadedFiles(r *http.Request, mnemonicsOptional bool) (
 					continue
 				}
 
-				mnemonic, supplied := keyedMnemonic(r, entryName)
+				mnemonic, supplied := zipEntryMnemonic(r, name, entryName, plainFieldTaken)
 				if mnemonicsOptional {
 					add(extractedFile, mnemonic, upload)
 					continue
@@ -799,6 +808,29 @@ func keyedMnemonic(r *http.Request, fileName string) (mnemonic string, supplied 
 		return "", false
 	}
 	return ui.CleanMnemonicInput(values[0]), true
+}
+
+// zipEntryMnemonic returns the mnemonic for one export inside an uploaded ZIP archive, and whether
+// one was sent.
+//
+// The client sends it as "mnemonic_<archive name>/<entry name without extension>". Upload names are
+// unique within a request, so this stays distinct when two archives both contain, say,
+// backup.json with different phrases. Older clients send "mnemonic_<entry name without
+// extension>"; that field is still accepted, but for one entry only and never for a name a directly
+// uploaded file uses, so one phrase is never applied to two different exports. plainFieldTaken
+// records which of those plain fields are already spoken for.
+func zipEntryMnemonic(r *http.Request, archiveName, entryName string, plainFieldTaken map[string]bool) (mnemonic string, supplied bool) {
+	if mnemonic, supplied = keyedMnemonic(r, archiveName+"/"+entryName); supplied {
+		return mnemonic, true
+	}
+	stem := strings.TrimSuffix(entryName, filepath.Ext(entryName))
+	if plainFieldTaken[stem] {
+		return "", false
+	}
+	if mnemonic, supplied = keyedMnemonic(r, entryName); supplied {
+		plainFieldTaken[stem] = true
+	}
+	return mnemonic, supplied
 }
 
 // positionalMnemonic is the fallback for older clients that send unkeyed mnemonic fields: it

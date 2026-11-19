@@ -31,6 +31,7 @@ import (
 	"github.com/iofinnet/tss-lib/v3/crypto/vss"
 	"github.com/iofinnet/tss-lib/v3/tss"
 	ecdsa_keygen "github.com/iofinnet/tss-lib/v3/tss/ecdsa/keygen"
+	eddsa_keygen "github.com/iofinnet/tss-lib/v3/tss/schnorr/keygen"
 	"github.com/stretchr/testify/require"
 	"github.com/tyler-smith/go-bip39"
 )
@@ -845,7 +846,11 @@ func TestVerify_EdDSAShortfallMessage(t *testing.T) {
 	require.Equal(t, VerifyStatusBelowThreshold, v.Status)
 	require.Equal(t, 3, v.SharesCounted)
 	require.Equal(t, 1, v.EdDSAShares)
-	require.Equal(t, "1 of 2 required EdDSA shares found at the current reshare. Add EdDSA backups from 1 more signer.", v.Message)
+	// Adding just one EdDSA backup would leave 3 ECDSA and 2 EdDSA shares, which recovery refuses,
+	// so the advice pairs the curves up: match all three, or set the extra ECDSA backups aside.
+	require.Equal(t, "3 ECDSA and 1 EdDSA shares found at the current reshare. Recovery uses each signer's ECDSA and EdDSA shares together, so it needs both from 2 signers. "+
+		"Add the EdDSA backups of the signers whose ECDSA backups are here (2 missing), or set aside the ECDSA backups that have no EdDSA match and add both backups from 1 more signer.",
+		v.Message)
 }
 
 func TestBelowThresholdMessage(t *testing.T) {
@@ -854,12 +859,67 @@ func TestBelowThresholdMessage(t *testing.T) {
 		belowThresholdMessage(1, 1, true, 3))
 	require.Equal(t, "2 of 3 required shares found at the current reshare. Add backups from 1 more signer.",
 		belowThresholdMessage(2, 0, false, 3))
-	// Only EdDSA short.
-	require.Equal(t, "1 of 3 required EdDSA shares found at the current reshare. Add EdDSA backups from 2 more signers.",
+	// Unequal counts: either advice leads to equal counts of at least the threshold.
+	require.Equal(t, "4 ECDSA and 1 EdDSA shares found at the current reshare. Recovery uses each signer's ECDSA and EdDSA shares together, so it needs both from 3 signers. "+
+		"Add the EdDSA backups of the signers whose ECDSA backups are here (3 missing), or set aside the ECDSA backups that have no EdDSA match and add both backups from 2 more signers.",
 		belowThresholdMessage(4, 1, true, 3))
-	// Both short, by different amounts.
-	require.Equal(t, "1 of 3 required ECDSA shares and 2 of 3 required EdDSA shares found at the current reshare. Add backups from 2 more signers.",
+	// Matching the extra backups is not enough on its own here: whole signers are missing too.
+	require.Equal(t, "1 ECDSA and 2 EdDSA shares found at the current reshare. Recovery uses each signer's ECDSA and EdDSA shares together, so it needs both from 3 signers. "+
+		"Add the ECDSA backups of the signers whose EdDSA backups are here (1 missing), and both backups from 1 more signer.",
 		belowThresholdMessage(1, 2, true, 3))
+	// Both curves meet the threshold but differ: setting the extra ones aside is enough.
+	require.Equal(t, "3 ECDSA and 2 EdDSA shares found at the current reshare. Recovery uses each signer's ECDSA and EdDSA shares together, so it needs both from 2 signers. "+
+		"Add the EdDSA backups of the signers whose ECDSA backups are here (1 missing), or set aside the ECDSA backups that have no EdDSA match.",
+		belowThresholdMessage(3, 2, true, 2))
 	require.Equal(t, "2 shares found at the current reshare, which is not enough to recover this vault.",
 		belowThresholdMessage(2, 0, false, 0))
+}
+
+// Two files at the current reshare that hold the same share are a conflict, even when the reshare
+// is short of shares: asking for more backups would not help while the duplicate is there.
+func TestVerify_DuplicateShareWhileShortIsConflict(t *testing.T) {
+	dir := t.TempDir()
+	priv, privPEM := vtKeyPEM(t)
+	const vaultID, requestID = "verify-dup-short", "keygen-1"
+	_, ecPub, shares := vtShares(t, tss.S256(), 3, 3)
+	files := vtDRFiles(t, dir, "device", vaultID, requestID, "", 3, priv.EncapsulationKey(), ecPub, vss.Shares{shares[0], shares[0]})
+
+	v := vtVault(t, vtVerify(t, files, [][]byte{privPEM}), vaultID)
+	require.Equal(t, VerifyStatusConflict, v.Status)
+	require.Equal(t, duplicateShareMessage, v.Message)
+}
+
+// A share ID that recurs at an older reshare is not a duplicate: only the current reshare counts.
+func TestVerify_ShareIDAtOlderReshareIsNotDuplicate(t *testing.T) {
+	dir := t.TempDir()
+	priv, privPEM := vtKeyPEM(t)
+	const vaultID = "verify-dup-older"
+	_, ecPub, shares := vtShares(t, tss.S256(), 3, 3)
+	files := vtDRFiles(t, dir, "old", vaultID, "keygen-1", "", 3, priv.EncapsulationKey(), ecPub, vss.Shares{shares[0]})
+	files = append(files, vtDRFiles(t, dir, "new", vaultID, "reshare-2", "keygen-1", 3, priv.EncapsulationKey(), ecPub, vss.Shares{shares[0]})...)
+
+	v := vtVault(t, vtVerify(t, files, [][]byte{privPEM}), vaultID)
+	require.Equal(t, VerifyStatusBelowThreshold, v.Status, v.Message)
+	require.Equal(t, "reshare-2", v.CurrentRequestID)
+	require.Equal(t, 1, v.SharesCounted)
+}
+
+// WipeShares, which recovery defers straight after Prepare, zeroes every share's secret value on
+// both curves and is safe on a nil result.
+func TestResult_WipeShares(t *testing.T) {
+	ecdsaXi, eddsaXi := big.NewInt(12345), big.NewInt(678)
+	ecdsaShare := &ecdsa_keygen.LocalPartySaveData{}
+	ecdsaShare.Xi = ecdsaXi
+	eddsaShare := &eddsa_keygen.LocalPartySaveData{}
+	eddsaShare.Xi = eddsaXi
+	res := &Result{
+		SharesECDSA: VaultAllSharesECDSA{"vault": {ecdsaShare}},
+		SharesEdDSA: VaultAllSharesEdDSA{"vault": {eddsaShare}},
+	}
+	res.WipeShares()
+	require.Zero(t, ecdsaXi.Sign())
+	require.Zero(t, eddsaXi.Sign())
+
+	var none *Result
+	none.WipeShares()
 }

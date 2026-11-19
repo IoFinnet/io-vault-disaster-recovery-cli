@@ -588,10 +588,19 @@ func decryptVerifyRecordByVault(rec *verifyRecord, privateKeysPEM [][]byte, pres
 			out[vID] = failed
 			continue
 		}
-		readAny = true
-		if rv, ok := vaults[vID]; ok {
-			out[vID] = rv
+		rv, ok := vaults[vID]
+		if !ok {
+			// Prepare skipped this vault without an error, e.g. because its current reshare is
+			// missing from the file. Keep the header entry, with an error, so the file stays
+			// attributed to the vault; and do not count it as read, or a file whose only
+			// "successful" vaults are empty would replace its header with the failures alone.
+			missing := newRecordVault(rec.vaults[vID].requestID)
+			missing.err = fmt.Sprintf("no shares for vault %s's current reshare could be read from this file", vID)
+			out[vID] = missing
+			continue
 		}
+		readAny = true
+		out[vID] = rv
 	}
 	if !readAny && firstErr != nil {
 		return nil, firstErr
@@ -624,8 +633,7 @@ func checkVerifyVault(vv *VerifyVault, holders []*verifyRecord, bundles []Bundle
 					joinInts(thresholds), requestID)
 				return true, nil
 			}
-			belowThresholdFromRecords(vv, holders)
-			return false, nil
+			return belowThresholdFromRecords(vv, holders), nil
 		}
 		vv.Status = VerifyStatusConflict
 		vv.Message = presentation.err(err).Error()
@@ -653,7 +661,7 @@ func checkVerifyVault(vv *VerifyVault, holders []*verifyRecord, bundles []Bundle
 	vv.EdDSAShares = len(eddsaIDs)
 	if dupECDSA || dupEdDSA {
 		vv.Status = VerifyStatusConflict
-		vv.Message = "Two files hold the same share. Remove the duplicate backup and verify again."
+		vv.Message = duplicateShareMessage
 		return true, warnings
 	}
 
@@ -699,8 +707,7 @@ func checkVerifyVault(vv *VerifyVault, holders []*verifyRecord, bundles []Bundle
 		vv.Message = "None of these files record this vault's threshold. Enter it when you recover."
 	case vv.HasEdDSA && vv.EdDSAShares != vv.SharesCounted:
 		vv.Status = VerifyStatusBelowThreshold
-		vv.Message = fmt.Sprintf("Found %d ECDSA and %d EdDSA shares. Each signer's ECDSA and EdDSA backups are needed together.",
-			vv.SharesCounted, vv.EdDSAShares)
+		vv.Message = belowThresholdMessage(vv.SharesCounted, vv.EdDSAShares, vv.HasEdDSA, vv.Threshold)
 	case vv.SharesCounted >= vv.Threshold:
 		vv.Status = VerifyStatusRecoverable
 	default:
@@ -775,7 +782,11 @@ func joinInts(values []int) string {
 
 // belowThresholdFromRecords fills in a vault whose .dr chain has no reshare with enough shares.
 // It reports the chain head, the reshare a recovery needs, from what each decrypted file said.
-func belowThresholdFromRecords(vv *VerifyVault, holders []*verifyRecord) {
+//
+// Two files at the head that hold the same share are reported as a conflict first, and the result
+// is true: asking for more backups would not help while the duplicate is there. A share ID that
+// recurs at another reshare is not a duplicate, since only the head is counted.
+func belowThresholdFromRecords(vv *VerifyVault, holders []*verifyRecord) (conflict bool) {
 	vID := vv.VaultID
 	chain := make(drReshareChain)
 	for _, rec := range holders {
@@ -791,15 +802,18 @@ func belowThresholdFromRecords(vv *VerifyVault, holders []*verifyRecord) {
 
 	ecdsaIDs := make(map[string]bool)
 	eddsaIDs := make(map[string]bool)
+	duplicate := false
 	for _, rec := range holders {
 		rv := rec.vaults[vID]
 		if rv.requestID != head {
 			continue
 		}
 		for _, id := range rv.ecdsaIDs {
+			duplicate = duplicate || ecdsaIDs[id]
 			ecdsaIDs[id] = true
 		}
 		for _, id := range rv.eddsaIDs {
+			duplicate = duplicate || eddsaIDs[id]
 			eddsaIDs[id] = true
 		}
 		if rv.threshold > vv.Threshold {
@@ -817,33 +831,54 @@ func belowThresholdFromRecords(vv *VerifyVault, holders []*verifyRecord) {
 	vv.SharesCounted = len(ecdsaIDs)
 	vv.EdDSAShares = len(eddsaIDs)
 	vv.HasEdDSA = len(eddsaIDs) > 0
+	if duplicate {
+		vv.Status = VerifyStatusConflict
+		vv.Message = duplicateShareMessage
+		return true
+	}
 	vv.Status = VerifyStatusBelowThreshold
 	vv.Message = belowThresholdMessage(vv.SharesCounted, vv.EdDSAShares, vv.HasEdDSA, vv.Threshold)
+	return false
 }
 
-// belowThresholdMessage explains a shortfall at the current reshare. When the ECDSA count alone
-// tells the story (no EdDSA shortfall, or one of the same size, as when whole signers are missing)
-// it keeps the plain wording; otherwise each short curve is named with its own count, so the
-// message never asks for a negative number of signers.
+// duplicateShareMessage is the verdict for two files holding the same share at one reshare.
+const duplicateShareMessage = "Two files hold the same share. Remove the duplicate backup and verify again."
+
+// belowThresholdMessage explains why the current reshare cannot be recovered yet, with advice that
+// leads to a recovery that works.
+//
+// Recovery uses each signer's ECDSA and EdDSA shares together and refuses unequal counts, so for a
+// vault with EdDSA keys "add the missing EdDSA backups" alone is not enough when it would still
+// leave the counts unequal. With unequal counts the message offers the two ways to pair them up:
+// add the backups that match the extra ones, or set the extra ones aside (and add whole signers if
+// that leaves too few). With equal counts the plain wording names how many signers are missing.
 func belowThresholdMessage(ecdsa, eddsa int, hasEdDSA bool, threshold int) string {
 	if threshold < 1 {
 		return fmt.Sprintf("%d shares found at the current reshare, which is not enough to recover this vault.", ecdsa)
 	}
-	ecdsaShort := ecdsa < threshold
-	eddsaShort := hasEdDSA && eddsa < threshold
-	switch {
-	case ecdsaShort && (!eddsaShort || eddsa == ecdsa):
+	if hasEdDSA && eddsa != ecdsa {
+		more, less, moreCurve, lessCurve := ecdsa, eddsa, "ECDSA", "EdDSA"
+		if eddsa > ecdsa {
+			more, less, moreCurve, lessCurve = eddsa, ecdsa, "EdDSA", "ECDSA"
+		}
+		msg := fmt.Sprintf("%d ECDSA and %d EdDSA shares found at the current reshare. Recovery uses each signer's ECDSA and EdDSA shares together, so it needs both from %d signers.",
+			ecdsa, eddsa, threshold)
+		addMatching := fmt.Sprintf("Add the %s backups of the signers whose %s backups are here (%d missing)", lessCurve, moreCurve, more-less)
+		if more < threshold {
+			// Matching the extra backups is not enough on its own: whole signers are missing too.
+			return fmt.Sprintf("%s %s, and both backups from %s.", msg, addMatching, moreSigners(threshold-more))
+		}
+		setAside := fmt.Sprintf("set aside the %s backups that have no %s match", moreCurve, lessCurve)
+		if less < threshold {
+			setAside += " and add both backups from " + moreSigners(threshold-less)
+		}
+		return fmt.Sprintf("%s %s, or %s.", msg, addMatching, setAside)
+	}
+	if ecdsa < threshold {
 		return fmt.Sprintf("%d of %d required shares found at the current reshare. Add backups from %s.",
 			ecdsa, threshold, moreSigners(threshold-ecdsa))
-	case eddsaShort && !ecdsaShort:
-		return fmt.Sprintf("%d of %d required EdDSA shares found at the current reshare. Add EdDSA backups from %s.",
-			eddsa, threshold, moreSigners(threshold-eddsa))
-	case ecdsaShort && eddsaShort:
-		return fmt.Sprintf("%d of %d required ECDSA shares and %d of %d required EdDSA shares found at the current reshare. Add backups from %s.",
-			ecdsa, threshold, eddsa, threshold, moreSigners(threshold-min(ecdsa, eddsa)))
-	default:
-		return "Not enough shares were found at the current reshare to recover this vault."
 	}
+	return "Not enough shares were found at the current reshare to recover this vault."
 }
 
 func moreSigners(n int) string {
@@ -1075,6 +1110,13 @@ func appendDistinctPoint(points []*crypto.ECPoint, p *crypto.ECPoint) []*crypto.
 		}
 	}
 	return append(points, p)
+}
+
+// WipeShares zeroes every secret share value (Xi) the result holds. A caller that reconstructs a
+// key defers it straight after Prepare succeeds, so the shares are cleared on every exit path,
+// including a refusal just before reconstruction. Safe on a nil result.
+func (res *Result) WipeShares() {
+	wipeResultShares(res)
 }
 
 // wipeResultShares zeroes every secret share value a Prepare result holds, once Verify has read

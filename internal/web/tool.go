@@ -63,6 +63,9 @@ func runTool(vaultsDataFile []ui.VaultsDataFile, vaultID string, nonceOverride i
 		}
 		return
 	}
+	// The decrypted share values are only needed until the key is rebuilt below. Clear them on every
+	// exit, including a refusal by beforeReconstruct and the error returns before it.
+	defer res.WipeShares()
 	orderedVaults = res.OrderedVaults
 
 	justListingVaults := vaultID == ""

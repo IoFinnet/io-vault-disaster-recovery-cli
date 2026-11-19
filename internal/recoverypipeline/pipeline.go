@@ -307,6 +307,11 @@ func Prepare(inputs *InputSet, opts Options) (res *Result, welp error) {
 				welp = errors2.Errorf("⚠ failed to decrypt vault %s: %s (on decrypt)", vID, err)
 				return
 			}
+			// Zero the decrypted payload when Prepare returns, on every path (including the hash
+			// mismatch below). This reduces memory residue only: json.Unmarshal copies fields such as
+			// the legacy shares into Go strings, which cannot be zeroed. Nothing returned aliases
+			// this buffer, since decoding always copies.
+			defer clear(plainload)
 			expHash := sha512.Sum512(plainload)
 			if hex.EncodeToString(expHash[:]) != cipheredVault.Hash {
 				welp = errors2.Errorf("⚠ failed to decrypt vault %s: hash mismatch", vID)

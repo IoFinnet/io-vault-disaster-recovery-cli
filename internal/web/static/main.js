@@ -378,8 +378,10 @@
             if (f.type === 'json') {
                 targets.push({ key: baseNoExt(f.name), label: f.name, fileId: f.id, signer: f.signer || null });
             } else if (f.type === 'zip' && f.zip && f.zip.kind === 'archive') {
+                // Keyed by archive and entry ("<zip name>/<entry>"), the field the server reads first, so
+                // two archives that both contain e.g. backup.json can each have their own phrase.
                 f.zip.entries.filter((n) => ext(n) === '.json').forEach((n) => {
-                    targets.push({ key: baseNoExt(n), label: n + ' (in ' + f.name + ')', fileId: f.id, fromZip: true });
+                    targets.push({ key: f.name + '/' + baseNoExt(n), label: n + ' (in ' + f.name + ')', fileId: f.id, fromZip: true });
                 });
             }
         });
@@ -501,8 +503,10 @@
         if (state.files.some((f) => f.zip && f.zip.status === 'loading')) {
             return { ok: false, reason: 'Still reading ZIP contents…' };
         }
+        // Recovery needs every file it is given. Verify reports an unreadable archive as that file's
+        // error and still checks the others, so it may go ahead (with a hint) instead.
         const broken = state.files.find((f) => f.zip && f.zip.status === 'error');
-        if (broken) {
+        if (broken && state.task !== 'verify') {
             return { ok: false, reason: 'Remove ' + broken.name + ': it could not be read.' };
         }
         const dups = duplicateMnemonicKeys();
@@ -514,6 +518,9 @@
             return { ok: false, reason: 'Add the ML-KEM-768 private key that opens your Virtual Signer files.' };
         }
         const hints = [];
+        if (broken) {
+            hints.push(broken.name + ' could not be read: the report will list it as an error.');
+        }
         if (verify && needsKey() && !state.keys.length) {
             hints.push('Without a key, Virtual Signer files are checked by header only.');
         }
