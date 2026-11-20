@@ -119,6 +119,32 @@ type (
 	SaveData interface{}
 )
 
+// UnmarshalJSON decodes the "vaults" map one entry at a time, so an entry that fails to decode
+// reports which vault it belongs to. VaultEntry.UnmarshalJSON alone cannot: the vault id is the
+// map key, not part of the entry.
+func (s *SavedData) UnmarshalJSON(raw []byte) error {
+	var wire struct {
+		Vaults map[string]json.RawMessage `json:"vaults"`
+	}
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return err
+	}
+	if wire.Vaults == nil {
+		s.Vaults = nil
+		return nil
+	}
+	vaults := make(map[string]VaultEntry, len(wire.Vaults))
+	for vID, rawEntry := range wire.Vaults {
+		var entry VaultEntry
+		if err := json.Unmarshal(rawEntry, &entry); err != nil {
+			return fmt.Errorf("vault %s: %w", vID, err)
+		}
+		vaults[vID] = entry
+	}
+	s.Vaults = vaults
+	return nil
+}
+
 // UnmarshalJSON detects whether a vault entry is the legacy flat nonce-keyed shape or the v4
 // {currentRequestId, requests} shape and normalizes either into VaultEntry.
 func (v *VaultEntry) UnmarshalJSON(raw []byte) error {
