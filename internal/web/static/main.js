@@ -1183,6 +1183,7 @@
     // never needs to scroll sideways. Narrow containers stack each row's cells instead.
     const ROW_ADDRESSES = [['ethereumAddress', 'ETH', 'Ethereum'], ['bitcoinAddress', 'BTC', 'Bitcoin (SegWit)'], ['solanaAddress', 'SOL', 'Solana'], ['xrplAddress', 'XRP', 'XRP Ledger']];
     const MAX_ROW_FILES = 3;
+    const MAX_METER_SEGMENTS = 32;
 
     function vaultList(vaults, sources) {
         return '<div class="vault-list" role="list">' +
@@ -1194,10 +1195,18 @@
         const st = VAULT_STATUS[v.status] || ['', v.status];
         const checked = v.status !== 'not-checked';
         const counted = v.sharesCounted || 0;
-        const segCount = v.threshold ? Math.max(v.threshold, counted) : Math.max(counted + 1, 2);
+        // One segment per share up to MAX_METER_SEGMENTS. A larger threshold (it comes from the
+        // backup files) is drawn to scale instead, so it cannot create thousands of elements; the
+        // text beside the meter always gives the exact count.
+        const total = v.threshold ? Math.max(v.threshold, counted) : Math.max(counted + 1, 2);
+        const segCount = Math.min(total, MAX_METER_SEGMENTS);
+        const scale = segCount / total;
+        // Floor the counted part and ceil the required part, so a shortfall never rounds away.
+        const onSegs = counted > 0 ? Math.max(1, Math.floor(counted * scale)) : 0;
+        const requiredSegs = v.threshold ? Math.ceil(v.threshold * scale) : 0;
         let segs = '';
         for (let i = 0; i < segCount; i++) {
-            segs += '<span class="' + (i < counted ? 'on' : (v.threshold && i < v.threshold ? 'missing' : '')) + '"></span>';
+            segs += '<span class="' + (i < onSegs ? 'on' : (i < requiredSegs ? 'missing' : '')) + '"></span>';
         }
         const sharesText = v.threshold ? counted + ' of ' + v.threshold + ' required' : (checked ? counted + ' counted · threshold unknown' : 'Not counted yet');
         const reshare = v.currentRequestId

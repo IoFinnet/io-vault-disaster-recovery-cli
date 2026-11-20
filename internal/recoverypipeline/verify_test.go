@@ -923,3 +923,26 @@ func TestResult_WipeShares(t *testing.T) {
 	var none *Result
 	none.WipeShares()
 }
+
+// When the current reshare is short, the displayed key is still only set when every file agrees on
+// it: two files stating different ECDSA keys are a conflict, not a vault with one of those keys.
+func TestVerify_ShortReshareWithDisagreeingKeysIsConflict(t *testing.T) {
+	dir := t.TempDir()
+	priv, privPEM := vtKeyPEM(t)
+	const vaultID, requestID = "verify-short-keys", "keygen-1"
+	_, pubA, sharesA := vtShares(t, tss.S256(), 3, 3)
+	_, pubB, sharesB := vtShares(t, tss.S256(), 3, 3)
+	files := vtDRFiles(t, dir, "a", vaultID, requestID, "", 3, priv.EncapsulationKey(), pubA, vss.Shares{sharesA[0]})
+	files = append(files, vtDRFiles(t, dir, "b", vaultID, requestID, "", 3, priv.EncapsulationKey(), pubB, vss.Shares{sharesB[1]})...)
+
+	v := vtVault(t, vtVerify(t, files, [][]byte{privPEM}), vaultID)
+	require.Equal(t, VerifyStatusConflict, v.Status, v.Message)
+	require.Equal(t, keyDisagreementMessage("ECDSA"), v.Message)
+	require.Nil(t, v.ECDSAPub, "no key is shown when the files disagree")
+
+	// Agreeing keys still leave a below-threshold vault with its key shown.
+	agree := vtDRFiles(t, dir, "c", vaultID, requestID, "", 3, priv.EncapsulationKey(), pubA, vss.Shares{sharesA[0], sharesA[1]})
+	short := vtVault(t, vtVerify(t, agree, [][]byte{privPEM}), vaultID)
+	require.Equal(t, VerifyStatusBelowThreshold, short.Status, short.Message)
+	require.NotNil(t, short.ECDSAPub)
+}

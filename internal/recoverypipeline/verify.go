@@ -687,13 +687,13 @@ func checkVerifyVault(vv *VerifyVault, holders []*verifyRecord, bundles []Bundle
 	ecdsaPub, ok := agreedPublicKey(ecdsaPubs(res.SharesECDSA[vID]))
 	if !ok {
 		vv.Status = VerifyStatusConflict
-		vv.Message = "These shares disagree on the vault's ECDSA public key, so they are not from the same vault key."
+		vv.Message = keyDisagreementMessage("ECDSA")
 		return true, warnings
 	}
 	eddsaPub, ok := agreedPublicKey(eddsaPubs(res.SharesEdDSA[vID]))
 	if !ok {
 		vv.Status = VerifyStatusConflict
-		vv.Message = "These shares disagree on the vault's EdDSA public key, so they are not from the same vault key."
+		vv.Message = keyDisagreementMessage("EdDSA")
 		return true, warnings
 	}
 	vv.ECDSAPub, vv.EdDSAPub = ecdsaPub, eddsaPub
@@ -803,6 +803,9 @@ func belowThresholdFromRecords(vv *VerifyVault, holders []*verifyRecord) (confli
 	ecdsaIDs := make(map[string]bool)
 	eddsaIDs := make(map[string]bool)
 	duplicate := false
+	// Every distinct key the head's files state, so a disagreement is reported rather than one of
+	// the keys (and its derived addresses) being shown as the vault's.
+	var ecdsaPubs, eddsaPubs []*crypto.ECPoint
 	for _, rec := range holders {
 		rv := rec.vaults[vID]
 		if rv.requestID != head {
@@ -819,11 +822,11 @@ func belowThresholdFromRecords(vv *VerifyVault, holders []*verifyRecord) (confli
 		if rv.threshold > vv.Threshold {
 			vv.Threshold = rv.threshold
 		}
-		if vv.ECDSAPub == nil {
-			vv.ECDSAPub = rv.ecdsaPub
+		for _, p := range rv.ecdsaPubs {
+			ecdsaPubs = appendDistinctPoint(ecdsaPubs, p)
 		}
-		if vv.EdDSAPub == nil {
-			vv.EdDSAPub = rv.eddsaPub
+		for _, p := range rv.eddsaPubs {
+			eddsaPubs = appendDistinctPoint(eddsaPubs, p)
 		}
 	}
 
@@ -836,6 +839,19 @@ func belowThresholdFromRecords(vv *VerifyVault, holders []*verifyRecord) (confli
 		vv.Message = duplicateShareMessage
 		return true
 	}
+	ecdsaPub, ok := agreedPublicKey(ecdsaPubs)
+	if !ok {
+		vv.Status = VerifyStatusConflict
+		vv.Message = keyDisagreementMessage("ECDSA")
+		return true
+	}
+	eddsaPub, ok := agreedPublicKey(eddsaPubs)
+	if !ok {
+		vv.Status = VerifyStatusConflict
+		vv.Message = keyDisagreementMessage("EdDSA")
+		return true
+	}
+	vv.ECDSAPub, vv.EdDSAPub = ecdsaPub, eddsaPub
 	vv.Status = VerifyStatusBelowThreshold
 	vv.Message = belowThresholdMessage(vv.SharesCounted, vv.EdDSAShares, vv.HasEdDSA, vv.Threshold)
 	return false
@@ -843,6 +859,11 @@ func belowThresholdFromRecords(vv *VerifyVault, holders []*verifyRecord) (confli
 
 // duplicateShareMessage is the verdict for two files holding the same share at one reshare.
 const duplicateShareMessage = "Two files hold the same share. Remove the duplicate backup and verify again."
+
+// keyDisagreementMessage is the verdict for shares that state different public keys on one curve.
+func keyDisagreementMessage(curve string) string {
+	return fmt.Sprintf("These shares disagree on the vault's %s public key, so they are not from the same vault key.", curve)
+}
 
 // belowThresholdMessage explains why the current reshare cannot be recovered yet, with advice that
 // leads to a recovery that works.
