@@ -245,10 +245,86 @@ Starting http server on http://localhost:8080
 
 The browser UI provides:
 
-1. Step-by-step instructions for vault recovery
-2. Balance checking functionality for XRP, Solana, and Bittensor networks
-3. Command generation for secure transactions
-4. Address validation and key management
+1. **Verify backup**: checks which of your files holds a share for which vault, and whether each
+   vault has enough current shares to meet its threshold. It never reconstructs a private key (see below).
+2. **Recover keys**: step-by-step recovery of one vault's keys, which stay hidden until you reveal them
+3. Balance checking functionality for XRP, Solana, and Bittensor networks
+4. Command generation for transactions. The private key is masked on screen and only included in the copied command
+5. Address validation and key management
+
+The page loads no remote resources, so it works on an air-gapped device.
+
+### Offline check
+
+The browser UI shows whether this computer is offline, in the sidebar and on each step of the
+wizard. The tool reads the computer's own network adapters every few seconds. It sends no traffic
+to find out, so it never contacts the internet. An adapter counts as connected when it is up, is
+not loopback, and either:
+
+- has an address other than a link-local one (`169.254.x.x`, `fe80::`); or
+- is running and has only link-local addresses, because those still reach other computers on the
+  same link (for example a cable straight to another machine). Point-to-point tunnels, such as
+  macOS `utun` adapters, always carry an `fe80::` address, so a link-local address alone does not
+  count for them.
+
+Only adapter names reach the page, never their addresses. If the adapters, or the addresses of an
+active adapter, cannot be read, the computer is treated as connected.
+
+| Status | What the UI does |
+| --- | --- |
+| Offline | Shows a green "Offline" status. Verify and Recover work as normal. |
+| Connected | Names the active adapters, such as `Wi-Fi`. Adapters that look virtual (VM, container or VPN) are marked as virtual. Verify still runs, with a warning. Recover keys is blocked until you disconnect, or until you tick **Recover anyway**. Use that only on a disposable virtual machine or another isolated environment. You confirm it for each recovery attempt. |
+
+The server enforces the block as well as the page: `/api/recover` refuses to rebuild a key while
+the computer is connected, unless the request includes `allowConnected=true`. It checks when the
+request arrives and again after the uploaded files are processed, just before recovery runs. The check shows only
+whether the computer has a network connection, not whether that connection reaches the internet,
+so a disposable or air-gapped machine is still the safest setup.
+
+### Verify backup
+
+Verify backup answers "could we recover from these files?" without rebuilding any key. Add your
+backup files (mobile app `.json` exports, Virtual Signer `.dr` files and signer bundle `.zip`
+archives), plus whatever mnemonics and ML-KEM-768 keys you have. Mnemonics and keys are optional
+here, and a file you can't unlock is still checked:
+
+| File state | What is checked |
+| --- | --- |
+| Unlocked (mnemonic or key supplied) | The share is decrypted in memory to read its vault, threshold, reshare and public key, then counted |
+| Locked | Only the unencrypted header is read: vault IDs and reshare request IDs, without threshold or public key |
+
+A file that can't be read, such as a damaged ZIP archive or an export with one damaged vault, is
+listed with its error, and everything else that can be read is still checked.
+
+Verification uses the same reshare selection as recovery. The report shows:
+
+- a coverage map of which file holds a share for which vault;
+- each vault's status: recoverable, below threshold, threshold unknown, not checked or conflict;
+- the vault's Ethereum, Bitcoin (native SegWit), Solana and XRP Ledger addresses, derived from the
+  shares' public keys, so you can match them against io.vault. Solana and XRP Ledger need the vault's
+  EdDSA shares.
+
+A conflict means two files disagree, for example on the reshare or the public key, or two files hold
+the same share.
+
+You can also add your [HD addresses CSV](#hd-addresses-csv). Verification checks each row with
+public keys only, because derivation is non-hardened: the child public key follows from the xpub's
+public key and chain code. No private key is derived. For each row it reports:
+
+| Check | Meaning |
+| --- | --- |
+| Matches | The xpub belongs to a vault in your files, and the row's address is the one its path derives |
+| Derived | The xpub belongs to a vault in your files, but the `address` column is a label, so the derived address is shown instead |
+| Mismatch | The xpub belongs to a vault in your files, but its path derives a different address. Check the path and xpub |
+| Vault not found | No vault in the unlocked files has the xpub's public key. Add or unlock that vault's backups |
+| Invalid row | The xpub or path can't be read, or the path is hardened |
+
+An HD address counts as recoverable when it matches or is derived and its vault is recoverable from
+the same files. A CSV added during verification is reused when you go on to recover keys. You can export the report as JSON. The export is the full verification result:
+the time of the check, file names, vault IDs and any vault names, reshare request IDs, thresholds,
+public keys and addresses, the checked HD address rows, and the error and warning messages. It
+contains no private keys, shares or mnemonics. Review that metadata before you share the report,
+because it identifies your vaults and their addresses.
 
 ## Key Recovery
 

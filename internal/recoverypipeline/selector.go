@@ -83,11 +83,11 @@ func (c drReshareChain) pick(override, manifestHint string, json jsonContributio
 		ecdsaCount := len(head.ecdsa) + extra.ECDSA
 		eddsaCount := len(head.eddsa) + extra.EdDSA
 		if head.hasEdDSA {
-			return "", warnings, fmt.Errorf("not enough shares at any reshare (best candidate %s: %d/%d ECDSA, %d/%d EdDSA, need %d)",
-				ordered[0], ecdsaCount, head.threshold, eddsaCount, head.threshold, head.threshold)
+			return "", warnings, fmt.Errorf("%w (best candidate %s: %d/%d ECDSA, %d/%d EdDSA, need %d)",
+				ErrNotEnoughShares, ordered[0], ecdsaCount, head.threshold, eddsaCount, head.threshold, head.threshold)
 		}
-		return "", warnings, fmt.Errorf("not enough shares at any reshare (best candidate %s: %d ECDSA, need %d)",
-			ordered[0], ecdsaCount, head.threshold)
+		return "", warnings, fmt.Errorf("%w (best candidate %s: %d ECDSA, need %d)",
+			ErrNotEnoughShares, ordered[0], ecdsaCount, head.threshold)
 	}
 	return "", warnings, fmt.Errorf("no reshares found in chain")
 }

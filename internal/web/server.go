@@ -5,9 +5,12 @@
 package web
 
 import (
+	"archive/zip"
+	"bytes"
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -16,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -73,6 +77,15 @@ type RecoveryResult struct {
 	ExportedKsFile   string            `json:"exportedKsFile,omitempty"`
 	HDAddresses      []HDAddressResult `json:"hdAddresses,omitempty"`
 	HDError          string            `json:"hdError,omitempty"`
+
+	// Which reshare and threshold the keys were rebuilt from. Identifiers only. RequestID is the
+	// reshare request id, or the reshare nonce for a legacy flat-nonce export.
+	// NetworkBlocked is set when recovery was refused because this computer is online.
+	NetworkBlocked bool `json:"networkBlocked,omitempty"`
+
+	RequestID  string `json:"requestId,omitempty"`
+	Threshold  int    `json:"threshold,omitempty"`
+	SharesUsed int    `json:"sharesUsed,omitempty"`
 }
 
 // Server represents the http server for the disaster recovery tool
@@ -85,7 +98,8 @@ type Server struct {
 	listener           net.Listener
 	actualPort         int // the port the server actually bound to
 	zipExtractedDirsMu sync.Mutex
-	zipExtractedDirs   map[string]struct{} // ZIP extraction dirs not yet cleaned up; handlers run concurrently, so guard with zipExtractedDirsMu
+	zipExtractedDirs   map[string]struct{}  // ZIP extraction dirs not yet cleaned up; handlers run concurrently, so guard with zipExtractedDirsMu
+	checkNetwork       func() NetworkStatus // nil: read the real adapters; tests supply a fixed status
 }
 
 // NewServer creates a new http server instance
@@ -161,6 +175,12 @@ func (s *Server) Start() (string, error) {
 
 	// API endpoint to list files in a ZIP archive
 	mux.HandleFunc("POST /api/list-zip-files", s.handleListZipFiles)
+
+	// API endpoint to verify backup coverage without reconstructing any key
+	mux.HandleFunc("POST /api/verify", s.handleVerify)
+
+	// API endpoint for the offline indicator: which local network adapters are active
+	mux.HandleFunc("POST /api/network-status", s.handleNetworkStatus)
 
 	// No validation endpoints needed
 
@@ -278,7 +298,7 @@ func (s *Server) handleListVaults(w http.ResponseWriter, r *http.Request) {
 	defer clearKeys(privateKeysPEM)
 
 	// Run the tool to get vault information
-	_, _, _, vaultsFormInfo, _, err := runTool(vaultsDataFiles, "", 0, false, "", 0, "", "", privateKeysPEM)
+	_, _, _, vaultsFormInfo, _, err := runTool(vaultsDataFiles, "", 0, false, "", 0, "", "", privateKeysPEM, nil)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to retrieve vault information: %v", err), http.StatusInternalServerError)
 		return
@@ -308,6 +328,16 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 	vaultID := r.FormValue("vaultId")
 	if vaultID == "" {
 		http.Error(w, "Vault ID is required", http.StatusBadRequest)
+		return
+	}
+
+	// Recovery rebuilds a full private key, so it refuses to run while this computer has an active
+	// network adapter, unless the user explicitly confirmed it in the UI (for example a disposable
+	// VM whose virtual adapter has no internet route). The UI enforces the same rule; this is the
+	// server-side backstop. This first check saves the upload work when the computer is already
+	// connected; a second one runs just before the key is rebuilt.
+	allowConnected := r.FormValue("allowConnected") == "true"
+	if s.refuseWhileConnected(w, allowConnected) {
 		return
 	}
 
@@ -361,9 +391,42 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 	}
 	defer clearKeys(privateKeysPEM)
 
+	// The computer may connect while the uploads are saved and the shares decrypted, so the check
+	// runs again inside runTool: after decryption and immediately before the key is rebuilt.
+	var connectedBeforeReconstruct *NetworkStatus
+	beforeReconstruct := func() error {
+		if allowConnected {
+			return nil
+		}
+		if status := s.networkStatus(); status.Connected {
+			connectedBeforeReconstruct = &status
+			return errConnectedBeforeReconstruct
+		}
+		return nil
+	}
+
 	// Run the recovery tool
 	result := RecoveryResult{}
-	address, ecSK, edSK, _, exportedKsFile, err := runTool(vaultsDataFiles, vaultID, nonceOverride, nonceOverrideSet, requestIDOverride, quorumOverride, exportFile, passwordForKS, privateKeysPEM)
+	address, ecSK, edSK, orderedVaults, exportedKsFile, err := runTool(vaultsDataFiles, vaultID, nonceOverride, nonceOverrideSet, requestIDOverride, quorumOverride, exportFile, passwordForKS, privateKeysPEM, beforeReconstruct)
+	if connectedBeforeReconstruct != nil {
+		writeNetworkBlocked(w, *connectedBeforeReconstruct)
+		return
+	}
+	if err == nil {
+		// In recovery mode the pipeline only processes the selected vault, so its entry records the
+		// reshare the shares came from and how many were used.
+		for _, v := range orderedVaults {
+			if v.VaultID != vaultID {
+				continue
+			}
+			result.RequestID = v.LastRequestID
+			result.SharesUsed = v.NumberOfShares
+			result.Threshold = v.Quorum
+			if quorumOverride > 0 {
+				result.Threshold = quorumOverride
+			}
+		}
+	}
 
 	if err != nil {
 		result.Success = false
@@ -449,30 +512,72 @@ func (s *Server) handleRecovery(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// readPrivateKeysPEM extracts the ML-KEM-768 private key PEM needed to decrypt any Virtual Signer
-// .dr inputs from the request, accepted either as an uploaded file ("privateKeyFile" multipart
-// field) or pasted PEM text ("privateKey" form field). The web UI stays single-key, so this
-// returns at most one element. Returns nil, nil when neither is supplied, which is fine for a
-// recovery that only involves legacy/mobile JSON inputs.
+// refuseWhileConnected writes the networkBlocked recovery result and returns true when this
+// computer is connected and the request did not confirm recovering anyway. No key is rebuilt for a
+// refused request.
+func (s *Server) refuseWhileConnected(w http.ResponseWriter, allowConnected bool) bool {
+	status := s.networkStatus()
+	if !status.Connected || allowConnected {
+		return false
+	}
+	writeNetworkBlocked(w, status)
+	return true
+}
+
+// errConnectedBeforeReconstruct stops runTool before any key is rebuilt when the computer connected
+// to a network after the request's first check.
+var errConnectedBeforeReconstruct = errors.New("computer connected to a network before the key was rebuilt")
+
+// writeNetworkBlocked writes the recovery result that refuses to rebuild a key on a connected
+// computer, naming the active adapters.
+func writeNetworkBlocked(w http.ResponseWriter, status NetworkStatus) {
+	names := make([]string, 0, len(status.Adapters))
+	for _, a := range status.Adapters {
+		names = append(names, a.Name)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(RecoveryResult{
+		NetworkBlocked: true,
+		ErrorMessage: fmt.Sprintf("This computer is connected to a network (%s). Disconnect it before you recover, "+
+			"or confirm that you want to recover anyway.", strings.Join(names, ", ")),
+	})
+}
+
+// readPrivateKeysPEM extracts the ML-KEM-768 private key PEMs needed to decrypt any Virtual Signer
+// .dr inputs from the request: every uploaded "privateKeyFile" part (one per Virtual Signer), plus
+// pasted PEM text in the "privateKey" field. The pipeline tries each key against each .dr file.
+// Returns nil, nil when none is supplied, which is fine for inputs that are only mobile/legacy JSON.
 func readPrivateKeysPEM(r *http.Request) ([][]byte, error) {
+	var keys [][]byte
 	if r.MultipartForm != nil {
-		if files := r.MultipartForm.File["privateKeyFile"]; len(files) > 0 {
-			file, err := files[0].Open()
+		for _, fileHeader := range r.MultipartForm.File["privateKeyFile"] {
+			data, err := readMultipartFile(fileHeader)
 			if err != nil {
-				return nil, fmt.Errorf("failed to open private key file: %w", err)
+				clearKeys(keys)
+				return nil, fmt.Errorf("failed to read private key file %s: %w", filepath.Base(fileHeader.Filename), err)
 			}
-			defer file.Close()
-			data, err := io.ReadAll(file)
-			if err != nil {
-				return nil, fmt.Errorf("failed to read private key file: %w", err)
+			if len(bytes.TrimSpace(data)) == 0 {
+				continue
 			}
-			return [][]byte{data}, nil
+			keys = append(keys, data)
 		}
 	}
-	if pem := r.FormValue("privateKey"); pem != "" {
-		return [][]byte{[]byte(pem)}, nil
+	if pem := r.FormValue("privateKey"); strings.TrimSpace(pem) != "" {
+		keys = append(keys, []byte(pem))
 	}
-	return nil, nil
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	return keys, nil
+}
+
+func readMultipartFile(fileHeader *multipart.FileHeader) ([]byte, error) {
+	file, err := fileHeader.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	return io.ReadAll(file)
 }
 
 // clearKeys zeroes every private key once the request is done with it. This is best effort for a
@@ -484,187 +589,279 @@ func clearKeys(keys [][]byte) {
 	}
 }
 
-// processFilesAndMnemonics processes the uploaded files and their mnemonics. On success it also
-// returns a cleanup func the caller must defer to remove this request's ZIP-extracted dirs; on
-// error, extracted dirs are already removed before returning and the cleanup func is a no-op.
+// uploadedFile records how a pipeline input reached the server, so a response can name it the way
+// the user uploaded it rather than by its temp path.
+type uploadedFile struct {
+	name    string // base name as uploaded, or the entry name for a file extracted from a ZIP
+	fromZip bool   // extracted from a legacy (non-bundle) ZIP archive of exports
+}
+
+// uploadFailure is an uploaded file that could not be read at all, such as a damaged ZIP archive.
+// Only verification collects these, to report them as that file's error.
+type uploadFailure struct {
+	name string // base name as uploaded
+	err  string // why it could not be read, without temp paths
+}
+
+// processFilesAndMnemonics processes the uploaded files and their mnemonics for listing and
+// recovery, where every JSON export needs its mnemonic. On success it also returns a cleanup func
+// the caller must defer to remove this request's temp files; on error they are already removed and
+// the cleanup func is a no-op.
 func (s *Server) processFilesAndMnemonics(r *http.Request) (ui.VaultsDataFiles, func(), error) {
-	// Get the vault data file uploads. These always arrive under the "files" field; other
-	// multipart file fields (e.g. "privateKeyFile") carry unrelated data and must not be swept
-	// in here, or they'd be mistaken for a vault data file requiring its own mnemonic.
+	files, _, _, reqCleanup, err := s.processUploadedFiles(r, false)
+	return files, reqCleanup, err
+}
+
+// processUploadedFiles saves the request's "files" uploads into a per-request temp directory and
+// pairs each JSON export with its mnemonic.
+//
+// A Virtual Signer bundle zip (one with a root manifest.json) is passed through whole, so the
+// pipeline expands it with its manifest, as the CLI does. Any other zip is a legacy archive of
+// exports and is extracted flat. A JSON file's mnemonic comes from the "mnemonic_<file name without
+// extension>" field; for a directly uploaded JSON file the older unkeyed fields are still read, by
+// upload position, when that field is absent.
+//
+// With mnemonicsOptional (verify), a JSON file with no mnemonic is kept with an empty one so it can
+// be checked by its header, a supplied mnemonic is passed through unvalidated so a bad one shows up
+// as that file's error, and a ZIP archive that cannot be opened is returned as an uploadFailure
+// while the other uploads are still processed. Otherwise (list and recover) a JSON file without a
+// mnemonic is skipped when it came from a zip and is an error when uploaded directly, and an
+// unreadable ZIP fails the request, as before.
+//
+// On success it also returns how each input path was uploaded, any upload failures, and a cleanup
+// func the caller must defer to remove this request's temp files; on error they are already
+// removed and the cleanup func is a no-op.
+func (s *Server) processUploadedFiles(r *http.Request, mnemonicsOptional bool) (
+	ui.VaultsDataFiles, map[string]uploadedFile, []uploadFailure, func(), error) {
+	if r.MultipartForm == nil || len(r.MultipartForm.File["files"]) == 0 {
+		return nil, nil, nil, noopCleanup, fmt.Errorf("no files uploaded")
+	}
+	// Only the "files" field carries vault data files; other file fields (e.g. "privateKeyFile",
+	// "hdAddressesCSV") carry unrelated data and must not be swept in here.
 	fileHeaders := r.MultipartForm.File["files"]
 
-	if len(fileHeaders) == 0 {
-		return nil, noopCleanup, fmt.Errorf("no files uploaded")
+	// Each request gets its own directory, so uploads are removed when the request ends and two
+	// requests never overwrite each other's files.
+	requestDir, err := os.MkdirTemp(s.tempDir, "request-")
+	if err != nil {
+		log.Printf("⚠ failed to create a request directory: %v", err)
+		return nil, nil, nil, noopCleanup, fmt.Errorf("failed to create a temporary directory: %w", fileutils.StripPathFromError(err))
 	}
-
-	vaultsDataFiles := make([]ui.VaultsDataFile, 0)
-	zipExtractedDirs := make([]string, 0)
-
-	// Process all files
-	jsonFileCount := 0 // Track actual JSON files (either direct or from ZIP)
-
-	cleanUpZipExtractedDirs := func() {
-		for _, dir := range zipExtractedDirs {
+	requestDirs := []string{requestDir}
+	fail := func(err error) (ui.VaultsDataFiles, map[string]uploadedFile, []uploadFailure, func(), error) {
+		for _, dir := range requestDirs {
 			os.RemoveAll(dir)
 		}
+		return nil, nil, nil, noopCleanup, err
 	}
-	closeFiles := func(file *multipart.File, outFile *os.File) {
-		if file != nil {
-			(*file).Close()
-		}
-		if outFile != nil {
-			(*outFile).Close()
+
+	vaultsDataFiles := make([]ui.VaultsDataFile, 0, len(fileHeaders))
+	uploads := make(map[string]uploadedFile, len(fileHeaders))
+	var failures []uploadFailure
+	seenNames := make(map[string]bool, len(fileHeaders))
+	add := func(path, mnemonic string, upload uploadedFile) {
+		vaultsDataFiles = append(vaultsDataFiles, ui.VaultsDataFile{File: path, Mnemonics: mnemonic})
+		uploads[path] = upload
+	}
+
+	// A directly uploaded JSON file owns the "mnemonic_<name>" field for its name. A ZIP entry only
+	// falls back to that field (see zipEntryMnemonic) when no direct upload and no other entry uses it.
+	plainFieldTaken := make(map[string]bool, len(fileHeaders))
+	for _, fh := range fileHeaders {
+		if name := filepath.Base(fh.Filename); strings.EqualFold(filepath.Ext(name), ".json") {
+			plainFieldTaken[strings.TrimSuffix(name, filepath.Ext(name))] = true
 		}
 	}
 
-	// Save each file to the temp directory
 	for i, fileHeader := range fileHeaders {
-		// Open the uploaded file
-		file, err := fileHeader.Open()
-		if err != nil {
-			cleanUpZipExtractedDirs()
-			closeFiles(&file, nil)
-			return nil, noopCleanup, fmt.Errorf("failed to open file %s: %w", fileHeader.Filename, err)
+		name := filepath.Base(fileHeader.Filename)
+		if name == "" || name == "." || name == string(filepath.Separator) {
+			return fail(fmt.Errorf("an uploaded file has no name"))
+		}
+		// Case-insensitive: on Windows and macOS the second file would overwrite the first.
+		if seenNames[strings.ToLower(name)] {
+			return fail(fmt.Errorf("two uploaded files are named %s; rename one and try again", name))
+		}
+		seenNames[strings.ToLower(name)] = true
+
+		filePath := filepath.Join(requestDir, name)
+		if err := saveUploadedFile(fileHeader, filePath); err != nil {
+			return fail(err)
 		}
 
-		// Create a file in the temp directory
-		filePath := filepath.Join(s.tempDir, fileHeader.Filename)
-		outFile, err := os.Create(filePath)
-		if err != nil {
-			cleanUpZipExtractedDirs()
-			closeFiles(&file, outFile)
-			os.Remove(filePath)
-			log.Printf("⚠ failed to create temporary file %s: %v", filePath, err)
-			return nil, noopCleanup, fmt.Errorf("failed to create temporary file %s: %w", filepath.Base(fileHeader.Filename), fileutils.StripPathFromError(err))
-		}
+		switch {
+		case ziputils.IsBundleZip(filePath):
+			add(filePath, "", uploadedFile{name: name})
 
-		// Copy the file content
-		if _, err := io.Copy(outFile, file); err != nil {
-			cleanUpZipExtractedDirs()
-			closeFiles(&file, outFile)
-			os.Remove(filePath)
-			return nil, noopCleanup, fmt.Errorf("failed to copy file content: %w", err)
-		}
-
-		closeFiles(&file, outFile)
-
-		// Process the file based on its type
-		if ziputils.IsZipFile(filePath) {
-			// Extract JSON files from the ZIP
+		case ziputils.IsZipFile(filePath):
 			extractedFiles, err := ziputils.ProcessZipFile(filePath)
-			// Delete the uploaded ZIP file — it's no longer needed after extraction, regardless if it succeeded or failed
+			// The uploaded ZIP is no longer needed after extraction, whether or not it succeeded.
 			os.Remove(filePath)
 			if err != nil {
-				cleanUpZipExtractedDirs()
-				return nil, noopCleanup, err
+				if mnemonicsOptional {
+					// Verification reports a damaged archive as that file's error and still checks the
+					// other uploads; listing and recovery need every file, so they stop here.
+					failures = append(failures, uploadFailure{name: name, err: fileutils.StripPathFromError(err).Error()})
+					continue
+				}
+				return fail(err)
 			}
-
-			// Track the extracted directory for cleanup
 			if len(extractedFiles) > 0 {
-				zipExtractedDirs = append(zipExtractedDirs, filepath.Dir(extractedFiles[0]))
+				requestDirs = append(requestDirs, filepath.Dir(extractedFiles[0]))
 			}
-
-			// Each signer JSON has its own mnemonic
 			for _, extractedFile := range extractedFiles {
-				// Get complete filename and base name without extension
-				fileName := filepath.Base(extractedFile)
+				entryName := filepath.Base(extractedFile)
+				upload := uploadedFile{name: entryName, fromZip: true}
 
-				// Virtual Signer .dr files are decrypted with the shared ML-KEM-768 private key
-				// (see readPrivateKeysPEM), not a per-file mnemonic; skip the mnemonic lookup.
-				if strings.EqualFold(filepath.Ext(fileName), ".dr") {
-					vaultsDataFiles = append(vaultsDataFiles, ui.VaultsDataFile{File: extractedFile})
-					jsonFileCount++
+				// Virtual Signer .dr files are decrypted with an ML-KEM-768 private key (see
+				// readPrivateKeysPEM), not a per-file mnemonic.
+				if isDRFileName(entryName) {
+					add(extractedFile, "", upload)
 					continue
 				}
 
-				baseName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+				mnemonic, supplied := zipEntryMnemonic(r, name, entryName, plainFieldTaken)
+				if mnemonicsOptional {
+					add(extractedFile, mnemonic, upload)
+					continue
+				}
+				if !supplied {
+					log.Printf("⚠ skipping file %s - no mnemonic provided", entryName)
+					fmt.Println(ui.PlainTextf("Skipping file %s - no mnemonic provided", entryName))
+					continue
+				}
+				if err := ui.ValidateMnemonics(mnemonic); err != nil {
+					return fail(fmt.Errorf("invalid mnemonic for signer %s: %w", strings.TrimSuffix(entryName, filepath.Ext(entryName)), err))
+				}
+				add(extractedFile, mnemonic, upload)
+			}
 
-				// Look for mnemonic specific to this signer type
-				// We use baseName for the key as that's what the frontend is sending
-				mnemonicKey := fmt.Sprintf("mnemonic_%s", baseName)
+		case isDRFileName(name):
+			add(filePath, "", uploadedFile{name: name})
 
-				// Check if we have a mnemonic for this signer
-				if mnemonicValues, ok := r.MultipartForm.Value[mnemonicKey]; ok && len(mnemonicValues) > 0 {
-					mnemonic := ui.CleanMnemonicInput(mnemonicValues[0])
-					if err := ui.ValidateMnemonics(mnemonic); err != nil {
-						cleanUpZipExtractedDirs()
-						return nil, noopCleanup, fmt.Errorf("invalid mnemonic for signer %s: %w", baseName, err)
-					}
-
-					// Add the file with its specific mnemonic
-					vaultsDataFiles = append(vaultsDataFiles, ui.VaultsDataFile{
-						File:      extractedFile,
-						Mnemonics: mnemonic,
-					})
-					jsonFileCount++
-				} else {
-					// Skip files we don't have mnemonics for
-					log.Printf("⚠ skipping file %s - no mnemonic provided", extractedFile)
-					fmt.Println(ui.PlainTextf("Skipping file %s - no mnemonic provided", filepath.Base(extractedFile)))
+		default:
+			mnemonic, supplied := keyedMnemonic(r, name)
+			if mnemonicsOptional {
+				add(filePath, mnemonic, uploadedFile{name: name})
+				continue
+			}
+			if !supplied {
+				// Older clients send unkeyed mnemonics in upload order.
+				var ok bool
+				if mnemonic, ok = positionalMnemonic(r, i); !ok {
+					return fail(fmt.Errorf("no mnemonics provided for JSON file %s", name))
 				}
 			}
-		} else if strings.EqualFold(filepath.Ext(filePath), ".dr") {
-			// Virtual Signer .dr files are decrypted with the shared ML-KEM-768 private key (see
-			// readPrivateKeysPEM), not a per-file mnemonic.
-			vaultsDataFiles = append(vaultsDataFiles, ui.VaultsDataFile{File: filePath})
-			jsonFileCount++
-		} else {
-			// Handle regular JSON file
-			// Get mnemonics from regular fields
-			var mnemonicValues []string
-			for key, values := range r.MultipartForm.Value {
-				if strings.Contains(key, "mnemonic") && !strings.Contains(key, "mnemonic_") {
-					mnemonicValues = append(mnemonicValues, values...)
-				}
-			}
-
-			// If we couldn't find mnemonic fields by name, try using all form values except known ones
-			if len(mnemonicValues) == 0 {
-				for key, values := range r.MultipartForm.Value {
-					if key != "mode" && key != "vaultId" && !strings.HasPrefix(key, "mnemonic_") {
-						mnemonicValues = append(mnemonicValues, values...)
-					}
-				}
-			}
-
-			// Clean the mnemonic input
-			mnemonicIndex := i
-			if mnemonicIndex >= len(mnemonicValues) {
-				mnemonicIndex = 0 // Fall back to first mnemonic if not enough
-			}
-
-			if len(mnemonicValues) == 0 {
-				cleanUpZipExtractedDirs()
-				return nil, noopCleanup, fmt.Errorf("no mnemonics provided for JSON file %s", fileHeader.Filename)
-			}
-
-			mnemonic := ui.CleanMnemonicInput(mnemonicValues[mnemonicIndex])
 			if err := ui.ValidateMnemonics(mnemonic); err != nil {
-				cleanUpZipExtractedDirs()
-				return nil, noopCleanup, fmt.Errorf("invalid mnemonic for file %s: %w", fileHeader.Filename, err)
+				return fail(fmt.Errorf("invalid mnemonic for file %s: %w", name, err))
 			}
-
-			// Add the file to the vaultsDataFiles
-			vaultsDataFiles = append(vaultsDataFiles, ui.VaultsDataFile{
-				File:      filePath,
-				Mnemonics: mnemonic,
-			})
-			jsonFileCount++
+			add(filePath, mnemonic, uploadedFile{name: name})
 		}
 	}
 
-	// Ensure we have at least one JSON file to process
-	if jsonFileCount == 0 {
-		cleanUpZipExtractedDirs()
-		return nil, noopCleanup, fmt.Errorf("no valid JSON files were uploaded (directly or in ZIP archives)")
+	// Ensure we have at least one vault data file to process. Verification with only unreadable
+	// uploads still answers, so the user sees why each one failed.
+	if len(vaultsDataFiles) == 0 && len(failures) == 0 {
+		return fail(fmt.Errorf("no valid JSON files were uploaded (directly or in ZIP archives)"))
 	}
 
-	// Keep the extracted dirs on the server too, as a fallback for Stop() in case the
-	// caller's deferred cleanup below doesn't run (e.g. process killed mid-request).
-	s.trackZipExtractedDirs(zipExtractedDirs)
+	// Keep the dirs on the server too, as a fallback for Stop() in case the caller's deferred
+	// cleanup below doesn't run (e.g. process killed mid-request).
+	s.trackZipExtractedDirs(requestDirs)
 
-	reqCleanup := func() { s.cleanupRequestDirs(zipExtractedDirs) }
-	return vaultsDataFiles, reqCleanup, nil
+	reqCleanup := func() { s.cleanupRequestDirs(requestDirs) }
+	return vaultsDataFiles, uploads, failures, reqCleanup, nil
+}
+
+// saveUploadedFile writes one upload to dst, readable by the owner only.
+func saveUploadedFile(fileHeader *multipart.FileHeader, dst string) error {
+	in, err := fileHeader.Open()
+	if err != nil {
+		return fmt.Errorf("failed to open file %s: %w", filepath.Base(dst), err)
+	}
+	defer in.Close()
+
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, fileutils.PermissionOwnerRW)
+	if err != nil {
+		log.Printf("⚠ failed to create temporary file %s: %v", dst, err)
+		return fmt.Errorf("failed to create temporary file %s: %w", filepath.Base(dst), fileutils.StripPathFromError(err))
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		os.Remove(dst)
+		return fmt.Errorf("failed to copy file content: %w", err)
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(dst)
+		return fmt.Errorf("failed to save file %s: %w", filepath.Base(dst), fileutils.StripPathFromError(err))
+	}
+	return nil
+}
+
+// keyedMnemonic returns the cleaned mnemonic sent for a JSON file under
+// "mnemonic_<file name without extension>", and whether that field was sent at all. A field that
+// was sent blank comes back as "" with supplied true.
+func keyedMnemonic(r *http.Request, fileName string) (mnemonic string, supplied bool) {
+	baseName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+	values, ok := r.MultipartForm.Value["mnemonic_"+baseName]
+	if !ok || len(values) == 0 {
+		return "", false
+	}
+	return ui.CleanMnemonicInput(values[0]), true
+}
+
+// zipEntryMnemonic returns the mnemonic for one export inside an uploaded ZIP archive, and whether
+// one was sent.
+//
+// The client sends it as "mnemonic_<archive name>/<entry name without extension>". Upload names are
+// unique within a request, so this stays distinct when two archives both contain, say,
+// backup.json with different phrases. Older clients send "mnemonic_<entry name without
+// extension>"; that field is still accepted, but for one entry only and never for a name a directly
+// uploaded file uses, so one phrase is never applied to two different exports. plainFieldTaken
+// records which of those plain fields are already spoken for.
+func zipEntryMnemonic(r *http.Request, archiveName, entryName string, plainFieldTaken map[string]bool) (mnemonic string, supplied bool) {
+	if mnemonic, supplied = keyedMnemonic(r, archiveName+"/"+entryName); supplied {
+		return mnemonic, true
+	}
+	stem := strings.TrimSuffix(entryName, filepath.Ext(entryName))
+	if plainFieldTaken[stem] {
+		return "", false
+	}
+	if mnemonic, supplied = keyedMnemonic(r, entryName); supplied {
+		plainFieldTaken[stem] = true
+	}
+	return mnemonic, supplied
+}
+
+// positionalMnemonic is the fallback for older clients that send unkeyed mnemonic fields: it
+// takes the i-th one in upload order, or the first if there are fewer than i.
+func positionalMnemonic(r *http.Request, i int) (string, bool) {
+	var mnemonicValues []string
+	for key, values := range r.MultipartForm.Value {
+		if strings.Contains(key, "mnemonic") && !strings.Contains(key, "mnemonic_") {
+			mnemonicValues = append(mnemonicValues, values...)
+		}
+	}
+
+	// If we couldn't find mnemonic fields by name, try using all form values except known ones
+	if len(mnemonicValues) == 0 {
+		for key, values := range r.MultipartForm.Value {
+			if key != "mode" && key != "vaultId" && !strings.HasPrefix(key, "mnemonic_") {
+				mnemonicValues = append(mnemonicValues, values...)
+			}
+		}
+	}
+	if len(mnemonicValues) == 0 {
+		return "", false
+	}
+	if i >= len(mnemonicValues) {
+		i = 0 // Fall back to first mnemonic if not enough
+	}
+	return ui.CleanMnemonicInput(mnemonicValues[i]), true
+}
+
+func isDRFileName(name string) bool {
+	return strings.EqualFold(filepath.Ext(name), ".dr")
 }
 
 // securityHeaders wraps an http.Handler to add security headers to every response.
@@ -881,6 +1078,19 @@ func (s *Server) handleListZipFiles(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// A Virtual Signer bundle is listed, not extracted: its manifest.json is not a backup file,
+		// and its .dr files need a key, not a mnemonic.
+		if ziputils.IsBundleZip(filePath) {
+			names, err := bundleDRNames(filePath)
+			onZipFileProcessingFinished(&file, outFile, &filePath)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Failed to process ZIP file %s: %v", fileHeader.Filename, err), http.StatusBadRequest)
+				return
+			}
+			allExtractedFiles = append(allExtractedFiles, names...)
+			continue
+		}
+
 		// Process the ZIP file to extract JSON files
 		extractedFiles, err := ziputils.ProcessZipFile(filePath)
 		// Delete the uploaded ZIP file — it's no longer needed after extraction, regardless if it succeeded or failed
@@ -925,6 +1135,26 @@ func (s *Server) handleListZipFiles(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
 		return
 	}
+}
+
+// bundleDRNames lists the base names of a Virtual Signer bundle's .dr entries without extracting it.
+func bundleDRNames(zipPath string) ([]string, error) {
+	reader, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return nil, fmt.Errorf("unable to open bundle %s: %w", filepath.Base(zipPath), fileutils.StripPathFromError(err))
+	}
+	defer reader.Close()
+
+	var names []string
+	for _, f := range reader.File {
+		if f.FileInfo().IsDir() || ziputils.IsIgnoredZipEntry(f.Name) {
+			continue
+		}
+		if strings.EqualFold(path.Ext(f.Name), ".dr") {
+			names = append(names, path.Base(f.Name))
+		}
+	}
+	return names, nil
 }
 
 // noopCleanup is returned by processFilesAndMnemonics on error paths, so callers can

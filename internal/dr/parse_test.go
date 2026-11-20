@@ -158,3 +158,35 @@ func TestResolveEnvelopeFormat_Defaults(t *testing.T) {
 		})
 	}
 }
+
+// ParseEnvelope reads the plaintext envelope of a locked file: no key, no decryption.
+func TestParseEnvelope_ReadsHeaderWithoutKey(t *testing.T) {
+	_, file := envelopeForTest(t, []byte(ecdsaPayloadJSON), "ECDSA", func(e *FileEnvelope) {
+		e.FormatVersion = 0
+		e.KEMSuite = ""
+		e.PreviousRequestId = "req-0"
+	})
+
+	envelope, err := ParseEnvelope(file)
+	require.NoError(t, err)
+	require.Equal(t, "vault-1", envelope.VaultId)
+	require.Equal(t, "req-1", envelope.RequestId)
+	require.Equal(t, "req-0", envelope.PreviousRequestId)
+	require.Equal(t, "ECDSA", envelope.Algo)
+	require.Equal(t, 1, envelope.FormatVersion)
+	require.Equal(t, SupportedKEMSuite, envelope.KEMSuite)
+}
+
+func TestParseEnvelope_Rejects(t *testing.T) {
+	_, unsupported := envelopeForTest(t, []byte(ecdsaPayloadJSON), "ECDSA", func(e *FileEnvelope) {
+		e.KEMSuite = "ML-KEM-1024+AES-256-GCM"
+	})
+	_, err := ParseEnvelope(unsupported)
+	require.ErrorContains(t, err, "ML-KEM-1024+AES-256-GCM")
+
+	_, err = ParseEnvelope([]byte("not json"))
+	require.ErrorContains(t, err, "not a JSON envelope")
+
+	_, err = ParseEnvelope([]byte(`{"vaultId":"vault-1","requestId":"req-1","algo":"ECDSA"}`))
+	require.ErrorContains(t, err, "missing dataB64")
+}

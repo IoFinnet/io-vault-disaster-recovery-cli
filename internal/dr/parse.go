@@ -86,6 +86,27 @@ func resolveEnvelopeFormat(envelope *FileEnvelope) error {
 	return nil
 }
 
+// ParseEnvelope decodes a .dr file's JSON envelope and checks that this build supports the format
+// and KEM suite it declares, without decrypting anything. It is what a caller uses to say which
+// vault and reshare a file belongs to before (or without) its private key.
+//
+// Every field it returns sits outside the AES-GCM authentication tag, so it is unauthenticated:
+// use it to group, label or diagnose a file, never for a security decision. The returned envelope
+// carries the resolved format fields (legacy blanks filled in).
+func ParseEnvelope(raw []byte) (*FileEnvelope, error) {
+	var envelope FileEnvelope
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return nil, fmt.Errorf("invalid .dr file (not a JSON envelope): %w", err)
+	}
+	if envelope.DataB64 == "" {
+		return nil, fmt.Errorf("invalid .dr file: missing dataB64")
+	}
+	if err := resolveEnvelopeFormat(&envelope); err != nil {
+		return nil, err
+	}
+	return &envelope, nil
+}
+
 // Parsed holds the outcome of decrypting and classifying one .dr file.
 type Parsed struct {
 	Kind     Kind
@@ -105,18 +126,13 @@ type Parsed struct {
 // unauthenticated metadata (fine for grouping/display/diagnostics) and rely on the decrypted
 // payload's own VaultId/Threshold, which is authenticated, for anything security-relevant.
 func DecryptAndParse(pemBytes, raw []byte) (*Parsed, error) {
-	var envelope FileEnvelope
-	if err := json.Unmarshal(raw, &envelope); err != nil {
-		return nil, fmt.Errorf("invalid .dr file (not a JSON envelope): %w", err)
-	}
-	if envelope.DataB64 == "" {
-		return nil, fmt.Errorf("invalid .dr file: missing dataB64")
-	}
 	// Check the declared format before spending a decapsulation on it, so an unsupported suite
 	// reports itself instead of masquerading as a wrong-key error.
-	if err := resolveEnvelopeFormat(&envelope); err != nil {
+	parsedEnvelope, err := ParseEnvelope(raw)
+	if err != nil {
 		return nil, err
 	}
+	envelope := *parsedEnvelope
 
 	ciphertext, err := base64.StdEncoding.DecodeString(envelope.DataB64)
 	if err != nil {
